@@ -1,0 +1,177 @@
+syntax = "proto3";
+
+package kora.common.v1;
+
+option go_package = "github.com/kora-finance/kora/gen/go/common;commonv1";
+
+message TenantContext {
+  string organization_id = 1;
+  string user_id = 2;
+  string role = 3;
+  repeated string permissions = 4;
+  repeated string request_scopes = 5;
+}
+
+message Money {
+  string currency = 1;
+  int64 minor_units = 2;
+  int32 precision = 3;
+  string exchange_rate_id = 4;
+}
+
+enum ConfidenceTier {
+  CONFIDENCE_TIER_UNSPECIFIED = 0;
+  CONFIDENCE_TIER_AUTO = 1;
+  CONFIDENCE_TIER_SUGGESTED = 2;
+  CONFIDENCE_TIER_REVIEW = 3;
+  CONFIDENCE_TIER_REJECTED = 4;
+}
+
+message Confidence {
+  double score = 1;
+  ConfidenceTier tier = 2;
+  string method = 3;
+  string calibration_version = 4;
+}
+
+message Evidence {
+  string source_document_id = 1;
+  string source_record_id = 2;
+  string transaction_reference = 3;
+  string occurred_on = 4;
+  Money amount = 5;
+  Confidence confidence = 6;
+  string reason = 7;
+  string responsible_party_id = 8;
+  string suggested_action = 9;
+}
+
+enum BusinessEventType {
+  BUSINESS_EVENT_TYPE_UNSPECIFIED = 0;
+  BUSINESS_EVENT_TYPE_TRANSACTION_OBSERVED = 1;
+  BUSINESS_EVENT_TYPE_PAYMENT_RECEIVED = 2;
+  BUSINESS_EVENT_TYPE_PAYMENT_SENT = 3;
+  BUSINESS_EVENT_TYPE_INVOICE_ISSUED = 4;
+  BUSINESS_EVENT_TYPE_BILL_RECEIVED = 5;
+  BUSINESS_EVENT_TYPE_RECEIPT_UPLOADED = 6;
+  BUSINESS_EVENT_TYPE_CONTRACT_SIGNED = 7;
+  BUSINESS_EVENT_TYPE_OBLIGATION_CREATED = 8;
+  BUSINESS_EVENT_TYPE_DOCUMENT_MISSING = 9;
+  BUSINESS_EVENT_TYPE_APPROVAL_REQUIRED = 10;
+  BUSINESS_EVENT_TYPE_PREMIUM_CATEGORY = 11;
+}
+
+enum BusinessEventStatus {
+  BUSINESS_EVENT_STATUS_UNSPECIFIED = 0;
+  BUSINESS_EVENT_STATUS_ACTIVE = 1;
+  BUSINESS_EVENT_STATUS_REVERSED = 2;
+  BUSINESS_EVENT_STATUS_ADJUSTED = 3;
+  BUSINESS_EVENT_STATUS_SUPERSEDED = 4;
+}
+
+message BusinessEvent {
+  string id = 1;
+  TenantContext tenant = 2;
+  BusinessEventType type = 3;
+  BusinessEventStatus status = 4;
+  string external_party_id = 5;
+  string account_id = 6;
+  string source_id = 7;
+  Evidence evidence = 8;
+  map<string, string> attributes = 9;
+}
+
+enum CorrectionEventType {
+  CORRECTION_EVENT_TYPE_UNSPECIFIED = 0;
+  CORRECTION_EVENT_TYPE_EVENT_CREATED = 1;
+  CORRECTION_EVENT_TYPE_EVENT_REVERSED = 2;
+  CORRECTION_EVENT_TYPE_EVENT_ADJUSTED = 3;
+  CORRECTION_EVENT_TYPE_MATCH_APPROVED = 4;
+  CORRECTION_EVENT_TYPE_MATCH_REJECTED = 5;
+  CORRECTION_EVENT_TYPE_POSTING_CREATED = 6;
+  CORRECTION_EVENT_TYPE_POSTING_REVERSED = 7;
+  CORRECTION_EVENT_TYPE_DOCUMENT_REPLACED = 8;
+  CORRECTION_EVENT_TYPE_EVIDENCE_ADDED = 9;
+}
+
+message CorrectionEvent {
+  string id = 1;
+  TenantContext tenant = 2;
+  CorrectionEventType type = 3;
+  string original_event_id = 4;
+  string replacement_event_id = 5;
+  Evidence evidence = 6;
+  string reason = 7;
+}
+
+enum ApprovalState {
+  APPROVAL_STATE_UNSPECIFIED = 0;
+  APPROVAL_STATE_SUGGESTED = 1;
+  APPROVAL_STATE_ASSIGNED = 2;
+  APPROVAL_STATE_APPROVED = 3;
+  APPROVAL_STATE_REJECTED = 4;
+  APPROVAL_STATE_EXECUTED = 5;
+  APPROVAL_STATE_ESCALATED = 6;
+  APPROVAL_STATE_REVERSED = 7;
+}
+
+message ApprovalTask {
+  string id = 1;
+  TenantContext tenant = 2;
+  string suggested_action = 3;
+  string approver_role = 4;
+  ApprovalState state = 5;
+  string deadline = 6;
+  Evidence evidence = 7;
+}
+
+message LedgerEntry {
+  string id = 1;
+  TenantContext tenant = 2;
+  string account_id = 3;
+  Money debit = 4;
+  Money credit = 5;
+  string posting_group_id = 6;
+  string approval_task_id = 7;
+  Evidence evidence = 8;
+}
+
+message RulePolicy {
+  string id = 1;
+  TenantContext tenant = 2;
+  int32 version = 3;
+  double auto_match_threshold = 4;
+  double suggested_match_threshold = 5;
+  int32 duplicate_window_days = 6;
+  Money payment_tolerance = 7;
+  repeated string required_evidence_fields = 8;
+  map<string, string> approval_limits = 9;
+  map<string, string> sharing_scopes = 10;
+}
+
+message ConsentGrant {
+  string id = 1;
+  TenantContext tenant = 2;
+  string recipient_party_id = 3;
+  repeated string allowed_data_categories = 4;
+  string period_start = 5;
+  string period_end = 6;
+  string expires_at = 7;
+  string purpose = 8;
+  bool revoked = 9;
+  bool ongoing_monitoring_allowed = 10;
+}
+
+message AgentEvaluationResult {
+  string id = 1;
+  string agent_name = 2;
+  string dataset_id = 3;
+  string expected_output = 4;
+  string actual_output = 5;
+  bool evidence_grounded = 6;
+  double confidence_error = 7;
+  bool hallucination_detected = 8;
+  bool refused_when_evidence_missing = 9;
+  string reviewer_feedback = 10;
+}
+

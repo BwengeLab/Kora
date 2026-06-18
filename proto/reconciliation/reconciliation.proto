@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package kora.reconciliation.v1;
+
+import "proto/common/kora_common.proto";
+
+option go_package = "github.com/kora-finance/kora/gen/go/reconciliation;reconciliationv1";
+
+enum MatchState {
+  MATCH_STATE_UNSPECIFIED = 0;
+  MATCH_STATE_MATCHED = 1;
+  MATCH_STATE_SUGGESTED = 2;
+  MATCH_STATE_REJECTED = 3;
+  MATCH_STATE_UNMATCHED = 4;
+  MATCH_STATE_DUPLICATE = 5;
+  MATCH_STATE_SUSPICIOUS = 6;
+}
+
+message MatchCandidate {
+  string left_event_id = 1;
+  string right_event_id = 2;
+  MatchState state = 3;
+  kora.common.v1.Confidence confidence = 4;
+  kora.common.v1.Evidence evidence = 5;
+}
+
+message ReconcileRequest {
+  kora.common.v1.TenantContext tenant = 1;
+  repeated string event_ids = 2;
+  string policy_id = 3;
+}
+
+message ReconcileResponse {
+  repeated MatchCandidate candidates = 1;
+}
+
+service ReconciliationService {
+  rpc Reconcile(ReconcileRequest) returns (ReconcileResponse);
+}
+

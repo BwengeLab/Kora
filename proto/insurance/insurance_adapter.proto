@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package kora.insurance.v1;
+
+import "proto/common/kora_common.proto";
+
+option go_package = "github.com/kora-finance/kora/gen/go/insurance;insurancev1";
+
+message PolicyMapping {
+  string policy_id = 1;
+  string customer_external_party_id = 2;
+  string contract_id = 3;
+  string invoice_id = 4;
+  string payment_event_id = 5;
+  kora.common.v1.Evidence evidence = 6;
+}
+
+message ClaimMapping {
+  string claim_id = 1;
+  string approval_task_id = 2;
+  string payment_event_id = 3;
+  string ledger_entry_id = 4;
+  kora.common.v1.Evidence evidence = 5;
+}
+
+message BrokerMapping {
+  string broker_external_party_id = 1;
+  string broker_code = 2;
+  kora.common.v1.Evidence evidence = 3;
+}
+
+message MapInsuranceRecordRequest {
+  kora.common.v1.TenantContext tenant = 1;
+  string adapter_record_type = 2;
+  map<string, string> source_fields = 3;
+  kora.common.v1.Evidence evidence = 4;
+}
+
+message MapInsuranceRecordResponse {
+  repeated kora.common.v1.BusinessEvent events = 1;
+  repeated string quality_flags = 2;
+}
+
+service InsuranceAdapterService {
+  rpc MapInsuranceRecord(MapInsuranceRecordRequest) returns (MapInsuranceRecordResponse);
+}
+

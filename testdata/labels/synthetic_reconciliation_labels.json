@@ -1,0 +1,33 @@
+{
+  "fixtures": [
+    {
+      "file": "bank_statement_clean.csv",
+      "expected_quality": [
+        "complete"
+      ],
+      "expected_matches": [
+        {
+          "left_reference": "POL-1001",
+          "right_reference": "POL-1001"
+        }
+      ]
+    },
+    {
+      "file": "bank_statement_duplicate.csv",
+      "expected_quality": [
+        "duplicate-risk"
+      ],
+      "expected_duplicates": [
+        "INV-2001"
+      ]
+    },
+    {
+      "file": "bank_statement_messy.csv",
+      "expected_quality": [
+        "duplicate-risk",
+        "missing-reference",
+        "needs-review"
+      ]
+    }
+  ]
+}

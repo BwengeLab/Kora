@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+coverage.out
+bin/
+gen/
+tmp/
+.env
+.env.*
+!/.env.example
+

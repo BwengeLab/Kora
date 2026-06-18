@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package kora.workflow.v1;
+
+import "proto/common/kora_common.proto";
+
+option go_package = "github.com/kora-finance/kora/gen/go/workflow;workflowv1";
+
+message CreateApprovalTaskRequest {
+  kora.common.v1.ApprovalTask task = 1;
+}
+
+message CreateApprovalTaskResponse {
+  string task_id = 1;
+}
+
+message TransitionApprovalTaskRequest {
+  kora.common.v1.TenantContext tenant = 1;
+  string task_id = 2;
+  kora.common.v1.ApprovalState next_state = 3;
+  kora.common.v1.Evidence evidence = 4;
+}
+
+message TransitionApprovalTaskResponse {
+  kora.common.v1.ApprovalTask task = 1;
+}
+
+service WorkflowService {
+  rpc CreateApprovalTask(CreateApprovalTaskRequest) returns (CreateApprovalTaskResponse);
+  rpc TransitionApprovalTask(TransitionApprovalTaskRequest) returns (TransitionApprovalTaskResponse);
+}
+

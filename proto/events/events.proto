@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package kora.events.v1;
+
+import "proto/common/kora_common.proto";
+
+option go_package = "github.com/kora-finance/kora/gen/go/events;eventsv1";
+
+message AppendBusinessEventRequest {
+  kora.common.v1.BusinessEvent event = 1;
+}
+
+message AppendBusinessEventResponse {
+  string event_id = 1;
+}
+
+message AppendCorrectionEventRequest {
+  kora.common.v1.CorrectionEvent correction = 1;
+}
+
+message AppendCorrectionEventResponse {
+  string correction_event_id = 1;
+}
+
+service EventLedgerService {
+  rpc AppendBusinessEvent(AppendBusinessEventRequest) returns (AppendBusinessEventResponse);
+  rpc AppendCorrectionEvent(AppendCorrectionEventRequest) returns (AppendCorrectionEventResponse);
+}
+

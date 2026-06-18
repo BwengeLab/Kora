@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package kora.rules.v1;
+
+import "proto/common/kora_common.proto";
+
+option go_package = "github.com/kora-finance/kora/gen/go/rules;rulesv1";
+
+message GetPolicyRequest {
+  kora.common.v1.TenantContext tenant = 1;
+  string policy_scope = 2;
+}
+
+message GetPolicyResponse {
+  kora.common.v1.RulePolicy policy = 1;
+}
+
+message UpsertPolicyRequest {
+  kora.common.v1.RulePolicy policy = 1;
+  kora.common.v1.Evidence evidence = 2;
+}
+
+message UpsertPolicyResponse {
+  kora.common.v1.RulePolicy policy = 1;
+}
+
+service RulesService {
+  rpc GetPolicy(GetPolicyRequest) returns (GetPolicyResponse);
+  rpc UpsertPolicy(UpsertPolicyRequest) returns (UpsertPolicyResponse);
+}
+

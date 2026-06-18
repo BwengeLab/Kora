@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package kora.ingestion.v1;
+
+import "proto/common/kora_common.proto";
+
+option go_package = "github.com/kora-finance/kora/gen/go/ingestion;ingestionv1";
+
+message IngestDocumentRequest {
+  kora.common.v1.TenantContext tenant = 1;
+  string idempotency_key = 2;
+  string filename = 3;
+  string content_type = 4;
+  bytes content = 5;
+  map<string, string> source_metadata = 6;
+}
+
+message IngestDocumentResponse {
+  string ingestion_batch_id = 1;
+  string document_id = 2;
+  string fingerprint = 3;
+  bool duplicate_source = 4;
+  repeated string quality_flags = 5;
+}
+
+service IngestionService {
+  rpc IngestDocument(IngestDocumentRequest) returns (IngestDocumentResponse);
+}
+

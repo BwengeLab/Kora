@@ -1,0 +1,3 @@
+date,reference,amount,currency,type
+2026-01-01,POL-1001,950000,RWF,invoice
+2026-01-02,INV-2001,3200000,RWF,bill

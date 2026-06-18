@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package kora.agents.v1;
+
+import "proto/common/kora_common.proto";
+import "proto/reconciliation/reconciliation.proto";
+
+option go_package = "github.com/kora-finance/kora/gen/go/agents;agentsv1";
+
+message AgentRunRequest {
+  kora.common.v1.TenantContext tenant = 1;
+  string agent_name = 2;
+  string objective = 3;
+  repeated kora.common.v1.Evidence evidence = 4;
+  map<string, string> context = 5;
+}
+
+message AgentRunResponse {
+  string run_id = 1;
+  string structured_output_json = 2;
+  kora.common.v1.Confidence confidence = 3;
+  repeated kora.common.v1.Evidence evidence = 4;
+  bool requires_human_approval = 5;
+  bool refused = 6;
+  string refusal_reason = 7;
+}
+
+message ReconciliationAgentRequest {
+  kora.common.v1.TenantContext tenant = 1;
+  repeated kora.reconciliation.v1.MatchCandidate candidates = 2;
+}
+
+message ReconciliationAgentResponse {
+  repeated kora.reconciliation.v1.MatchCandidate suggested_candidates = 1;
+}
+
+service AgentRuntimeService {
+  rpc RunAgent(AgentRunRequest) returns (AgentRunResponse);
+}
+
+service ReconciliationAgentService {
+  rpc SuggestMatches(ReconciliationAgentRequest) returns (ReconciliationAgentResponse);
+}
+

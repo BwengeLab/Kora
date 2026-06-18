@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package kora.consent.v1;
+
+import "proto/common/kora_common.proto";
+
+option go_package = "github.com/kora-finance/kora/gen/go/consent;consentv1";
+
+message CreateConsentGrantRequest {
+  kora.common.v1.ConsentGrant grant = 1;
+}
+
+message CreateConsentGrantResponse {
+  kora.common.v1.ConsentGrant grant = 1;
+}
+
+message RevokeConsentGrantRequest {
+  kora.common.v1.TenantContext tenant = 1;
+  string grant_id = 2;
+  kora.common.v1.Evidence evidence = 3;
+}
+
+message RevokeConsentGrantResponse {
+  kora.common.v1.ConsentGrant grant = 1;
+}
+
+service ConsentService {
+  rpc CreateConsentGrant(CreateConsentGrantRequest) returns (CreateConsentGrantResponse);
+  rpc RevokeConsentGrant(RevokeConsentGrantRequest) returns (RevokeConsentGrantResponse);
+}
+

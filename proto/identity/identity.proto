@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package kora.identity.v1;
+
+import "proto/common/kora_common.proto";
+
+option go_package = "github.com/kora-finance/kora/gen/go/identity;identityv1";
+
+message RegisterOrganizationRequest {
+  string organization_name = 1;
+  string owner_email = 2;
+}
+
+message RegisterOrganizationResponse {
+  string organization_id = 1;
+  string owner_user_id = 2;
+}
+
+message AuthorizeRequest {
+  kora.common.v1.TenantContext tenant = 1;
+  string permission = 2;
+  string action_resource = 3;
+}
+
+message AuthorizeResponse {
+  bool allowed = 1;
+  string reason = 2;
+}
+
+service IdentityService {
+  rpc RegisterOrganization(RegisterOrganizationRequest) returns (RegisterOrganizationResponse);
+  rpc Authorize(AuthorizeRequest) returns (AuthorizeResponse);
+}
+

@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package kora.ledger.v1;
+
+import "proto/common/kora_common.proto";
+
+option go_package = "github.com/kora-finance/kora/gen/go/ledger;ledgerv1";
+
+message PostLedgerEntriesRequest {
+  kora.common.v1.TenantContext tenant = 1;
+  string approval_task_id = 2;
+  repeated kora.common.v1.LedgerEntry entries = 3;
+}
+
+message PostLedgerEntriesResponse {
+  string posting_group_id = 1;
+}
+
+message ReversePostingRequest {
+  kora.common.v1.TenantContext tenant = 1;
+  string posting_group_id = 2;
+  kora.common.v1.Evidence evidence = 3;
+}
+
+message ReversePostingResponse {
+  string reversal_group_id = 1;
+}
+
+service LedgerService {
+  rpc PostLedgerEntries(PostLedgerEntriesRequest) returns (PostLedgerEntriesResponse);
+  rpc ReversePosting(ReversePostingRequest) returns (ReversePostingResponse);
+}
+

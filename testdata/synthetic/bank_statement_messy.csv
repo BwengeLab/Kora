@@ -1,0 +1,5 @@
+date,reference,amount,currency,type
+2026-01-02,POL-1001,950000,RWF,payment
+2026-01-03,INV-2001,-3200000,RWF,payment
+2026-01-03,INV-2001,-3200000,RWF,payment
+2026-01-04,,2300000,RWF,payment
