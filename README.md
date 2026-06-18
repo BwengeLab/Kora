@@ -13,7 +13,7 @@ This repository currently implements the foundation scaffold for the full system
 - Go service skeletons with health endpoints.
 - Shared Go libraries for evidence validation, audit immutability helpers, tenant checks, idempotency, policies, and correction events.
 - Python document AI, agent runtime, and agent evaluation scaffolds.
-- Docker Compose for local datastores.
+- Docker Compose for local datastores. The Phase 0 Postgres image boots without requiring pgvector; the migration enables pgvector automatically when the extension is available.
 - Synthetic fixture generator and baseline tests.
 
 ## Local Commands
@@ -41,4 +41,3 @@ Go and protoc are expected to run either through a local installation or Docker 
 ## Core Rule
 
 Kora agents can suggest, explain, classify, draft, and score. They never approve or post financial actions. Every consequential output must carry evidence, tenant context, confidence, and auditability.
-

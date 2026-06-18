@@ -49,7 +49,7 @@ switch ($Command) {
         Invoke-GoTests
     }
     "proto" {
-        docker run --rm -v "${Root}:/workspace" -w /workspace bufbuild/buf:latest generate
+        python scripts/generate_proto.py
     }
     "test" {
         python -m unittest discover -s agents -p "*_test.py"
