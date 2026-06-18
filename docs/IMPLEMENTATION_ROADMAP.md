@@ -19,6 +19,7 @@ This repository should be built in release gates, not as one large unfocused fea
 - Segregation of duties.
 - Evidence validation.
 - Immutable audit records.
+- Persistence tables for organizations, users, role bindings, audit entries, and SoD rules.
 
 ## Gate 3: Idempotent Intake
 
@@ -50,4 +51,3 @@ This repository should be built in release gates, not as one large unfocused fea
 - Insurance adapter only.
 - No insurance types in the generic ledger.
 - Premiums, claims, brokers, policies, commissions, and supplier payments mapped onto core objects.
-

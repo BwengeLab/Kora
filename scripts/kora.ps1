@@ -7,6 +7,8 @@ param(
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
+$env:GOCACHE = Join-Path $Root ".cache\go-build"
+New-Item -ItemType Directory -Force -Path $env:GOCACHE | Out-Null
 
 function Test-DockerDaemon {
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
