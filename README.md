@@ -16,6 +16,8 @@ This repository currently implements the foundation scaffold for the full system
 - Docker Compose for local datastores. The Phase 0 Postgres image boots without requiring pgvector; the migration enables pgvector automatically when the extension is available.
 - Synthetic fixture generator and baseline tests.
 
+The canonical build plan lives at `docs/10-BUILD-PLAN.md`.
+
 ## Local Commands
 
 PowerShell is the primary local runner on this Windows workspace:

@@ -2,6 +2,8 @@
 
 This repository should be built in release gates, not as one large unfocused feature push.
 
+For the full canonical phase-by-phase plan, use `docs/10-BUILD-PLAN.md`. This file is the compact gate tracker.
+
 ## Gate 1: Foundation
 
 - Monorepo scaffold.
