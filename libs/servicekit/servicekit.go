@@ -15,18 +15,22 @@ type Health struct {
 
 func ListenAndServe(serviceName string) error {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/healthz", HealthHandler(serviceName))
+
+	addr := ":" + env("PORT", "8080")
+	log.Printf("%s listening on %s", serviceName, addr)
+	return http.ListenAndServe(addr, mux)
+}
+
+func HealthHandler(serviceName string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(Health{
 			Service: serviceName,
 			Status:  "ok",
 			Version: version(),
 		})
-	})
-
-	addr := ":" + env("PORT", "8080")
-	log.Printf("%s listening on %s", serviceName, addr)
-	return http.ListenAndServe(addr, mux)
+	}
 }
 
 func env(key, fallback string) string {
@@ -40,4 +44,3 @@ func env(key, fallback string) string {
 func version() string {
 	return env("KORA_VERSION", "dev")
 }
-

@@ -22,15 +22,15 @@ const (
 type Permission string
 
 const (
-	PermissionReadOwnTenant     Permission = "tenant:read"
-	PermissionManageUsers       Permission = "users:manage"
-	PermissionUploadDocuments   Permission = "documents:upload"
-	PermissionReviewEvidence    Permission = "evidence:review"
-	PermissionCreateApproval    Permission = "approval:create"
-	PermissionApproveFinancial  Permission = "financial:approve"
-	PermissionPostLedger        Permission = "ledger:post"
-	PermissionReadAudit         Permission = "audit:read"
-	PermissionManageConsent     Permission = "consent:manage"
+	PermissionReadOwnTenant      Permission = "tenant:read"
+	PermissionManageUsers        Permission = "users:manage"
+	PermissionUploadDocuments    Permission = "documents:upload"
+	PermissionReviewEvidence     Permission = "evidence:review"
+	PermissionCreateApproval     Permission = "approval:create"
+	PermissionApproveFinancial   Permission = "financial:approve"
+	PermissionPostLedger         Permission = "ledger:post"
+	PermissionReadAudit          Permission = "audit:read"
+	PermissionManageConsent      Permission = "consent:manage"
 	PermissionReadCreditPassport Permission = "credit_passport:read"
 )
 
@@ -46,9 +46,17 @@ type Resource struct {
 }
 
 type ActionContext struct {
-	CreatorUserID string
+	CreatorUserID  string
 	ApproverUserID string
 	Action         string
+}
+
+var highRiskActions = map[string]bool{
+	"approve_match":         true,
+	"post_ledger":           true,
+	"reverse_posting":       true,
+	"grant_external_access": true,
+	"change_policy":         true,
 }
 
 var defaultRolePermissions = map[Role][]Permission{
@@ -165,3 +173,6 @@ func EnforceSegregationOfDuties(ctx ActionContext) error {
 	return nil
 }
 
+func IsHighRiskAction(action string) bool {
+	return highRiskActions[action]
+}

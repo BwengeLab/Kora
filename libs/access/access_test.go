@@ -53,3 +53,10 @@ func TestSegregationOfDutiesAllowsDifferentApprover(t *testing.T) {
 	}
 }
 
+func TestHighRiskActionsAreDefined(t *testing.T) {
+	for _, action := range []string{"approve_match", "post_ledger", "reverse_posting", "grant_external_access", "change_policy"} {
+		if !IsHighRiskAction(action) {
+			t.Fatalf("expected %s to be high risk", action)
+		}
+	}
+}
