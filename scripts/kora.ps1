@@ -1,6 +1,6 @@
 param(
     [Parameter(Position = 0)]
-    [ValidateSet("up", "down", "seed", "test", "py-test", "go-test", "proto")]
+    [ValidateSet("up", "down", "seed", "test", "py-test", "go-test", "proto", "document-ai")]
     [string]$Command = "test"
 )
 
@@ -52,6 +52,9 @@ switch ($Command) {
     }
     "proto" {
         python scripts/generate_proto.py
+    }
+    "document-ai" {
+        python -m agents.document_ai.main
     }
     "test" {
         python -m unittest discover -s agents -p "*_test.py"

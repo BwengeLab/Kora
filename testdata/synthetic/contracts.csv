@@ -1,2 +1,2 @@
-date,reference,amount,currency,type
-2026-01-01,CON-BROKER-01,0,RWF,contract
+date,contract_number,party,start_date,end_date,type
+2026-01-01,CON-BROKER-01,Kigali Brokers,2026-01-01,2026-12-31,contract

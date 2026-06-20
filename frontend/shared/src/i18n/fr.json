@@ -1,0 +1,52 @@
+{
+  "app": {
+    "name": "Kora"
+  },
+  "nav": {
+    "home": "Accueil",
+    "reconciliation": "Rapprochement",
+    "reconciliation.read": "Rapprochement",
+    "approvals": "Centre d'action",
+    "approvals.mine": "Mes tâches",
+    "ledger": "Grand livre & trésorerie",
+    "ledger.read": "Grand livre",
+    "collections": "Recouvrement",
+    "reports": "Rapports",
+    "roi": "ROI",
+    "relationships": "Relations",
+    "relationships.read": "Relations",
+    "contracts": "Contrats",
+    "contracts.read": "Contrats",
+    "creditPassport": "Passeport de crédit",
+    "agents": "Agents IA",
+    "audit": "Audit & risque",
+    "consent": "Consentement",
+    "consent.log": "Journal de consentement",
+    "dataIntake": "Importation de données",
+    "transactions": "Transactions",
+    "transactions.read": "Transactions",
+    "settings": "Paramètres",
+    "settings.org": "Organisation",
+    "settings.users": "Utilisateurs & rôles",
+    "settings.policies": "Règles & politiques",
+    "settings.integrations": "Intégrations",
+    "settings.billing": "Facturation",
+    "settings.data": "Données & conservation",
+    "platform": {
+      "home": "Plateforme",
+      "tenants": "Tenants",
+      "plans": "Plans & facturation",
+      "config": "Configuration",
+      "health": "Santé du système",
+      "usage": "Usage & coût",
+      "users": "Utilisateurs plateforme",
+      "support": "Accès support",
+      "audit": "Audit plateforme"
+    },
+    "portal": {
+      "home": "Portail",
+      "creditPassport": "Passeport de crédit",
+      "access": "Accès"
+    }
+  }
+}

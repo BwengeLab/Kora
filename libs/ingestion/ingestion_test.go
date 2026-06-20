@@ -24,6 +24,9 @@ func TestRetryWithSameIdempotencyKeyReturnsReplay(t *testing.T) {
 	if len(second.SourceRecords) != 1 {
 		t.Fatalf("expected replayed result to keep source records, got %d", len(second.SourceRecords))
 	}
+	if second.SourceRecords[0].SourceLocation.RowNumber != 2 {
+		t.Fatalf("expected source row provenance, got %+v", second.SourceRecords[0].SourceLocation)
+	}
 }
 
 func TestSameFileWithDifferentKeyReturnsDuplicateSource(t *testing.T) {
@@ -122,7 +125,9 @@ func cleanInput(idempotencyKey string) IngestInput {
 					"amount":    "1000",
 					"reference": "INV-1",
 				},
-				Confidence: 0.98,
+				FieldConfidences: map[string]float64{"date": 0.98, "amount": 0.98, "reference": 0.98},
+				Confidence:       0.98,
+				SourceLocation:   SourceLocation{RowNumber: 2},
 			},
 		},
 	}

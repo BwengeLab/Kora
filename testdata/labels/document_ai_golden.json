@@ -1,0 +1,83 @@
+{
+  "schema_version": "document-extraction.v1",
+  "fixtures": [
+    {
+      "file": "bank_statement_clean.csv",
+      "record_count": 2,
+      "record_types": [
+        "payment",
+        "payment"
+      ],
+      "expected_quality": [
+        "complete"
+      ]
+    },
+    {
+      "file": "bank_statement_messy.csv",
+      "record_count": 4,
+      "expected_flags": [
+        "duplicate-risk",
+        "incomplete",
+        "low-confidence",
+        "needs-review"
+      ]
+    },
+    {
+      "file": "momo_statement_clean.csv",
+      "record_count": 2,
+      "record_types": [
+        "payment",
+        "payment"
+      ],
+      "expected_quality": [
+        "complete"
+      ]
+    },
+    {
+      "file": "invoices.xlsx",
+      "record_count": 2,
+      "record_types": [
+        "invoice",
+        "bill"
+      ],
+      "expected_sheet": "Invoices"
+    },
+    {
+      "file": "invoice_clean.pdf",
+      "record_count": 1,
+      "record_types": [
+        "invoice"
+      ],
+      "expected_page": 1
+    },
+    {
+      "file": "receipt_clean.png",
+      "record_count": 1,
+      "record_types": [
+        "receipt"
+      ],
+      "expected_page": 1
+    },
+    {
+      "file": "contracts.csv",
+      "record_count": 1,
+      "record_types": [
+        "contract"
+      ]
+    },
+    {
+      "file": "premiums.csv",
+      "record_count": 1,
+      "record_types": [
+        "premium"
+      ]
+    },
+    {
+      "file": "claims.csv",
+      "record_count": 1,
+      "record_types": [
+        "claim"
+      ]
+    }
+  ]
+}

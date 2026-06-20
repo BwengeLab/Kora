@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package kora.document_ai.v1;
+
+import "proto/common/kora_common.proto";
+
+option go_package = "github.com/kora-finance/kora/gen/go/document_ai;documentaiv1";
+
+message SourceLocation {
+  int32 page_number = 1;
+  int32 row_number = 2;
+  string sheet_name = 3;
+}
+
+message ExtractDocumentRequest {
+  kora.common.v1.TenantContext tenant = 1;
+  string source_document_id = 2;
+  string ingestion_batch_id = 3;
+  string extraction_version_id = 4;
+  string file_name = 5;
+  string content_type = 6;
+  bytes content = 7;
+  string ocr_language = 8;
+}
+
+message ExtractedRecord {
+  string source_record_id = 1;
+  string record_type = 2;
+  map<string, string> fields = 3;
+  map<string, double> field_confidences = 4;
+  kora.common.v1.Confidence confidence = 5;
+  repeated string warnings = 6;
+  repeated string missing_fields = 7;
+  repeated string quality_flags = 8;
+  SourceLocation source_location = 9;
+  kora.common.v1.Evidence evidence = 10;
+}
+
+message ExtractDocumentResponse {
+  string parser = 1;
+  string schema_version = 2;
+  repeated ExtractedRecord records = 3;
+  repeated string warnings = 4;
+  repeated string quality_flags = 5;
+  map<string, string> metadata = 6;
+}
+
+service DocumentAIService {
+  rpc ExtractDocument(ExtractDocumentRequest) returns (ExtractDocumentResponse);
+}

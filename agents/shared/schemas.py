@@ -35,6 +35,11 @@ class Evidence:
     reason: str
     responsible_party_id: str = ""
     suggested_action: str = ""
+    ingestion_batch_id: str = ""
+    extraction_version_id: str = ""
+    source_page: int = 0
+    source_row: int = 0
+    source_sheet: str = ""
 
     def validate(self) -> None:
         if not self.source_document_id:
@@ -67,4 +72,3 @@ class AgentOutput:
             item.validate()
         if not self.requires_human_approval and self.action.lower().startswith(("post", "approve", "pay")):
             raise ValueError("agents cannot directly approve or post financial actions")
-

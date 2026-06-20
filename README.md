@@ -6,13 +6,13 @@ The first vertical adapter is insurance, but the core domain is intentionally ge
 
 ## Current Implementation Status
 
-This repository currently implements the foundation scaffold for the full system plan:
+This repository currently implements the foundation, trust spine, policy engine, idempotent ingestion, and document extraction phases of the full system plan:
 
 - Monorepo layout for Go services, Python agents, protobuf contracts, infra, scripts, docs, and test data.
 - Core protobuf contracts for common domain types, trust spine, ingestion, event ledger, reconciliation, workflow, ledger, consent, and agents.
 - Go service skeletons with health endpoints.
 - Shared Go libraries for evidence validation, audit immutability helpers, tenant checks, idempotency, policies, and correction events.
-- Python document AI, agent runtime, and agent evaluation scaffolds.
+- Python Document AI service with CSV, Excel, PDF, and receipt/image extraction, field confidence, review flags, and golden fixtures.
 - Docker Compose for local datastores. The Phase 0 Postgres image boots without requiring pgvector; the migration enables pgvector automatically when the extension is available.
 - Synthetic fixture generator and baseline tests.
 

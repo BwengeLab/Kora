@@ -1,0 +1,52 @@
+{
+  "app": {
+    "name": "Kora"
+  },
+  "nav": {
+    "home": "Home",
+    "reconciliation": "Reconciliation",
+    "reconciliation.read": "Reconciliation",
+    "approvals": "Action Center",
+    "approvals.mine": "My Tasks",
+    "ledger": "Ledger & Cashflow",
+    "ledger.read": "Ledger",
+    "collections": "Collections",
+    "reports": "Reports",
+    "roi": "ROI",
+    "relationships": "Relationships",
+    "relationships.read": "Relationships",
+    "contracts": "Contracts",
+    "contracts.read": "Contracts",
+    "creditPassport": "Credit Passport",
+    "agents": "AI Agents",
+    "audit": "Audit & Risk",
+    "consent": "Consent",
+    "consent.log": "Consent Log",
+    "dataIntake": "Data Intake",
+    "transactions": "Transactions",
+    "transactions.read": "Transactions",
+    "settings": "Settings",
+    "settings.org": "Organization",
+    "settings.users": "Users & Roles",
+    "settings.policies": "Rules & Policies",
+    "settings.integrations": "Integrations",
+    "settings.billing": "Billing",
+    "settings.data": "Data & Retention",
+    "platform": {
+      "home": "Platform",
+      "tenants": "Tenants",
+      "plans": "Plans & Billing",
+      "config": "Platform Config",
+      "health": "System Health",
+      "usage": "Usage & Cost",
+      "users": "Platform Users",
+      "support": "Support Access",
+      "audit": "Platform Audit"
+    },
+    "portal": {
+      "home": "Portal",
+      "creditPassport": "Credit Passport",
+      "access": "Access"
+    }
+  }
+}

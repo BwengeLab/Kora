@@ -34,10 +34,19 @@ type IngestInput struct {
 }
 
 type ExtractedRecordInput struct {
-	SourceRecordID string            `json:"source_record_id"`
-	RecordType     string            `json:"record_type"`
-	Fields         map[string]string `json:"fields"`
-	Confidence     float64           `json:"confidence"`
+	SourceRecordID   string             `json:"source_record_id"`
+	RecordType       string             `json:"record_type"`
+	Fields           map[string]string  `json:"fields"`
+	FieldConfidences map[string]float64 `json:"field_confidences"`
+	Confidence       float64            `json:"confidence"`
+	Warnings         []string           `json:"warnings"`
+	SourceLocation   SourceLocation     `json:"source_location"`
+}
+
+type SourceLocation struct {
+	PageNumber int    `json:"page_number"`
+	RowNumber  int    `json:"row_number"`
+	SheetName  string `json:"sheet_name"`
 }
 
 type Batch struct {
@@ -69,16 +78,19 @@ type ExtractionVersion struct {
 }
 
 type SourceRecord struct {
-	ID                  string            `json:"id"`
-	OrganizationID      string            `json:"organization_id"`
-	DocumentID          string            `json:"document_id"`
-	ExtractionVersionID string            `json:"extraction_version_id"`
-	SourceRecordID      string            `json:"source_record_id"`
-	RecordType          string            `json:"record_type"`
-	Fields              map[string]string `json:"fields"`
-	Confidence          float64           `json:"confidence"`
-	QualityFlags        []string          `json:"quality_flags"`
-	CreatedAt           time.Time         `json:"created_at"`
+	ID                  string             `json:"id"`
+	OrganizationID      string             `json:"organization_id"`
+	DocumentID          string             `json:"document_id"`
+	ExtractionVersionID string             `json:"extraction_version_id"`
+	SourceRecordID      string             `json:"source_record_id"`
+	RecordType          string             `json:"record_type"`
+	Fields              map[string]string  `json:"fields"`
+	FieldConfidences    map[string]float64 `json:"field_confidences"`
+	Confidence          float64            `json:"confidence"`
+	Warnings            []string           `json:"warnings"`
+	SourceLocation      SourceLocation     `json:"source_location"`
+	QualityFlags        []string           `json:"quality_flags"`
+	CreatedAt           time.Time          `json:"created_at"`
 }
 
 type Result struct {
@@ -277,7 +289,10 @@ func (s *MemoryStore) sourceRecords(input IngestInput, documentID string, versio
 			SourceRecordID:      sourceID,
 			RecordType:          defaultString(extracted.RecordType, "unknown"),
 			Fields:              cloneMap(extracted.Fields),
+			FieldConfidences:    cloneFloatMap(extracted.FieldConfidences),
 			Confidence:          extracted.Confidence,
+			Warnings:            append([]string(nil), extracted.Warnings...),
+			SourceLocation:      extracted.SourceLocation,
 			QualityFlags:        flags,
 			CreatedAt:           now,
 		}
@@ -324,6 +339,9 @@ func recordQualityFlags(record ExtractedRecordInput, documentQuality []string) [
 	if len(record.Fields) == 0 {
 		flags = append(flags, QualityIncomplete, QualityNeedsReview)
 	}
+	if len(record.Warnings) > 0 {
+		flags = append(flags, QualityNeedsReview)
+	}
 	if len(flags) == 0 {
 		flags = append(flags, QualityComplete)
 	}
@@ -363,6 +381,14 @@ func defaultString(value string, fallback string) string {
 
 func cloneMap(in map[string]string) map[string]string {
 	out := map[string]string{}
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
+}
+
+func cloneFloatMap(in map[string]float64) map[string]float64 {
+	out := map[string]float64{}
 	for key, value := range in {
 		out[key] = value
 	}

@@ -1,0 +1,52 @@
+{
+  "app": {
+    "name": "Kora"
+  },
+  "nav": {
+    "home": "Ahabanza",
+    "reconciliation": "Guhuza",
+    "reconciliation.read": "Guhuza",
+    "approvals": "Ikigo cy'ibikorwa",
+    "approvals.mine": "Imirimo yanjye",
+    "ledger": "Igitabo n'amafaranga",
+    "ledger.read": "Igitabo",
+    "collections": "Gukusanya",
+    "reports": "Raporo",
+    "roi": "ROI",
+    "relationships": "Imibanire",
+    "relationships.read": "Imibanire",
+    "contracts": "Amasezerano",
+    "contracts.read": "Amasezerano",
+    "creditPassport": "Pasiporo y'inguzanyo",
+    "agents": "Abahagarariye AI",
+    "audit": "Igenzura & ibyago",
+    "consent": "Uburenganzira",
+    "consent.log": "Inyandiko y'uburenganzira",
+    "dataIntake": "Gushyiramo amakuru",
+    "transactions": "Imikorere",
+    "transactions.read": "Imikorere",
+    "settings": "Amabwiriza",
+    "settings.org": "Ikigo",
+    "settings.users": "Abakoresha & inshingano",
+    "settings.policies": "Amabwiriza & politiki",
+    "settings.integrations": "Ihuriro",
+    "settings.billing": "Kwishyura",
+    "settings.data": "Amakuru & ububiko",
+    "platform": {
+      "home": "Urubuga",
+      "tenants": "Abakoresha",
+      "plans": "Gahunda & kwishyura",
+      "config": "Iboneza",
+      "health": "Ubuzima bw'urubuga",
+      "usage": "Ikoreshwa & ikiguzi",
+      "users": "Abakoresha b'urubuga",
+      "support": "Uburyo bwo gufasha",
+      "audit": "Igenzura ry'urubuga"
+    },
+    "portal": {
+      "home": "Irembo",
+      "creditPassport": "Pasiporo y'inguzanyo",
+      "access": "Uburyo bwo kwinjira"
+    }
+  }
+}

@@ -1,0 +1,3 @@
+transaction_date,transaction_id,amount,currency,counterparty,type
+2026-01-04,MOMO-9001,125000,RWF,Aline Stores,payment
+2026-01-05,MOMO-9002,85000,RWF,Eric Services,payment

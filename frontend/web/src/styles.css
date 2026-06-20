@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply font-sans text-ink antialiased;
+    background-color: theme('colors.backdrop');
+    background-image:
+      radial-gradient(ellipse 90% 70% at 12% -5%, rgba(214, 224, 255, 0.85), transparent 55%),
+      radial-gradient(ellipse 80% 60% at 95% 105%, rgba(228, 220, 255, 0.7), transparent 55%),
+      url('/backdrop.png');
+    background-repeat: no-repeat, no-repeat, no-repeat;
+    background-size: cover, cover, cover;
+    background-position: center, center, center;
+    background-attachment: fixed, fixed, fixed;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+  /* Tabular numbers everywhere money is rendered (the .tabular utility) */
+  .tabular {
+    font-feature-settings: 'tnum', 'lnum';
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+}

@@ -45,6 +45,11 @@ message Evidence {
   string reason = 7;
   string responsible_party_id = 8;
   string suggested_action = 9;
+  string ingestion_batch_id = 10;
+  string extraction_version_id = 11;
+  int32 source_page = 12;
+  int32 source_row = 13;
+  string source_sheet = 14;
 }
 
 enum BusinessEventType {

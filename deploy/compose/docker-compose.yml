@@ -51,6 +51,22 @@ services:
     volumes:
       - minio-data:/data
 
+  document-ai:
+    build:
+      context: ../..
+      dockerfile: deploy/containers/document-ai.Dockerfile
+    container_name: kora-document-ai
+    environment:
+      KORA_DOCUMENT_AI_HOST: 0.0.0.0
+      KORA_DOCUMENT_AI_PORT: 8088
+    ports:
+      - "8088:8088"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8088/healthz')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   postgres-data:
   timescale-data:
