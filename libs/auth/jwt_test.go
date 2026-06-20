@@ -10,7 +10,8 @@ func TestSignAndVerifyJWT(t *testing.T) {
 	token, err := SignJWT(Claims{
 		Subject:        "user-1",
 		OrganizationID: "org-1",
-		Roles:          []string{"CFO"},
+		Plane:          "TENANT",
+		Roles:          []string{"FINANCE_LEAD"},
 		ExpiresAt:      time.Now().Add(time.Hour).Unix(),
 		IssuedAt:       time.Now().Unix(),
 	}, secret)
@@ -22,7 +23,7 @@ func TestSignAndVerifyJWT(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if claims.Subject != "user-1" || claims.OrganizationID != "org-1" {
+	if claims.Subject != "user-1" || claims.OrganizationID != "org-1" || claims.Plane != "TENANT" {
 		t.Fatalf("unexpected claims: %+v", claims)
 	}
 }

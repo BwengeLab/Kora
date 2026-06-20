@@ -16,6 +16,7 @@ import (
 type Claims struct {
 	Subject        string   `json:"sub"`
 	OrganizationID string   `json:"org"`
+	Plane          string   `json:"plane"`
 	Roles          []string `json:"roles"`
 	Permissions    []string `json:"permissions"`
 	ExpiresAt      int64    `json:"exp"`

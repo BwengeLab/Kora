@@ -97,6 +97,9 @@ func (s *MemoryStore) CreateUser(user User) error {
 }
 
 func (s *MemoryStore) CreateRoleBinding(binding RoleBinding) error {
+	if !access.IsTenantRole(binding.Role) {
+		return errors.New("invalid tenant role")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, existing := range s.roleBindings {

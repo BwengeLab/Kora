@@ -56,6 +56,7 @@ Build:
 - Identity and access service.
 - Organization/tenant model.
 - Users, roles, permissions, RBAC.
+- The locked two-plane role model in `11-ROLES-DEFINITION.md`: Super Admin plus six canonical tenant roles, granular permissions, custom roles, and vertical templates.
 - Segregation-of-duty rules.
 - Gateway auth middleware.
 - Immutable audit log.
@@ -69,7 +70,7 @@ Acceptance:
 - Outputs without required evidence are rejected.
 
 Your work:
-- Define initial roles: Owner/CEO, CFO, Finance Manager, Accountant, Auditor, Admin, External Lender, External Auditor.
+- Review the locked role and permission matrix in `11-ROLES-DEFINITION.md`; industry-specific titles must use custom roles or vertical templates.
 - Define high-risk actions requiring approval.
 
 ## Phase 2 — Rules & Policy Engine
@@ -241,7 +242,7 @@ Build:
 Acceptance:
 - Insurance workflow works end to end without changing generic ledger model.
 - Premiums, claims, commissions, suppliers, bank charges, and refunds map to generic events.
-- CFO can see matched premiums, unmatched payments, unsupported claims, duplicate items, and approval tasks.
+- Finance Lead can see matched premiums, unmatched payments, unsupported claims, duplicate items, and approval tasks.
 
 Your work:
 - Secure anonymized insurance data from a design partner.
@@ -251,7 +252,7 @@ Your work:
 Build:
 - Reporting service.
 - Exception reports.
-- CFO/CEO reports.
+- Finance Lead and Organization Owner reports.
 - Audit reports.
 - Basic export to PDF/Excel later.
 - ROI metrics: money recovered, duplicate payments avoided, unsupported payments caught, late invoices collected, hours saved, missing documents fixed.
@@ -265,7 +266,7 @@ Acceptance:
 
 Your work:
 - Define which ROI metrics matter most to the first customer.
-- Review report format with a CFO/accountant.
+- Review report format with a finance lead or finance operator.
 
 ## Phase 12 — Consent And Data Sharing
 Build:
@@ -304,7 +305,7 @@ Your work:
 ## Phase 14 — Finance Intelligence, Collections, Contracts
 Build:
 - Full ledger analytics: cashflow, P&L, margin, aging.
-- CFO agent.
+- Finance intelligence agent.
 - Collections service and collections agent.
 - Relationship graph.
 - Contract extraction and obligation tracking.

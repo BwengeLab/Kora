@@ -34,6 +34,7 @@ type LoginOutput struct {
 	RefreshToken   string
 	UserID         string
 	OrganizationID string
+	Plane          access.Plane
 	Roles          []access.Role
 	Permissions    []access.Permission
 }
@@ -103,7 +104,7 @@ func (s *Service) RegisterOrganization(input RegisterInput) (RegisterOutput, err
 	if err := s.store.CreateUser(user); err != nil {
 		return RegisterOutput{}, err
 	}
-	if err := s.store.CreateRoleBinding(RoleBinding{ID: bindingID, OrganizationID: orgID, UserID: userID, Role: access.RoleOwner, CreatedAt: now}); err != nil {
+	if err := s.store.CreateRoleBinding(RoleBinding{ID: bindingID, OrganizationID: orgID, UserID: userID, Role: access.RoleOrganizationOwner, CreatedAt: now}); err != nil {
 		return RegisterOutput{}, err
 	}
 	return RegisterOutput{OrganizationID: orgID, OwnerUserID: userID}, nil
@@ -140,11 +141,14 @@ func (s *Service) Refresh(refreshToken string) (LoginOutput, error) {
 }
 
 func (s *Service) AssignRole(actor access.Actor, userID string, role access.Role) error {
+	if !access.IsTenantRole(role) {
+		return errors.New("only canonical tenant roles can be assigned to tenant users")
+	}
 	user, err := s.store.FindUserByID(userID)
 	if err != nil {
 		return err
 	}
-	if err := access.Authorize(actor, access.Resource{OrganizationID: user.OrganizationID}, access.PermissionManageUsers); err != nil {
+	if err := access.Authorize(actor, access.Resource{OrganizationID: user.OrganizationID}, access.PermissionManageRoles); err != nil {
 		return err
 	}
 	bindingID, err := auth.NewID("role")
@@ -189,6 +193,7 @@ func (s *Service) issueTokens(user User) (LoginOutput, error) {
 	accessToken, err := auth.SignJWT(auth.Claims{
 		Subject:        user.ID,
 		OrganizationID: user.OrganizationID,
+		Plane:          string(access.PlaneTenant),
 		Roles:          roleStrings,
 		Permissions:    permissionStrings,
 		IssuedAt:       now.Unix(),
@@ -214,6 +219,7 @@ func (s *Service) issueTokens(user User) (LoginOutput, error) {
 		RefreshToken:   refreshToken,
 		UserID:         user.ID,
 		OrganizationID: user.OrganizationID,
+		Plane:          access.PlaneTenant,
 		Roles:          roles,
 		Permissions:    permissions,
 	}, nil

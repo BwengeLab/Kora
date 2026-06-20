@@ -29,6 +29,9 @@ func TestRegisterLoginRefreshAndAuthorize(t *testing.T) {
 	if login.AccessToken == "" || login.RefreshToken == "" {
 		t.Fatal("expected access and refresh tokens")
 	}
+	if len(login.Roles) != 1 || login.Roles[0] != access.RoleOrganizationOwner {
+		t.Fatalf("expected organization owner role, got %v", login.Roles)
+	}
 	if _, err := service.VerifyAccessToken(login.AccessToken); err != nil {
 		t.Fatalf("expected access token to verify: %v", err)
 	}
@@ -52,6 +55,37 @@ func TestRegisterLoginRefreshAndAuthorize(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("expected owner to manage users: %v", err)
+	}
+}
+
+func TestAssignRoleUsesCanonicalTenantRoles(t *testing.T) {
+	store := NewMemoryStore()
+	service := NewService(store, []byte("test-secret"))
+	registered, err := service.RegisterOrganization(RegisterInput{
+		OrganizationName: "Kora Test",
+		OwnerEmail:       "owner@example.com",
+		OwnerPassword:    "password123",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	operator := User{ID: "operator-a", OrganizationID: registered.OrganizationID, Email: "operator@example.com", Status: "active"}
+	if err := store.CreateUser(operator); err != nil {
+		t.Fatal(err)
+	}
+	owner := access.Actor{
+		UserID:         registered.OwnerUserID,
+		OrganizationID: registered.OrganizationID,
+		Roles:          []access.Role{access.RoleOrganizationOwner},
+	}
+	if err := service.AssignRole(owner, operator.ID, access.RoleFinanceOperator); err != nil {
+		t.Fatalf("expected canonical role assignment: %v", err)
+	}
+	if err := service.AssignRole(owner, operator.ID, access.RoleSuperAdmin); err == nil {
+		t.Fatal("expected platform role assignment to tenant user to fail")
+	}
+	if err := service.AssignRole(owner, operator.ID, access.Role("CFO")); err == nil {
+		t.Fatal("expected obsolete role assignment to fail")
 	}
 }
 

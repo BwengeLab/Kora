@@ -7,9 +7,10 @@ option go_package = "github.com/kora-finance/kora/gen/go/common;commonv1";
 message TenantContext {
   string organization_id = 1;
   string user_id = 2;
-  string role = 3;
+  repeated string roles = 3;
   repeated string permissions = 4;
   repeated string request_scopes = 5;
+  string authorization_plane = 6;
 }
 
 message Money {
@@ -147,6 +148,7 @@ message RulePolicy {
   repeated string required_evidence_fields = 8;
   map<string, string> approval_limits = 9;
   map<string, string> sharing_scopes = 10;
+  int64 two_approver_threshold_minor = 11;
 }
 
 message ConsentGrant {
@@ -174,4 +176,3 @@ message AgentEvaluationResult {
   bool refused_when_evidence_missing = 9;
   string reviewer_feedback = 10;
 }
-

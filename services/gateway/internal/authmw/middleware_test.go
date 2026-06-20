@@ -15,7 +15,8 @@ func TestMiddlewareAcceptsValidBearerToken(t *testing.T) {
 	token, err := auth.SignJWT(auth.Claims{
 		Subject:        "user-1",
 		OrganizationID: "org-1",
-		Roles:          []string{"CFO"},
+		Plane:          "TENANT",
+		Roles:          []string{"FINANCE_LEAD"},
 		Permissions:    []string{"financial:approve"},
 		IssuedAt:       issuedAt.Unix(),
 		ExpiresAt:      issuedAt.Add(time.Hour).Unix(),
