@@ -6,6 +6,27 @@ import "proto/common/kora_common.proto";
 
 option go_package = "github.com/kora-finance/kora/gen/go/ledger;ledgerv1";
 
+enum AccountType {
+  ACCOUNT_TYPE_UNSPECIFIED = 0;
+  ACCOUNT_TYPE_ASSET = 1;
+  ACCOUNT_TYPE_LIABILITY = 2;
+  ACCOUNT_TYPE_EQUITY = 3;
+  ACCOUNT_TYPE_REVENUE = 4;
+  ACCOUNT_TYPE_EXPENSE = 5;
+}
+
+message LedgerAccount {
+  string id = 1;
+  kora.common.v1.TenantContext tenant = 2;
+  string code = 3;
+  string name = 4;
+  AccountType type = 5;
+  string currency = 6;
+}
+
+message CreateLedgerAccountRequest { LedgerAccount account = 1; }
+message CreateLedgerAccountResponse { LedgerAccount account = 1; }
+
 message PostLedgerEntriesRequest {
   kora.common.v1.TenantContext tenant = 1;
   string approval_task_id = 2;
@@ -27,7 +48,7 @@ message ReversePostingResponse {
 }
 
 service LedgerService {
+  rpc CreateLedgerAccount(CreateLedgerAccountRequest) returns (CreateLedgerAccountResponse);
   rpc PostLedgerEntries(PostLedgerEntriesRequest) returns (PostLedgerEntriesResponse);
   rpc ReversePosting(ReversePostingRequest) returns (ReversePostingResponse);
 }
-

@@ -22,7 +22,11 @@ message MatchCandidate {
   MatchState state = 3;
   kora.common.v1.Confidence confidence = 4;
   kora.common.v1.Evidence evidence = 5;
+  map<string, double> factors = 6;
+  string reason = 7;
 }
+
+message ReconciliationException { string event_id = 1; MatchState state = 2; string reason = 3; kora.common.v1.Evidence evidence = 4; }
 
 message ReconcileRequest {
   kora.common.v1.TenantContext tenant = 1;
@@ -32,9 +36,11 @@ message ReconcileRequest {
 
 message ReconcileResponse {
   repeated MatchCandidate candidates = 1;
+  repeated ReconciliationException exceptions = 2;
+  string policy_id = 3;
+  int32 policy_version = 4;
 }
 
 service ReconciliationService {
   rpc Reconcile(ReconcileRequest) returns (ReconcileResponse);
 }
-

@@ -13,7 +13,7 @@ export function RecentDocumentsCard() {
   return (
     <GlassSurface tone="strong" className="flex flex-col gap-3 p-5">
       <h3 className="font-display text-base font-semibold text-ink">Recent Documents</h3>
-      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <ul className="grid grid-cols-2 gap-2 @2xl:grid-cols-3 @5xl:grid-cols-6">
         {seedDocuments.map((d) => {
           const { Icon, tone } = EXT_ICON[d.ext];
           return (

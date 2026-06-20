@@ -9,6 +9,7 @@ import { getSeedSession } from '../seed/sessions';
 import { createQueryClient } from '../state/queryClient';
 import { usePreviewRoleStore } from '../state/previewRoleStore';
 import { useSessionStore } from '../state/sessionStore';
+import { useUiStore } from '../state/uiStore';
 
 export interface AppProvidersProps {
   platform: Platform;
@@ -31,6 +32,20 @@ export function AppProviders({ platform, apiBaseUrl, children }: AppProvidersPro
   useEffect(() => {
     useSessionStore.getState().setSession(getSeedSession(previewRoleId));
   }, [previewRoleId]);
+
+  // App-controlled base zoom. We apply CSS `zoom` on the document root (works
+  // in browsers and the Tauri WebView2 alike) and expose the factor as a CSS
+  // var so the full-height shell can divide by it and still fill the window.
+  const uiScale = useUiStore((s) => s.uiScale);
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty('--app-zoom', String(uiScale));
+    root.style.zoom = String(uiScale);
+    return () => {
+      root.style.zoom = '';
+      root.style.removeProperty('--app-zoom');
+    };
+  }, [uiScale]);
 
   return (
     <PlatformProvider platform={platform}>

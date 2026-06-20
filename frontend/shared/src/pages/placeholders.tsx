@@ -9,6 +9,7 @@ import { useSession } from '../auth/hooks';
 import { CANONICAL_BLUEPRINT_IDS } from '../auth/catalog';
 import { GlassSurface } from '../design-system';
 import { HomeOrgOwner } from '../modules/home-org-owner';
+import { ReconciliationCockpit } from '../modules/reconciliation-cockpit';
 
 // Visible-but-empty placeholder for routes whose real screen hasn't been
 // designed yet. Tells the developer/preview-user where they are and that the
@@ -43,7 +44,11 @@ export const HomePage = () => {
   }
   return <Placeholder />;
 };
-export const ReconciliationPage = Placeholder;
+// The Reconciliation Cockpit is the trust-spine surface — same workspace for
+// every role that has reconciliation:review (Finance Operator prepares,
+// Finance Lead approves, Org Owner/Auditor see read-only via permission gating
+// on the action bar — wired when those flows are built).
+export const ReconciliationPage = () => <ReconciliationCockpit />;
 export const ApprovalsPage = Placeholder;
 export const LedgerPage = Placeholder;
 export const CollectionsPage = Placeholder;

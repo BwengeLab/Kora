@@ -11,6 +11,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.1.0",
+    "@fontsource-variable/plus-jakarta-sans": "^5.1.0",
     "@kora/shared": "workspace:*",
     "@tauri-apps/api": "^2.1.1",
     "@tauri-apps/plugin-dialog": "^2.0.1",

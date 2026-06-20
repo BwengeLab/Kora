@@ -4,7 +4,7 @@ import { App } from '@shared/app/App';
 import { webPlatform } from './platform.web';
 import '@fontsource-variable/inter/index.css';
 import '@fontsource-variable/plus-jakarta-sans/index.css';
-import './styles.css';
+import '@shared/styles/app.css';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('#root element not found');

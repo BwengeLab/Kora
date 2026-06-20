@@ -5,7 +5,7 @@ import { seedCashFlow } from '../../seed/orgOwnerHome';
 export function CashFlowCard() {
   const { netPosition, inflow, outflow, net, series, xLabels } = seedCashFlow;
   return (
-    <GlassSurface tone="strong" className="flex flex-col gap-5 p-6">
+    <GlassSurface tone="strong" className="flex h-full flex-col gap-5 p-6">
       <header className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <h3 className="font-display text-lg font-semibold text-ink">Cash Flow Overview</h3>
@@ -23,7 +23,8 @@ export function CashFlowCard() {
         </div>
       </header>
 
-      <div className="grid grid-cols-[minmax(220px,260px)_1fr] gap-4">
+      {/* flex-1 so the chart row grows to fill the card's (equal) height */}
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(200px,240px)_1fr] grid-rows-1 gap-4">
         <div className="flex flex-col gap-4">
           <div>
             <MoneyCell amount={netPosition} size="xl" className="!text-[26px]" />
@@ -33,8 +34,12 @@ export function CashFlowCard() {
           <LegendRow color="#9a8ce8" label="Cash Outflow" money={outflow} />
           <LegendRow color="#16a37b" label="Net Cash Flow" money={net} />
         </div>
-        <div className="min-w-0">
-          <AreaChart xLabels={[...xLabels]} series={series.map((s) => ({ ...s, data: [...s.data] }))} height={240} />
+        <div className="min-h-0 min-w-0">
+          <AreaChart
+            xLabels={[...xLabels]}
+            series={series.map((s) => ({ ...s, data: [...s.data] }))}
+            height="100%"
+          />
         </div>
       </div>
     </GlassSurface>

@@ -26,29 +26,34 @@ export function HomeOrgOwner() {
         subtitle={<>Here&apos;s your business overview for today.</>}
         right={<DateRangePill label="May 12 – May 18, 2025" />}
       />
-      <div className="flex flex-col gap-6 px-8">
+      {/*
+        @container: the grids below respond to THIS element's width (the content
+        area), not the window. So toggling the sidebar reflows smoothly instead
+        of cramping fixed columns / hiding content.
+      */}
+      <div className="@container flex flex-col gap-6 px-8">
         {/* KPI strip */}
-        <section className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
+        <section className="grid grid-cols-1 gap-5 @2xl:grid-cols-2 @5xl:grid-cols-4">
           {seedKpis.map((k) => (
             <KpiStripCard key={k.id} kpi={k} />
           ))}
         </section>
 
-        {/* Cash Flow + AI Insights + Action Center */}
-        <section className="grid grid-cols-1 gap-5 xl:grid-cols-12">
-          <div className="xl:col-span-6">
+        {/* Cash Flow + AI Insights + Action Center — equal heights via items-stretch */}
+        <section className="grid grid-cols-1 items-stretch gap-5 @5xl:grid-cols-12">
+          <div className="@5xl:col-span-6">
             <CashFlowCard />
           </div>
-          <div className="xl:col-span-3">
+          <div className="@5xl:col-span-3">
             <AIInsightsCard />
           </div>
-          <div className="xl:col-span-3">
+          <div className="@5xl:col-span-3">
             <ActionCenterCard />
           </div>
         </section>
 
         {/* Reconciliation · Relationships · Credit Passport · AI Agents */}
-        <section className="grid grid-cols-1 gap-5 lg:grid-cols-2 xl:grid-cols-4">
+        <section className="grid grid-cols-1 items-stretch gap-5 @2xl:grid-cols-2 @5xl:grid-cols-4">
           <ReconciliationSnapshotCard />
           <ExternalRelationshipsCard />
           <CreditPassportCard />

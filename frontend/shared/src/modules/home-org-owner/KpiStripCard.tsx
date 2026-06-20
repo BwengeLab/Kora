@@ -12,7 +12,7 @@ export function KpiStripCard({ kpi }: { kpi: KpiSeed }) {
   const toneClass = ICON_TONES[kpi.iconTone];
 
   return (
-    <GlassSurface tone="strong" className="flex items-start justify-between gap-4 p-5">
+    <GlassSurface tone="strong" className="flex h-full items-start justify-between gap-4 p-5">
       <div className="flex min-w-0 flex-1 flex-col gap-2">
         <span className="text-[13px] font-semibold text-ink-soft">{kpi.label}</span>
         <MoneyCell amount={kpi.money} size="xl" />

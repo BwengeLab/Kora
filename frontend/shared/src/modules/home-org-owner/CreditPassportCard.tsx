@@ -5,7 +5,7 @@ import { seedCreditPassport } from '../../seed/orgOwnerHome';
 export function CreditPassportCard() {
   const { score, label, caption, updated, factors } = seedCreditPassport;
   return (
-    <GlassSurface tone="strong" className="flex flex-col gap-4 p-5">
+    <GlassSurface tone="strong" className="flex h-full flex-col gap-4 p-5">
       <header className="flex items-center justify-between gap-3">
         <h3 className="font-display text-base font-semibold text-ink">Credit Passport</h3>
         <button type="button" className="text-xs font-semibold text-brand hover:text-brand-ink">

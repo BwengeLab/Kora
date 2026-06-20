@@ -5,6 +5,5 @@ export { RoleSwitcher } from './RoleSwitcher';
 export { SidebarNavItem } from './SidebarNavItem';
 export { NavIcon, navIcons } from './navIcons';
 export { KoraLogo, KoraGlyph } from './KoraLogo';
-export { KoraAIWidget } from './KoraAIWidget';
 export { UserCard } from './UserCard';
 export { PageHeader, DateRangePill } from './PageHeader';

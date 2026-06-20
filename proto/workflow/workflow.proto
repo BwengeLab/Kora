@@ -11,7 +11,7 @@ message CreateApprovalTaskRequest {
 }
 
 message CreateApprovalTaskResponse {
-  string task_id = 1;
+  kora.common.v1.ApprovalTask task = 1;
 }
 
 message TransitionApprovalTaskRequest {
@@ -25,8 +25,21 @@ message TransitionApprovalTaskResponse {
   kora.common.v1.ApprovalTask task = 1;
 }
 
+message ApprovalTransition {
+  string id = 1;
+  string task_id = 2;
+  kora.common.v1.ApprovalState from_state = 3;
+  kora.common.v1.ApprovalState to_state = 4;
+  string actor_user_id = 5;
+  kora.common.v1.Evidence evidence = 6;
+  string occurred_at = 7;
+}
+
+message GetApprovalHistoryRequest { kora.common.v1.TenantContext tenant = 1; string task_id = 2; }
+message GetApprovalHistoryResponse { repeated ApprovalTransition transitions = 1; }
+
 service WorkflowService {
   rpc CreateApprovalTask(CreateApprovalTaskRequest) returns (CreateApprovalTaskResponse);
   rpc TransitionApprovalTask(TransitionApprovalTaskRequest) returns (TransitionApprovalTaskResponse);
+  rpc GetApprovalHistory(GetApprovalHistoryRequest) returns (GetApprovalHistoryResponse);
 }
-

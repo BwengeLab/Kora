@@ -1,6 +1,7 @@
 import ReactECharts from 'echarts-for-react';
 import { useMemo } from 'react';
 import { palette } from '../../tokens';
+import { useAutoResize } from './useAutoResize';
 
 export interface AreaSeries {
   name: string;
@@ -11,7 +12,8 @@ export interface AreaSeries {
 export interface AreaChartProps {
   xLabels: string[];
   series: AreaSeries[];
-  height?: number;
+  /** Number (px) or any CSS height (e.g. '100%') so the chart can fill its box. */
+  height?: number | string;
   showLegend?: boolean;
   /** Render a vertical guide line + tooltip on hover (the reference shows one) */
   guideOnHover?: boolean;
@@ -20,6 +22,7 @@ export interface AreaChartProps {
 // Soft, multi-series area chart with no axis chrome — matches the reference's
 // Cash Flow Overview look. ECharts under the hood for the smooth gradient fills.
 export function AreaChart({ xLabels, series, height = 220, showLegend = false, guideOnHover = true }: AreaChartProps) {
+  const { chartRef, containerRef } = useAutoResize();
   const option = useMemo(
     () => ({
       grid: { left: 8, right: 8, top: 12, bottom: 24, containLabel: true },
@@ -86,12 +89,15 @@ export function AreaChart({ xLabels, series, height = 220, showLegend = false, g
   );
 
   return (
-    <ReactECharts
-      option={option}
-      style={{ height, width: '100%' }}
-      opts={{ renderer: 'svg' }}
-      notMerge
-    />
+    <div ref={containerRef} style={{ height, width: '100%' }}>
+      <ReactECharts
+        ref={chartRef}
+        option={option}
+        style={{ height: '100%', width: '100%' }}
+        opts={{ renderer: 'svg' }}
+        notMerge
+      />
+    </div>
   );
 }
 

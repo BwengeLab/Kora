@@ -3,7 +3,6 @@ import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useResolvedBlueprint } from '../../blueprints/renderer';
 import { cn } from '../../design-system';
 import { useUiStore } from '../../state/uiStore';
-import { KoraAIWidget } from './KoraAIWidget';
 import { KoraGlyph, KoraLogo } from './KoraLogo';
 import { RoleSwitcher } from './RoleSwitcher';
 import { SidebarNavItem } from './SidebarNavItem';
@@ -18,14 +17,14 @@ export function Sidebar() {
   const toggle = useUiStore((s) => s.toggleSidebar);
 
   return (
-    <Tooltip.Provider>
+    <Tooltip.Provider delayDuration={0}>
       <aside
         className={cn(
-          'flex h-full shrink-0 flex-col gap-2 py-5 transition-[width] duration-300 ease-out',
+          'group/sidebar flex h-full shrink-0 flex-col gap-2 py-5 transition-[width] duration-300 ease-out',
           open ? 'w-[276px]' : 'w-[84px]',
         )}
       >
-        {/* Header: logo + collapse toggle */}
+        {/* Header: logo + collapse toggle (ghost — appears only on sidebar hover) */}
         <div className={cn('flex items-center', open ? 'justify-between px-5' : 'flex-col gap-3 px-2')}>
           {open ? <KoraLogo /> : <KoraGlyph className="size-11" />}
           <button
@@ -33,7 +32,11 @@ export function Sidebar() {
             onClick={toggle}
             aria-label={open ? 'Collapse sidebar' : 'Expand sidebar'}
             title={open ? 'Collapse sidebar' : 'Expand sidebar'}
-            className="grid size-9 place-items-center rounded-xl bg-white/55 text-ink-soft ring-1 ring-white/70 transition-colors hover:bg-white hover:text-ink"
+            className={cn(
+              'grid size-9 place-items-center rounded-xl text-ink-muted/70 transition-all duration-200',
+              'opacity-0 group-hover/sidebar:opacity-100 focus-visible:opacity-100',
+              'hover:bg-white/70 hover:text-ink hover:backdrop-blur-glass',
+            )}
           >
             {open ? <PanelLeftClose className="size-[18px]" /> : <PanelLeftOpen className="size-[18px]" />}
           </button>
@@ -51,7 +54,6 @@ export function Sidebar() {
         {/* Footer */}
         <div className="mt-auto flex flex-col gap-2">
           {open ? <RoleSwitcher /> : null}
-          <KoraAIWidget collapsed={!open} />
           <UserCard collapsed={!open} />
         </div>
       </aside>

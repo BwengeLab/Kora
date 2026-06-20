@@ -5,7 +5,7 @@ import { seedReconciliation } from '../../seed/orgOwnerHome';
 export function ReconciliationSnapshotCard() {
   const { total, slices } = seedReconciliation;
   return (
-    <GlassSurface tone="strong" className="flex flex-col gap-4 p-5">
+    <GlassSurface tone="strong" className="flex h-full flex-col gap-4 p-5">
       <header className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <h3 className="font-display text-base font-semibold text-ink">Reconciliation Snapshot</h3>

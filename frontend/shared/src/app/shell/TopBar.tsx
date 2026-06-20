@@ -1,9 +1,13 @@
-import { Bell, Building2, ChevronDown, HelpCircle, Search } from 'lucide-react';
+import { Link } from '@tanstack/react-router';
+import { Bell, Building2, ChevronDown, Search, Settings as SettingsIcon, Sparkles } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { useSession } from '../../auth/hooks';
 import { GlassSurface, cn } from '../../design-system';
 
-// Slim top bar dominated by a centered search field; greeting and date-range
-// live in <PageHeader/> below it, not here.
+// Slim top bar: a centered search field, then Copilot, Notifications and
+// Settings as glass action chips, plus the tenant chip. By design we never
+// put Search, Copilot, Notifications or Settings in the sidebar — they all
+// live here. Greeting + date-range live in <PageHeader/> below this row.
 
 export function TopBar() {
   const session = useSession();
@@ -11,10 +15,7 @@ export function TopBar() {
   return (
     <header className="flex items-center gap-3 px-8 pt-6 pb-2">
       {/* Search — takes most of the row */}
-      <GlassSurface
-        tone="strong"
-        className="flex h-12 flex-1 items-center gap-3 px-5 py-0"
-      >
+      <GlassSurface tone="strong" className="flex h-12 flex-1 items-center gap-3 px-5 py-0">
         <Search className="size-[18px] text-ink-muted" />
         <input
           type="search"
@@ -26,12 +27,15 @@ export function TopBar() {
         </kbd>
       </GlassSurface>
 
+      <CircleAction label="Kora copilot">
+        <Sparkles className="size-[18px]" />
+      </CircleAction>
       <CircleAction label="Notifications" badge>
         <Bell className="size-[18px]" />
       </CircleAction>
-      <CircleAction label="Help">
-        <HelpCircle className="size-[18px]" />
-      </CircleAction>
+      <CircleLink to="/settings" label="Settings">
+        <SettingsIcon className="size-[18px]" />
+      </CircleLink>
 
       {session ? (
         <GlassSurface tone="strong" className="flex h-12 items-center gap-2.5 pl-3 pr-3.5">
@@ -46,30 +50,26 @@ export function TopBar() {
   );
 }
 
-function CircleAction({
-  label,
-  badge,
-  children,
-}: {
-  label: string;
-  badge?: boolean;
-  children: React.ReactNode;
-}) {
+// Shared glass circle styling for the top-bar action chips.
+const circleClass = cn(
+  'relative grid size-12 place-items-center rounded-2xl',
+  'bg-glass-strong border border-glass-border-strong backdrop-blur-glass text-ink-soft shadow-glass',
+  'hover:text-ink hover:bg-white transition-colors',
+);
+
+function CircleAction({ label, badge, children }: { label: string; badge?: boolean; children: ReactNode }) {
   return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      className={cn(
-        'relative grid size-12 place-items-center rounded-2xl',
-        'bg-glass-strong border border-glass-border-strong backdrop-blur-glass text-ink-soft shadow-glass',
-        'hover:text-ink hover:bg-white transition-colors',
-      )}
-    >
+    <button type="button" aria-label={label} title={label} className={circleClass}>
       {children}
-      {badge ? (
-        <span className="absolute right-3 top-3 size-2 rounded-full bg-danger ring-2 ring-white" />
-      ) : null}
+      {badge ? <span className="absolute right-3 top-3 size-2 rounded-full bg-danger ring-2 ring-white" /> : null}
     </button>
+  );
+}
+
+function CircleLink({ to, label, children }: { to: string; label: string; children: ReactNode }) {
+  return (
+    <Link to={to} aria-label={label} title={label} className={circleClass}>
+      {children}
+    </Link>
   );
 }

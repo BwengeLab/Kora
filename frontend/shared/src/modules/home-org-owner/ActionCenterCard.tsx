@@ -27,7 +27,7 @@ const TONE_MAP: Record<ActionSeed['tone'], string> = {
 
 export function ActionCenterCard() {
   return (
-    <GlassSurface tone="strong" className="flex flex-col gap-3 p-5">
+    <GlassSurface tone="strong" className="flex h-full flex-col gap-3 p-5">
       <header className="flex items-center justify-between gap-3">
         <h3 className="font-display text-base font-semibold text-ink">Action Center</h3>
         <span className="inline-flex items-center justify-center rounded-full bg-brand px-2.5 py-0.5 text-[11px] font-bold text-white">

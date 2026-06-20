@@ -60,6 +60,24 @@ describe('useResolvedBlueprint — canonical blueprints', () => {
     expect(ids).toEqual(['portal.home', 'portal.credit_passport', 'portal.access']);
   });
 
+  it('Org Owner nav is the curated 10-item set (no Contracts/Credit Passport/Consent/Settings)', () => {
+    useSessionStore.setState({ session: seedSessions[CANONICAL_ROLE_IDS.ORG_OWNER] });
+    const { result } = renderHook(() => useResolvedBlueprint());
+    const ids = result.current.nav.map((n) => n.id);
+    expect(ids).toEqual([
+      'home',
+      'approvals',
+      'ledger',
+      'reconciliation',
+      'relationships',
+      'agents',
+      'audit',
+      'roi',
+      'reports',
+      'collections',
+    ]);
+  });
+
   it('Super Admin sees only platform-plane nav', () => {
     useSessionStore.setState({ session: seedSessions[CANONICAL_ROLE_IDS.SUPER_ADMIN] });
     const { result } = renderHook(() => useResolvedBlueprint());

@@ -13,12 +13,14 @@
     "windows": [
       {
         "title": "Kora",
-        "width": 1280,
-        "height": 800,
-        "minWidth": 960,
-        "minHeight": 600,
+        "width": 1512,
+        "height": 950,
+        "minWidth": 1024,
+        "minHeight": 680,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "maximized": true,
+        "center": true
       }
     ],
     "security": {

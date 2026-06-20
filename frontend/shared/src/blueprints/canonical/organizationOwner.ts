@@ -2,23 +2,23 @@ import { CANONICAL_BLUEPRINT_IDS, PERMISSIONS } from '../../auth/catalog';
 import type { RoleBlueprint } from '../types';
 
 // "Business Command Center" — whole-business view; final approver.
-// Nav = everything the tenant plane offers.
+// Sidebar nav is the curated 10-item set; Contracts/Credit Passport/Consent
+// are still accessible (drill-in from the home modules, direct URL) but kept
+// out of the sidebar to keep it short and focused. Settings, Search, Copilot
+// and Notifications all live in the top bar — not the sidebar — by design.
 export const organizationOwnerBlueprint: RoleBlueprint = {
   id: CANONICAL_BLUEPRINT_IDS.ORG_OWNER,
   nav: [
     { id: 'home', labelKey: 'nav.home', path: '/', requires: [] },
-    { id: 'reconciliation', labelKey: 'nav.reconciliation', path: '/reconciliation', requires: [{ permission: PERMISSIONS.RECONCILIATION_REVIEW }] },
     { id: 'approvals', labelKey: 'nav.approvals', path: '/approvals', requires: [{ permission: PERMISSIONS.APPROVAL_CREATE }] },
-    { id: 'ledger', labelKey: 'nav.ledger', path: '/ledger', requires: [{ permission: PERMISSIONS.EVENTS_READ }] },
-    { id: 'collections', labelKey: 'nav.collections', path: '/collections', requires: [{ permission: PERMISSIONS.COLLECTIONS_SEND }] },
-    { id: 'reports', labelKey: 'nav.reports', path: '/reports', requires: [{ permission: PERMISSIONS.REPORTS_READ }] },
-    { id: 'roi', labelKey: 'nav.roi', path: '/roi', requires: [{ permission: PERMISSIONS.ROI_READ }] },
+    { id: 'ledger', labelKey: 'nav.cashflow', path: '/ledger', requires: [{ permission: PERMISSIONS.EVENTS_READ }] },
+    { id: 'reconciliation', labelKey: 'nav.reconciliation', path: '/reconciliation', requires: [{ permission: PERMISSIONS.RECONCILIATION_REVIEW }] },
     { id: 'relationships', labelKey: 'nav.relationships', path: '/relationships', requires: [{ permission: PERMISSIONS.RELATIONSHIPS_MANAGE }] },
-    { id: 'contracts', labelKey: 'nav.contracts', path: '/contracts', requires: [{ permission: PERMISSIONS.CONTRACTS_MANAGE }] },
-    { id: 'credit_passport', labelKey: 'nav.creditPassport', path: '/credit-passport', requires: [{ permission: PERMISSIONS.CREDIT_PASSPORT_READ }] },
     { id: 'agents', labelKey: 'nav.agents', path: '/agents', requires: [] },
     { id: 'audit', labelKey: 'nav.audit', path: '/audit', requires: [{ permission: PERMISSIONS.AUDIT_READ }] },
-    { id: 'consent', labelKey: 'nav.consent', path: '/consent', requires: [{ permission: PERMISSIONS.CONSENT_MANAGE }] },
+    { id: 'roi', labelKey: 'nav.roi', path: '/roi', requires: [{ permission: PERMISSIONS.ROI_READ }] },
+    { id: 'reports', labelKey: 'nav.reports', path: '/reports', requires: [{ permission: PERMISSIONS.REPORTS_READ }] },
+    { id: 'collections', labelKey: 'nav.collections', path: '/collections', requires: [{ permission: PERMISSIONS.COLLECTIONS_SEND }] },
   ],
   homeModules: [
     { id: 'overview.business', requires: [], span: 4 },

@@ -27,7 +27,7 @@ const TONE_MAP: Record<InsightSeed['iconKey'], string> = {
 
 export function AIInsightsCard() {
   return (
-    <GlassSurface tone="strong" className="flex flex-col gap-3 p-5">
+    <GlassSurface tone="strong" className="flex h-full flex-col gap-3 p-5">
       <header className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <span className="grid size-7 place-items-center rounded-xl bg-gradient-to-br from-ai to-brand text-white">

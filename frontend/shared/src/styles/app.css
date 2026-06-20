@@ -1,0 +1,57 @@
+/*
+ * Kora global stylesheet — shared by BOTH the web and desktop shells so the
+ * look is identical. Each shell's main.tsx imports this (and the font CSS).
+ * The backdrop image is served from each shell's /public as /backdrop.png.
+ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply font-sans text-ink antialiased;
+    background-color: theme('colors.backdrop');
+    background-image:
+      radial-gradient(ellipse 90% 70% at 10% -8%, rgba(196, 212, 255, 0.9), transparent 52%),
+      radial-gradient(ellipse 85% 65% at 96% 108%, rgba(221, 210, 255, 0.82), transparent 52%),
+      radial-gradient(ellipse 60% 50% at 70% 30%, rgba(208, 232, 255, 0.55), transparent 60%),
+      url('/backdrop.png');
+    background-repeat: no-repeat, no-repeat, no-repeat, no-repeat;
+    background-size: cover, cover, cover, cover;
+    background-position: center, center, center, center;
+    background-attachment: fixed, fixed, fixed, fixed;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+  /* Tabular numbers everywhere money is rendered (the .tabular utility) */
+  .tabular {
+    font-feature-settings: 'tnum', 'lnum';
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+}
+
+@layer utilities {
+  /* Thin, subtle scrollbar — used on the main content scroll area. */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(15, 23, 41, 0.18) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: rgba(15, 23, 41, 0.16);
+    border-radius: 9999px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(15, 23, 41, 0.3);
+  }
+}

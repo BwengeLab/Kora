@@ -9,10 +9,13 @@ import { cn } from '../../utils/cn';
 
 export type GlassTone = 'subtle' | 'default' | 'strong';
 
+// Liquid-glass: a diagonal white sheen gradient (more opaque top-left, more
+// transparent bottom-right) over a strong backdrop blur, so the watery page
+// shows through like light through a water bubble — never a flat opaque white.
 const toneClasses: Record<GlassTone, string> = {
-  subtle: 'bg-glass-subtle border-white/50 shadow-glass-soft',
-  default: 'bg-glass-surface border-white/60 shadow-glass',
-  strong: 'bg-glass-strong border-white/70 shadow-glass',
+  subtle: 'bg-gradient-to-br from-white/45 to-white/20 border-white/45 shadow-glass-soft',
+  default: 'bg-gradient-to-br from-white/58 to-white/32 border-white/55 shadow-glass',
+  strong: 'bg-gradient-to-br from-white/70 to-white/44 border-white/65 shadow-glass',
 };
 
 export interface GlassSurfaceProps extends HTMLAttributes<HTMLDivElement> {

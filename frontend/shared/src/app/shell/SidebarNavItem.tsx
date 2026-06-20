@@ -28,8 +28,8 @@ export function SidebarNavItem({
   const iconTile = (
     <span
       className={cn(
-        'grid place-items-center rounded-xl transition-colors [&>svg]:size-[18px]',
-        collapsed ? 'size-10' : 'size-8',
+        'grid place-items-center rounded-xl transition-colors',
+        collapsed ? 'size-10 [&>svg]:size-[19px]' : 'size-9 [&>svg]:size-[17px]',
         isActive
           ? 'bg-gradient-to-br from-brand to-brand-ink text-white shadow-[0_4px_12px_rgba(67,97,238,0.4)]'
           : 'bg-white/0 text-ink-soft group-hover:bg-white/70 group-hover:text-ink',
@@ -46,14 +46,14 @@ export function SidebarNavItem({
       className={cn(
         'group flex items-center rounded-2xl transition-all',
         collapsed ? 'mx-auto justify-center p-1.5' : 'mx-3 gap-3 px-2.5 py-1.5',
-        depth > 0 && !collapsed && 'ml-11 mr-3',
+        depth > 0 && !collapsed && 'ml-12 mr-3',
         isActive
           ? 'bg-white text-ink shadow-glass-soft ring-1 ring-white/80'
-          : 'text-ink-soft hover:bg-white/45 hover:text-ink',
+          : 'text-ink-soft hover:bg-white/55 hover:text-ink',
       )}
     >
       {depth === 0 ? iconTile : <span className="ml-1 size-1.5 rounded-full bg-current opacity-40" />}
-      {!collapsed && <span className="truncate text-[13.5px] font-semibold">{label}</span>}
+      {!collapsed && <span className="truncate text-[14px] font-semibold">{label}</span>}
     </Link>
   );
 

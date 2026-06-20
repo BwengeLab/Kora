@@ -10,7 +10,7 @@ const STATUS_TONES: Record<AgentStatus, string> = {
 
 export function AIAgentsActivityCard() {
   return (
-    <GlassSurface tone="strong" className="flex flex-col gap-3 p-5">
+    <GlassSurface tone="strong" className="flex h-full flex-col gap-3 p-5">
       <header className="flex items-center justify-between gap-3">
         <h3 className="font-display text-base font-semibold text-ink">AI Agent Activity</h3>
         <button type="button" className="text-xs font-semibold text-brand hover:text-brand-ink">

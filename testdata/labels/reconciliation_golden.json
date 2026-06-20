@@ -1,0 +1,37 @@
+{
+  "cases": [
+    {
+      "name": "exact payment to invoice",
+      "left_type": "PAYMENT_RECEIVED",
+      "right_type": "INVOICE_ISSUED",
+      "reference": "INV-1001",
+      "left_amount_minor": 250000,
+      "right_amount_minor": 250000,
+      "left_date": "2026-06-01",
+      "right_date": "2026-06-01",
+      "expected_state": "MATCHED"
+    },
+    {
+      "name": "payment inside configured tolerance",
+      "left_type": "PAYMENT_RECEIVED",
+      "right_type": "INVOICE_ISSUED",
+      "reference": "INV-1002",
+      "left_amount_minor": 250050,
+      "right_amount_minor": 250000,
+      "left_date": "2026-06-02",
+      "right_date": "2026-06-02",
+      "expected_state": "SUGGESTED"
+    },
+    {
+      "name": "claim obligation to approved payment",
+      "left_type": "PAYMENT_SENT",
+      "right_type": "OBLIGATION_CREATED",
+      "reference": "CLM-9001",
+      "left_amount_minor": 800000,
+      "right_amount_minor": 800000,
+      "left_date": "2026-06-10",
+      "right_date": "2026-06-10",
+      "expected_state": "MATCHED"
+    }
+  ]
+}

@@ -9,5 +9,6 @@ export default defineConfig({
       '@shared': path.resolve(__dirname, '../shared/src'),
     },
   },
-  server: { port: 5173, strictPort: true },
+  // `open: true` launches the default browser at the app automatically on dev start.
+  server: { port: 5173, strictPort: true, open: true },
 });
