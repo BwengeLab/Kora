@@ -1,6 +1,6 @@
 SHELL := /bin/sh
 
-.PHONY: up down seed test proto go-test py-test
+.PHONY: up down seed test proto go-test py-test document-ai
 
 up:
 	docker compose -f deploy/compose/docker-compose.yml up -d
@@ -22,3 +22,5 @@ go-test:
 proto:
 	docker run --rm -v "$$(pwd):/workspace" -w /workspace bufbuild/buf:latest generate
 
+document-ai:
+	python -m agents.document_ai.main

@@ -1,5 +1,9 @@
 import csv
+import io
 import json
+import re
+import zipfile
+from datetime import datetime
 from pathlib import Path
 
 from openpyxl import Workbook
@@ -22,16 +26,35 @@ def write_csv(path: Path, rows: list[dict[str, str]]) -> None:
 
 def write_excel(path: Path, sheet_name: str, rows: list[dict[str, str]]) -> None:
     workbook = Workbook()
+    fixed_time = datetime(2026, 1, 1)
+    workbook.properties.created = fixed_time
+    workbook.properties.modified = fixed_time
     sheet = workbook.active
     sheet.title = sheet_name
     sheet.append(list(rows[0].keys()))
     for row in rows:
         sheet.append(list(row.values()))
-    workbook.save(path)
+    workbook_bytes = io.BytesIO()
+    workbook.save(workbook_bytes)
+    normalized = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(workbook_bytes.getvalue()), "r") as source:
+        with zipfile.ZipFile(normalized, "w", compression=zipfile.ZIP_DEFLATED) as target:
+            for name in sorted(source.namelist()):
+                info = zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0))
+                info.compress_type = zipfile.ZIP_DEFLATED
+                data = source.read(name)
+                if name == "docProps/core.xml":
+                    data = re.sub(
+                        rb"(<dcterms:modified[^>]*>)[^<]+(</dcterms:modified>)",
+                        rb"\g<1>2026-01-01T00:00:00Z\g<2>",
+                        data,
+                    )
+                target.writestr(info, data)
+    path.write_bytes(normalized.getvalue())
 
 
 def write_invoice_pdf(path: Path) -> None:
-    document = canvas.Canvas(str(path))
+    document = canvas.Canvas(str(path), invariant=1)
     lines = [
         "Type: invoice",
         "Invoice Number: INV-PDF-3001",
@@ -50,10 +73,17 @@ def write_invoice_pdf(path: Path) -> None:
 def write_receipt_image(path: Path) -> None:
     image = Image.new("RGB", (900, 500), "white")
     draw = ImageDraw.Draw(image)
-    try:
-        font = ImageFont.truetype("DejaVuSans.ttf", 32)
-    except OSError:
-        font = ImageFont.load_default()
+    font = ImageFont.load_default()
+    for candidate in (
+        "C:/Windows/Fonts/arial.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "DejaVuSans.ttf",
+    ):
+        try:
+            font = ImageFont.truetype(candidate, 36)
+            break
+        except OSError:
+            continue
     lines = [
         "Type: receipt",
         "Receipt Number: RCP-4001",

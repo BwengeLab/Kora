@@ -17,7 +17,7 @@ class ExtractDocumentRequest(BaseModel):
     extraction_version_id: str = Field(min_length=1)
     file_name: str = Field(min_length=1)
     content_type: str = ""
-    content_base64: str = Field(min_length=1)
+    content_base64: str = Field(min_length=1, max_length=28_000_000)
     ocr_language: str = "eng"
 
 

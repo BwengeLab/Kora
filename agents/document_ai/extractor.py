@@ -255,8 +255,11 @@ def _extract_image_bytes(
 
 def _pytesseract_ocr(image: object, language: str) -> str:
     import pytesseract
+    from PIL import ImageOps
 
-    return pytesseract.image_to_string(image, lang=language)
+    prepared = ImageOps.autocontrast(ImageOps.grayscale(image))
+    prepared = prepared.resize((prepared.width * 2, prepared.height * 2))
+    return pytesseract.image_to_string(prepared, lang=language, config="--psm 6")
 
 
 def _record_from_text(
