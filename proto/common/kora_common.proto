@@ -59,12 +59,13 @@ enum BusinessEventType {
   BUSINESS_EVENT_TYPE_PAYMENT_SENT = 3;
   BUSINESS_EVENT_TYPE_INVOICE_ISSUED = 4;
   BUSINESS_EVENT_TYPE_BILL_RECEIVED = 5;
-  BUSINESS_EVENT_TYPE_RECEIPT_UPLOADED = 6;
+  BUSINESS_EVENT_TYPE_RECEIPT_RECORDED = 6;
   BUSINESS_EVENT_TYPE_CONTRACT_SIGNED = 7;
   BUSINESS_EVENT_TYPE_OBLIGATION_CREATED = 8;
   BUSINESS_EVENT_TYPE_DOCUMENT_MISSING = 9;
   BUSINESS_EVENT_TYPE_APPROVAL_REQUIRED = 10;
-  BUSINESS_EVENT_TYPE_PREMIUM_CATEGORY = 11;
+  reserved 11;
+  reserved "BUSINESS_EVENT_TYPE_PREMIUM_CATEGORY";
 }
 
 enum BusinessEventStatus {
@@ -85,6 +86,11 @@ message BusinessEvent {
   string source_id = 7;
   Evidence evidence = 8;
   map<string, string> attributes = 9;
+  string occurred_on = 10;
+  Money amount = 11;
+  Confidence confidence = 12;
+  map<string, string> related_entity_ids = 13;
+  string created_at = 14;
 }
 
 enum CorrectionEventType {

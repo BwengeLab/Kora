@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package kora.normalization.v1;
+
+import "proto/common/kora_common.proto";
+import "proto/document_ai/document_ai.proto";
+
+option go_package = "github.com/kora-finance/kora/gen/go/normalization;normalizationv1";
+
+enum EntityType {
+  ENTITY_TYPE_UNSPECIFIED = 0;
+  ENTITY_TYPE_EXTERNAL_PARTY = 1;
+  ENTITY_TYPE_ACCOUNT = 2;
+  ENTITY_TYPE_DOCUMENT = 3;
+  ENTITY_TYPE_CONTRACT = 4;
+  ENTITY_TYPE_INVOICE = 5;
+  ENTITY_TYPE_BILL = 6;
+  ENTITY_TYPE_RECEIPT = 7;
+  ENTITY_TYPE_PAYMENT = 8;
+  ENTITY_TYPE_TRANSACTION = 9;
+  ENTITY_TYPE_OBLIGATION = 10;
+}
+
+message ResolvedEntity {
+  string id = 1;
+  string organization_id = 2;
+  EntityType type = 3;
+  string canonical_key = 4;
+  string display_name = 5;
+  string external_reference = 6;
+  map<string, string> attributes = 7;
+  string resolution_method = 8;
+  double resolution_confidence = 9;
+}
+
+message NormalizeSourceRecordRequest {
+  kora.common.v1.TenantContext tenant = 1;
+  string ingestion_batch_id = 2;
+  string source_record_db_id = 3;
+  string source_document_id = 4;
+  string extraction_version_id = 5;
+  string source_record_id = 6;
+  string record_type = 7;
+  map<string, string> fields = 8;
+  double confidence = 9;
+  repeated string quality_flags = 10;
+  kora.document_ai.v1.SourceLocation source_location = 11;
+}
+
+message NormalizeSourceRecordResponse {
+  kora.common.v1.BusinessEvent event = 1;
+  repeated ResolvedEntity entities = 2;
+  bool created = 3;
+}
+
+service NormalizationService {
+  rpc NormalizeSourceRecord(NormalizeSourceRecordRequest) returns (NormalizeSourceRecordResponse);
+}

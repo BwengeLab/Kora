@@ -48,3 +48,4 @@ Minimum correction event vocabulary:
 - DOCUMENT_REPLACED
 - EVIDENCE_ADDED
 
+The locked Phase 5 event taxonomy and raw-record mappings are defined in `13-EVENT-TAXONOMY.md`.

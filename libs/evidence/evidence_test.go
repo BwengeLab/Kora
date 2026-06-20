@@ -16,3 +16,14 @@ func TestValidateAcceptsCompleteEvidence(t *testing.T) {
 	}
 }
 
+func TestValidateProvenanceRequiresExtractionLinks(t *testing.T) {
+	e := Evidence{SourceDocumentID: "doc-1", SourceRecordID: "row-1", Reason: "normalized source", ConfidenceScore: 0.9}
+	if err := ValidateProvenance(e); err == nil {
+		t.Fatal("expected missing ingestion provenance to fail")
+	}
+	e.IngestionBatchID = "batch-1"
+	e.ExtractionVersionID = "xver-1"
+	if err := ValidateProvenance(e); err != nil {
+		t.Fatalf("expected complete provenance, got %v", err)
+	}
+}

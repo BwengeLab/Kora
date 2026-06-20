@@ -22,8 +22,28 @@ message AppendCorrectionEventResponse {
   string correction_event_id = 1;
 }
 
+message GetBusinessEventRequest {
+  string organization_id = 1;
+  string event_id = 2;
+}
+
+message GetBusinessEventResponse {
+  kora.common.v1.BusinessEvent event = 1;
+  kora.common.v1.BusinessEventStatus effective_status = 2;
+  repeated kora.common.v1.CorrectionEvent corrections = 3;
+}
+
+message ListBusinessEventsRequest {
+  string organization_id = 1;
+}
+
+message ListBusinessEventsResponse {
+  repeated GetBusinessEventResponse events = 1;
+}
+
 service EventLedgerService {
   rpc AppendBusinessEvent(AppendBusinessEventRequest) returns (AppendBusinessEventResponse);
   rpc AppendCorrectionEvent(AppendCorrectionEventRequest) returns (AppendCorrectionEventResponse);
+  rpc GetBusinessEvent(GetBusinessEventRequest) returns (GetBusinessEventResponse);
+  rpc ListBusinessEvents(ListBusinessEventsRequest) returns (ListBusinessEventsResponse);
 }
-
