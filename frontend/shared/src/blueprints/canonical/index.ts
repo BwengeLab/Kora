@@ -1,4 +1,5 @@
 import { registerBlueprint } from '../registry';
+import { claimsOfficerBlueprint } from '../custom/claimsOfficer';
 import { auditorBlueprint } from './auditor';
 import { externalCollaboratorBlueprint } from './externalCollaborator';
 import { financeLeadBlueprint } from './financeLead';
@@ -18,6 +19,8 @@ export function registerCanonicalBlueprints(): void {
   registerBlueprint(auditorBlueprint);
   registerBlueprint(orgAdminBlueprint);
   registerBlueprint(externalCollaboratorBlueprint);
+  // Custom / vertical-pack roles
+  registerBlueprint(claimsOfficerBlueprint);
   registered = true;
 }
 

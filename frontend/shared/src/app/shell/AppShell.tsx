@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+import { CopilotPanel } from './CopilotPanel';
+import { DocViewer } from './DocViewer';
 import { Sidebar } from './Sidebar';
 import { Toaster } from './Toaster';
 import { TopBar } from './TopBar';
@@ -27,6 +29,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         <main className="scrollbar-thin flex-1 overflow-y-auto overflow-x-hidden pb-10">{children}</main>
       </div>
       <Toaster />
+      <DocViewer />
+      <CopilotPanel />
     </div>
   );
 }

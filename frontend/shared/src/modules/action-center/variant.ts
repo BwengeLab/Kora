@@ -22,7 +22,16 @@ export const VARIANTS: Record<ActionVariant, VariantConfig> = {
   org_owner: {
     title: 'Top Approvals',
     subtitle: 'The highest-value and high-risk decisions routed up to you for final sign-off.',
-    includes: (a) => a.risk === 'high' || a.requiresDualApproval || !a.withinLimit,
+    includes: (a) => {
+      const topTier = a.risk === 'high' || a.requiresDualApproval || !a.withinLimit;
+      if (!topTier) return false;
+      // Owner approves LAST: a dual-approval item only reaches them once the
+      // first approver (e.g. Finance Lead) has signed. Items still awaiting
+      // their first approval are not the owner's to act on yet — but already
+      // approved/rejected items stay visible (the "Done" tab).
+      if (a.requiresDualApproval && a.stage === 'awaiting' && a.approvals.length === 0) return false;
+      return true;
+    },
   },
 };
 

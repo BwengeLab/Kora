@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { GlassSurface, MoneyCell, cn } from '../../design-system';
 import { type AuditKind } from '../../seed/auditorHome';
+import { openDoc } from '../../state/docViewerStore';
 import { useWorkflowStore } from '../../state/workflowStore';
 
 const KIND: Record<AuditKind, { icon: LucideIcon; tone: string }> = {
@@ -50,7 +51,11 @@ export function AuditLogFeedCard() {
                 </span>
                 {i < auditLog.length - 1 ? <span className="my-1 w-px flex-1 bg-ink/10" /> : null}
               </div>
-              <button type="button" className="mb-2 flex flex-1 items-start justify-between gap-3 rounded-2xl px-3 py-2 text-left transition-colors hover:bg-white/60">
+              <button
+                type="button"
+                onClick={() => e.hasEvidence && openDoc({ name: `Evidence — ${e.action}.pdf`, kind: 'audit evidence', context: `${e.target} · ${e.actor}` })}
+                className="mb-2 flex flex-1 items-start justify-between gap-3 rounded-2xl px-3 py-2 text-left transition-colors hover:bg-white/60"
+              >
                 <div className="min-w-0">
                   <p className="text-[13px] font-semibold text-ink">
                     {e.action} <span className="font-normal text-ink-muted">· {e.target}</span>

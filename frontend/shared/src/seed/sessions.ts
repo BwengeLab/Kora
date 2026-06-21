@@ -1,4 +1,11 @@
-import { CANONICAL_BLUEPRINT_IDS, CANONICAL_ROLE_IDS, PERMISSIONS } from '../auth/catalog';
+import {
+  CANONICAL_BLUEPRINT_IDS,
+  CANONICAL_ROLE_IDS,
+  CLAIMS_PERMISSIONS,
+  CUSTOM_BLUEPRINT_IDS,
+  CUSTOM_ROLE_IDS,
+  PERMISSIONS,
+} from '../auth/catalog';
 import type { Permission, Scope, Session } from '../auth/types';
 
 // Tenant + Super Admin seed sessions — one per canonical role. The seed
@@ -162,6 +169,26 @@ export const seedSessions = {
     'External Collaborator (Lender)',
     CANONICAL_BLUEPRINT_IDS.EXTERNAL_COLLABORATOR,
     externalPerms,
+  ),
+  // Custom role from the Insurance vertical pack (cloned from Finance Operator,
+  // scoped to claims). Only usable once the Org Admin unlocks the pack.
+  [CUSTOM_ROLE_IDS.CLAIMS_OFFICER]: makeSession(
+    'claims@acme.local',
+    'James Okello',
+    CUSTOM_ROLE_IDS.CLAIMS_OFFICER,
+    'Claims Officer',
+    CUSTOM_BLUEPRINT_IDS.CLAIMS_OFFICER,
+    [
+      PERMISSIONS.TENANT_READ,
+      PERMISSIONS.DOCUMENTS_UPLOAD,
+      PERMISSIONS.DATA_QUALITY_REVIEW,
+      PERMISSIONS.EVENTS_READ,
+      PERMISSIONS.RECONCILIATION_REVIEW,
+      PERMISSIONS.RECONCILIATION_RESOLVE,
+      PERMISSIONS.APPROVAL_CREATE,
+      CLAIMS_PERMISSIONS.CLAIMS_REVIEW,
+      CLAIMS_PERMISSIONS.CLAIMS_PREPARE,
+    ],
   ),
 } satisfies Record<string, Session>;
 

@@ -131,16 +131,16 @@ export const seedApprovals: ApprovalItem[] = [
     requiresDualApproval: true,
     policyLimit: M(100000),
     withinLimit: false,
-    approvals: [{ name: 'Aline Mukamana', role: 'Organization Owner', at: '2025-05-15T12:30:00Z' }],
+    approvals: [{ name: 'Eric Habimana', role: 'Finance Lead', at: '2025-05-15T12:30:00Z' }],
     isOwnItem: false,
-    agentRecommendation: 'Within budget. CapEx line has $220K remaining for 2025. One approval recorded; your approval completes the dual-approval requirement.',
+    agentRecommendation: 'Within budget. CapEx line has $220K remaining for 2025. Finance Lead approved (1 of 2); as Organization Owner you give the final signature.',
     evidence: [
       ev('ae-5', 'Equipment quote.pdf', 'invoice', '540 KB'),
       ev('ae-6', 'CapEx budget 2025.xlsx', 'contract', '88 KB'),
     ],
     history: [
       h('ah-3a', '2025-05-15T10:00:00Z', 'Diane Uwase', 'Finance Operator', 'user', 'Prepared payment'),
-      h('ah-3b', '2025-05-15T12:30:00Z', 'Aline Mukamana', 'Organization Owner', 'user', 'Approved (1 of 2)'),
+      h('ah-3b', '2025-05-15T12:30:00Z', 'Eric Habimana', 'Finance Lead', 'user', 'Approved (1 of 2)'),
     ],
   },
   {

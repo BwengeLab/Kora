@@ -1,5 +1,6 @@
 import { Download, Share2 } from 'lucide-react';
 import { PageHeader } from '../../app/shell';
+import { toast } from '../../state/toastStore';
 import { seedGrant, seedPassport } from '../../seed/portalHome';
 import { AffordabilityCard } from './AffordabilityCard';
 import { EvidenceScopeCard } from './EvidenceScopeCard';
@@ -23,7 +24,11 @@ export function CreditPassportPortal() {
           </span>
         }
         right={
-          <button type="button" className="inline-flex h-11 items-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink px-4 text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">
+          <button
+            type="button"
+            onClick={() => toast({ tone: 'success', title: 'Download started', body: 'Credit Passport (PDF) is being prepared.' })}
+            className="inline-flex h-11 items-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink px-4 text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110"
+          >
             <Download className="size-4" /> Download passport
           </button>
         }

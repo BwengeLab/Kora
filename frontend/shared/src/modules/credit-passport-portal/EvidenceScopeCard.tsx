@@ -1,5 +1,7 @@
-import { CalendarClock, Check, FileText, ShieldCheck } from 'lucide-react';
+import { CalendarClock, Check, FileText, Plus, ShieldCheck } from 'lucide-react';
 import { GlassSurface } from '../../design-system';
+import { openDoc } from '../../state/docViewerStore';
+import { toast } from '../../state/toastStore';
 import { seedEvidencePack, seedGrant } from '../../seed/portalHome';
 
 export function EvidenceScopeCard() {
@@ -14,7 +16,11 @@ export function EvidenceScopeCard() {
       <ul className="flex flex-col gap-2">
         {seedEvidencePack.map((e) => (
           <li key={e.id}>
-            <button type="button" className="flex w-full items-center gap-3 rounded-2xl bg-white/55 p-3 text-left ring-1 ring-white/60 hover:bg-white">
+            <button
+              type="button"
+              onClick={() => openDoc({ name: e.docName, kind: 'evidence', context: `${e.factor} · ${e.detail}` })}
+              className="flex w-full items-center gap-3 rounded-2xl bg-white/55 p-3 text-left ring-1 ring-white/60 hover:bg-white"
+            >
               <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-danger-soft text-danger"><FileText className="size-4" /></span>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[12.5px] font-bold text-ink">{e.factor} · {e.docName}</p>
@@ -42,6 +48,13 @@ export function EvidenceScopeCard() {
         <p className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-medium text-ink-muted">
           <ShieldCheck className="size-3.5" /> {g.scopeNote}
         </p>
+        <button
+          type="button"
+          onClick={() => toast({ tone: 'info', title: 'Request sent', body: 'Acme Insurance will review your request for additional scope.' })}
+          className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-white/80 px-3 py-1.5 text-[11.5px] font-bold text-brand ring-1 ring-white/70 hover:bg-white"
+        >
+          <Plus className="size-3.5" /> Request more access
+        </button>
       </div>
     </GlassSurface>
   );

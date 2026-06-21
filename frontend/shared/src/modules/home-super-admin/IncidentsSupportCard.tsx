@@ -1,6 +1,7 @@
 import { AlertTriangle, LifeBuoy, Lock } from 'lucide-react';
 import { GlassSurface, cn } from '../../design-system';
 import { seedIncidents, seedSupportQueue } from '../../seed/platformHome';
+import { toast } from '../../state/toastStore';
 
 export function IncidentsSupportCard() {
   return (
@@ -43,9 +44,19 @@ export function IncidentsSupportCard() {
                 <p className="truncate text-[12.5px] font-bold text-ink">{r.tenant}</p>
                 <p className="truncate text-[11px] text-ink-muted">{r.reason} · {r.when}</p>
               </div>
-              <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase', r.status === 'active' ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning')}>
-                {r.status}
-              </span>
+              {r.status === 'requested' ? (
+                <button
+                  type="button"
+                  onClick={() => toast({ tone: 'info', title: 'Support access requested', body: `${r.tenant} must consent before access is granted — and every entry is logged.` })}
+                  className="shrink-0 rounded-full bg-brand px-2.5 py-1 text-[10px] font-bold uppercase text-white"
+                >
+                  Request consent
+                </button>
+              ) : (
+                <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase', 'bg-success-soft text-success')}>
+                  {r.status}
+                </span>
+              )}
             </li>
           ))}
         </ul>

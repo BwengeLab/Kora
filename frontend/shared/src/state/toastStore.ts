@@ -6,7 +6,7 @@ export interface Toast {
   id: string;
   tone: ToastTone;
   title: string;
-  body?: string;
+  body?: string | undefined;
 }
 
 interface ToastState {

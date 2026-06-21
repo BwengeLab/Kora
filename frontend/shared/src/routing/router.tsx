@@ -42,6 +42,7 @@ const auditRoute = route('/audit', P.AuditPage, requirePermission(PERMISSIONS.AU
 const consentRoute = route('/consent', P.ConsentPage, requirePermission(PERMISSIONS.CONSENT_MANAGE));
 const dataIntakeRoute = route('/data-intake', P.DataIntakePage, requirePermission(PERMISSIONS.DOCUMENTS_UPLOAD));
 const transactionsRoute = route('/transactions', P.TransactionsPage, requirePermission(PERMISSIONS.EVENTS_READ));
+const claimsRoute = route('/claims', P.ClaimsPage);
 
 // --- Settings (Org Admin) ---
 const settingsRoute = createRoute({
@@ -90,6 +91,7 @@ const routeTree = rootRoute.addChildren([
   consentRoute,
   dataIntakeRoute,
   transactionsRoute,
+  claimsRoute,
   settingsRoute.addChildren([
     settingsOrgRoute,
     settingsUsersRoute,

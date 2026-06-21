@@ -4,6 +4,7 @@ import { PageHeader } from '../../app/shell';
 import { AccessAlertsCard } from './AccessAlertsCard';
 import { AccessRequestsCard } from './AccessRequestsCard';
 import { AdminStatCards } from './AdminStatCards';
+import { FeatureMarketplaceCard } from './FeatureMarketplaceCard';
 import { IntegrationStatusCard } from './IntegrationStatusCard';
 import { PolicyBillingCard } from './PolicyBillingCard';
 import { UsersAccessCard } from './UsersAccessCard';
@@ -34,6 +35,11 @@ export function HomeOrgAdmin() {
         <section className="grid grid-cols-1 items-stretch gap-5 @5xl:grid-cols-12">
           <div className="@5xl:col-span-5"><AccessRequestsCard /></div>
           <div className="@5xl:col-span-7"><IntegrationStatusCard /></div>
+        </section>
+
+        {/* Custom features & vertical packs (unlock) */}
+        <section>
+          <FeatureMarketplaceCard />
         </section>
 
         {/* Policies + billing */}

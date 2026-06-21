@@ -1,5 +1,6 @@
 import { Plus } from 'lucide-react';
 import { DateRangePill, PageHeader } from '../../app/shell';
+import { toast } from '../../state/toastStore';
 import { IncidentsSupportCard } from './IncidentsSupportCard';
 import { PlatformStatCards } from './PlatformStatCards';
 import { TenantGrowthCard } from './TenantGrowthCard';
@@ -15,7 +16,11 @@ export function HomeSuperAdmin() {
         subtitle={<>Health, growth and margin across all tenants.</>}
         right={
           <div className="flex items-center gap-2.5">
-            <button type="button" className="inline-flex h-11 items-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink px-4 text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">
+            <button
+              type="button"
+              onClick={() => toast({ tone: 'success', title: 'Provisioning started', body: 'New tenant workspace is being created.' })}
+              className="inline-flex h-11 items-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink px-4 text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110"
+            >
               <Plus className="size-4" /> Provision tenant
             </button>
             <DateRangePill label="May 2025" />

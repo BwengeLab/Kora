@@ -4,7 +4,11 @@ import { CANONICAL_BLUEPRINT_IDS } from '../auth/catalog';
 import { useSession } from '../auth/hooks';
 import { GlassSurface, PartyAvatar } from '../design-system';
 import { ActionCenter } from '../modules/action-center';
+import { AiAgentsPage } from '../modules/ai-agents';
+import { ClaimsWorkspace } from '../modules/claims';
 import { CreditPassportPortal } from '../modules/credit-passport-portal';
+import { LedgerCashflow } from '../modules/ledger-cashflow';
+import { OwnerAuditRisk } from '../modules/owner-audit';
 import { HomeAuditor } from '../modules/home-auditor';
 import { HomeFinanceLead } from '../modules/home-finance-lead';
 import { HomeFinanceOperator } from '../modules/home-finance-operator';
@@ -12,6 +16,7 @@ import { HomeOrgAdmin } from '../modules/home-org-admin';
 import { HomeOrgOwner } from '../modules/home-org-owner';
 import { HomeSuperAdmin } from '../modules/home-super-admin';
 import { ReconciliationCockpit } from '../modules/reconciliation-cockpit';
+import { CUSTOM_BLUEPRINT_IDS } from '../auth/catalog';
 
 // ────────────────────────────────────────────────────────────────────────────
 // Role-isolated page resolution.
@@ -37,9 +42,24 @@ const REGISTRY: Record<string, Partial<Record<string, ComponentType>>> = {
     // Super Admin & External Collaborator land on their platform/portal home.
     [B.SUPER_ADMIN]: HomeSuperAdmin,
     [B.EXTERNAL_COLLABORATOR]: CreditPassportPortal,
+    // Claims Officer (custom) lands straight in the claims workspace.
+    [CUSTOM_BLUEPRINT_IDS.CLAIMS_OFFICER]: ClaimsWorkspace,
+  },
+  claims: {
+    [CUSTOM_BLUEPRINT_IDS.CLAIMS_OFFICER]: ClaimsWorkspace,
   },
   reconciliation: {
     [B.FINANCE_OPERATOR]: ReconciliationCockpit,
+    [CUSTOM_BLUEPRINT_IDS.CLAIMS_OFFICER]: ReconciliationCockpit,
+  },
+  ledger: {
+    [B.ORG_OWNER]: LedgerCashflow,
+  },
+  agents: {
+    [B.ORG_OWNER]: AiAgentsPage,
+  },
+  audit: {
+    [B.ORG_OWNER]: OwnerAuditRisk,
   },
   approvals: {
     [B.FINANCE_LEAD]: () => <ActionCenter variant="finance_lead" />,

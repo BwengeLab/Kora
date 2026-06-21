@@ -26,11 +26,26 @@ export function ActionCenter({ variant = 'finance_lead' }: { variant?: ActionVar
 
   const handleApprove = (id: string) => {
     const item = allApprovals.find((a) => a.id === id);
+    const name = item?.title ?? 'Item';
     const result = approveAction(id, actor);
-    if (result === 'partial') {
-      toast({ tone: 'info', title: 'Approved (1 of 2)', body: `${item?.title ?? 'Item'} needs a second approver.` });
-    } else if (result === 'approved') {
-      toast({ tone: 'success', title: 'Approved & posted', body: `${item?.title ?? 'Item'} executed and written to the audit log.` });
+    switch (result) {
+      case 'approved':
+        toast({ tone: 'success', title: 'Approved & posted', body: `${name} executed and written to the audit log.` });
+        break;
+      case 'partial':
+        toast({ tone: 'info', title: 'Approved (1 of 2)', body: `${name} now needs a second, different approver.` });
+        break;
+      case 'sod':
+        toast({ tone: 'danger', title: "Can't approve your own item", body: 'Segregation of duties — another approver must sign off.' });
+        break;
+      case 'duplicate':
+        toast({ tone: 'warning', title: 'You already approved this', body: 'A second, different approver is required.' });
+        break;
+      case 'needs-first':
+        toast({ tone: 'warning', title: 'You approve last', body: 'This dual-approval item still needs its first approval (Finance Lead).' });
+        break;
+      default:
+        break;
     }
   };
 

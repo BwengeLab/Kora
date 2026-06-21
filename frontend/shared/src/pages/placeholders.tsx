@@ -5,6 +5,7 @@
 
 import { useRouterState } from '@tanstack/react-router';
 import { GlassSurface } from '../design-system';
+import { ClaimsWorkspace } from '../modules/claims';
 import { CreditPassportPortal } from '../modules/credit-passport-portal';
 import { HomeSuperAdmin } from '../modules/home-super-admin';
 import { RolePage } from './RolePage';
@@ -47,6 +48,9 @@ export const AuditPage = () => <RolePage pageKey="audit" label="Audit & Risk" />
 export const ConsentPage = () => <RolePage pageKey="consent" label="Consent" />;
 export const DataIntakePage = () => <RolePage pageKey="data_intake" label="Data Intake" />;
 export const TransactionsPage = () => <RolePage pageKey="transactions" label="Transactions" />;
+// The Claims route renders the workspace directly — it self-gates to the
+// locked "unlock this pack" state when the Insurance feature is disabled.
+export const ClaimsPage = () => <ClaimsWorkspace />;
 
 // ─── Settings (Org Admin / Owner) ──────────────────────────────────────────
 export const SettingsLayout = Stub;

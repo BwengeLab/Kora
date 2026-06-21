@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
+import { openDoc } from '../../state/docViewerStore';
 import type {
   BankTransaction,
   BusinessRecord,
@@ -186,7 +187,7 @@ export function MatchDetail({ recons, selectedId, onSelect, onPrepare, onReject 
 
         <div className="py-4 pb-6">
           {tab === 'details' ? <MatchDetailsTab deltas={recon.deltas} /> : null}
-          {tab === 'evidence' ? <EvidenceTab docs={recon.evidence} /> : null}
+          {tab === 'evidence' ? <EvidenceTab docs={recon.evidence} context={recon.transaction.counterparty} /> : null}
           {tab === 'history' ? <HistoryTab events={recon.history} /> : null}
           {tab === 'notes' ? <NotesTab /> : null}
         </div>
@@ -333,12 +334,16 @@ function MatchDetailsTab({ deltas }: { deltas: FieldDelta[] }) {
   );
 }
 
-function EvidenceTab({ docs }: { docs: EvidenceDoc[] }) {
+function EvidenceTab({ docs, context }: { docs: EvidenceDoc[]; context: string }) {
   return (
     <ul className="grid grid-cols-1 gap-2.5 @2xl:grid-cols-2">
       {docs.map((d) => (
         <li key={d.id}>
-          <button type="button" className="flex w-full items-center gap-3 rounded-2xl bg-white/55 p-3.5 text-left ring-1 ring-white/65 hover:bg-white">
+          <button
+            type="button"
+            onClick={() => openDoc({ name: d.name, kind: d.kind, sizeText: d.sizeText, pageRef: d.pageRef, context })}
+            className="flex w-full items-center gap-3 rounded-2xl bg-white/55 p-3.5 text-left ring-1 ring-white/65 hover:bg-white"
+          >
             <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-danger-soft text-danger">
               <FileText className="size-5" />
             </span>

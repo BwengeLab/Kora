@@ -17,8 +17,11 @@ import {
 import { ArrowUpFromLine } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
+import { useSession } from '../../auth/hooks';
+import { openDoc } from '../../state/docViewerStore';
 import type { ApprovalItem } from '../../seed/approvals';
 import type { EvidenceDoc, HistoryEvent } from '../../seed/reconciliation';
+import { approvalBlockReason, type ApproveResult } from '../../state/workflowStore';
 import { ApprovalChain } from './ApprovalChain';
 import { RISK_LABEL, RISK_TONE, TYPE_ICON, TYPE_TONE } from './typeMeta';
 import { routedUpReason, type ActionVariant } from './variant';
@@ -43,6 +46,9 @@ export function ApprovalDetail({
   const item = useMemo(() => items.find((a) => a.id === selectedId) ?? items[0]!, [items, selectedId]);
   const [tab, setTab] = useState<Tab>('summary');
   const Icon = TYPE_ICON[item.type];
+  const session = useSession();
+  const actorRole = session?.roles[0]?.name ?? '';
+  const actorName = session?.user.displayName ?? '';
 
   const idx = items.findIndex((a) => a.id === item.id);
   const prev = items[idx - 1];
@@ -50,7 +56,8 @@ export function ApprovalDetail({
   const ownerReason = variant === 'org_owner' ? routedUpReason(item) : null;
 
   const done = item.stage === 'approved' || item.stage === 'rejected';
-  const canApprove = !item.isOwnItem && !done;
+  const block = approvalBlockReason(item, actorRole, actorName); // null = allowed
+  const canApprove = !done && block === null;
 
   return (
     <GlassSurface tone="strong" className="flex h-full min-h-0 flex-col">
@@ -104,7 +111,7 @@ export function ApprovalDetail({
       {/* Body */}
       <div className="scrollbar-thin mt-5 flex-1 overflow-y-auto px-7">
         {/* Policy check + SoD guard */}
-        <PolicyCheck item={item} />
+        <PolicyCheck item={item} block={block} />
 
         {/* Agent recommendation */}
         {item.agentRecommendation ? (
@@ -140,26 +147,48 @@ export function ApprovalDetail({
 
         <div className="py-4 pb-6">
           {tab === 'summary' ? <SummaryTab item={item} /> : null}
-          {tab === 'evidence' ? <EvidenceTab docs={item.evidence} /> : null}
+          {tab === 'evidence' ? <EvidenceTab docs={item.evidence} context={item.title} /> : null}
           {tab === 'history' ? <HistoryTab events={item.history} /> : null}
         </div>
       </div>
 
       {/* Action bar */}
-      <ActionBar item={item} canApprove={canApprove} done={done} onApprove={() => onApprove(item.id)} onReject={() => onReject(item.id)} />
+      <ActionBar item={item} canApprove={canApprove} done={done} block={block} onApprove={() => onApprove(item.id)} onReject={() => onReject(item.id)} />
     </GlassSurface>
   );
 }
 
 // ─── Policy / SoD ────────────────────────────────────────────────────────
-function PolicyCheck({ item }: { item: ApprovalItem }) {
-  if (item.isOwnItem) {
+function PolicyCheck({ item, block }: { item: ApprovalItem; block: ApproveResult }) {
+  if (block === 'sod' || item.isOwnItem) {
     return (
       <div className="mt-1 flex items-start gap-3 rounded-3xl bg-danger-soft/60 p-4 ring-1 ring-danger/20">
         <ShieldCheck className="mt-0.5 size-5 shrink-0 text-danger" />
         <div>
           <p className="text-[13.5px] font-bold text-danger">Segregation of duties — you can't approve this</p>
           <p className="text-[12.5px] text-ink-soft">You prepared this item, so another approver must sign off. You can reassign or request a colleague to approve.</p>
+        </div>
+      </div>
+    );
+  }
+  if (block === 'needs-first') {
+    return (
+      <div className="mt-1 flex items-start gap-3 rounded-3xl bg-warning-soft/60 p-4 ring-1 ring-warning/20">
+        <Info className="mt-0.5 size-5 shrink-0 text-warning" />
+        <div>
+          <p className="text-[13.5px] font-bold text-warning">You approve last — waiting for the first approval</p>
+          <p className="text-[12.5px] text-ink-soft">As Organization Owner you give the final signature on dual-approval items. This one still needs its first approval (Finance Lead) before it reaches you.</p>
+        </div>
+      </div>
+    );
+  }
+  if (block === 'duplicate') {
+    return (
+      <div className="mt-1 flex items-start gap-3 rounded-3xl bg-info-soft/60 p-4 ring-1 ring-info/20">
+        <Info className="mt-0.5 size-5 shrink-0 text-info" />
+        <div>
+          <p className="text-[13.5px] font-bold text-info">You already approved this</p>
+          <p className="text-[12.5px] text-ink-soft">A second, different approver is required to complete it.</p>
         </div>
       </div>
     );
@@ -214,12 +243,16 @@ function KV({ label, value }: { label: string; value: string }) {
   );
 }
 
-function EvidenceTab({ docs }: { docs: EvidenceDoc[] }) {
+function EvidenceTab({ docs, context }: { docs: EvidenceDoc[]; context: string }) {
   return (
     <ul className="grid grid-cols-1 gap-2.5 @2xl:grid-cols-2">
       {docs.map((d) => (
         <li key={d.id}>
-          <button type="button" className="flex w-full items-center gap-3 rounded-2xl bg-white/55 p-3.5 text-left ring-1 ring-white/65 hover:bg-white">
+          <button
+            type="button"
+            onClick={() => openDoc({ name: d.name, kind: d.kind, sizeText: d.sizeText, pageRef: d.pageRef, context })}
+            className="flex w-full items-center gap-3 rounded-2xl bg-white/55 p-3.5 text-left ring-1 ring-white/65 hover:bg-white"
+          >
             <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-danger-soft text-danger">
               <FileText className="size-5" />
             </span>
@@ -257,8 +290,18 @@ function HistoryTab({ events }: { events: HistoryEvent[] }) {
 }
 
 // ─── Action bar ────────────────────────────────────────────────────────────
-function ActionBar({ item, canApprove, done, onApprove, onReject }: { item: ApprovalItem; canApprove: boolean; done: boolean; onApprove: () => void; onReject: () => void }) {
-  const approveLabel = item.requiresDualApproval && item.approvals.length === 0 ? 'Approve (1 of 2)' : 'Approve & post';
+function ActionBar({ item, canApprove, done, block, onApprove, onReject }: { item: ApprovalItem; canApprove: boolean; done: boolean; block: ApproveResult; onApprove: () => void; onReject: () => void }) {
+  const approveLabel = item.requiresDualApproval
+    ? item.approvals.length === 0
+      ? 'Approve (1 of 2)'
+      : 'Approve & post (final)'
+    : 'Approve & post';
+  const blockedSub =
+    block === 'needs-first'
+      ? 'waiting for first approval'
+      : block === 'duplicate'
+        ? 'you already approved'
+        : 'segregation of duties';
   const statusLabel = item.stage === 'approved' ? 'Approved ✓' : item.stage === 'rejected' ? 'Rejected' : null;
   return (
     <footer className="border-t border-white/55 bg-white/45 px-7 py-4">
@@ -292,7 +335,7 @@ function ActionBar({ item, canApprove, done, onApprove, onReject }: { item: Appr
                 <span className="flex flex-col items-start leading-none">
                   <span>{canApprove ? approveLabel : 'Approval blocked'}</span>
                   <span className={cn('text-[10px] font-medium', canApprove ? 'text-white/85' : 'text-ink-muted')}>
-                    {canApprove ? 'executes + writes to audit log' : 'segregation of duties'}
+                    {canApprove ? 'executes + writes to audit log' : blockedSub}
                   </span>
                 </span>
               </button>

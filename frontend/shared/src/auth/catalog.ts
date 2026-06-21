@@ -82,3 +82,20 @@ export const CANONICAL_BLUEPRINT_IDS = {
 
 export type CanonicalBlueprintId =
   (typeof CANONICAL_BLUEPRINT_IDS)[keyof typeof CANONICAL_BLUEPRINT_IDS];
+
+// Custom / vertical-pack roles. Not part of the 7 system roles — these are
+// composed from the catalog when a tenant unlocks a vertical pack (doc 16 §4).
+export const CUSTOM_ROLE_IDS = {
+  CLAIMS_OFFICER: 'role.claims_officer',
+} as const;
+
+export const CUSTOM_BLUEPRINT_IDS = {
+  CLAIMS_OFFICER: 'blueprint.claims_officer',
+} as const;
+
+// Claims-specific permissions added to the catalog by the Insurance pack.
+export const CLAIMS_PERMISSIONS = {
+  CLAIMS_REVIEW: 'claims:review',
+  CLAIMS_PREPARE: 'claims:prepare',
+  CLAIMS_SETTLE: 'claims:settle',
+} as const;

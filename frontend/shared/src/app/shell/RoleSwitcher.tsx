@@ -1,8 +1,9 @@
 import * as Popover from '@radix-ui/react-popover';
-import { Check, ChevronsUpDown } from 'lucide-react';
-import { CANONICAL_ROLE_IDS } from '../../auth/catalog';
+import { Check, ChevronsUpDown, Sparkles } from 'lucide-react';
+import { CANONICAL_ROLE_IDS, CUSTOM_ROLE_IDS } from '../../auth/catalog';
 import { cn } from '../../design-system';
 import { seedSessions, type SeedRoleId } from '../../seed/sessions';
+import { useFeatureStore } from '../../state/featureStore';
 import { usePreviewRoleStore } from '../../state/previewRoleStore';
 
 // Dev-only: lets the engineer hot-swap which seed role the app renders as.
@@ -22,9 +23,12 @@ export function RoleSwitcher() {
   const isDev = typeof import.meta !== 'undefined' ? import.meta.env?.DEV : false;
   const roleId = usePreviewRoleStore((s) => s.roleId);
   const setRoleId = usePreviewRoleStore((s) => s.setRoleId);
+  // The Claims Officer custom role only appears once the Insurance pack is unlocked.
+  const claimsUnlocked = useFeatureStore((s) => s.isEnabled('insurance-claims'));
 
   if (!isDev) return null;
 
+  const order: SeedRoleId[] = claimsUnlocked ? [...ROLE_ORDER, CUSTOM_ROLE_IDS.CLAIMS_OFFICER] : ROLE_ORDER;
   const current = seedSessions[roleId];
 
   return (
@@ -52,9 +56,10 @@ export function RoleSwitcher() {
             Dev: preview role
           </p>
           <ul className="flex flex-col gap-0.5">
-            {ROLE_ORDER.map((id) => {
+            {order.map((id) => {
               const s = seedSessions[id];
               const active = id === roleId;
+              const custom = id === CUSTOM_ROLE_IDS.CLAIMS_OFFICER;
               return (
                 <li key={id}>
                   <button
@@ -66,7 +71,14 @@ export function RoleSwitcher() {
                     )}
                   >
                     <span className="flex flex-col">
-                      <span className="font-medium">{s.roles[0]?.name}</span>
+                      <span className="flex items-center gap-1.5 font-medium">
+                        {s.roles[0]?.name}
+                        {custom ? (
+                          <span className="inline-flex items-center gap-0.5 rounded-full bg-ai-soft px-1.5 py-0.5 text-[9px] font-bold uppercase text-ai">
+                            <Sparkles className="size-2.5" /> Custom
+                          </span>
+                        ) : null}
+                      </span>
                       <span className="text-xs text-ink-muted">{s.user.email}</span>
                     </span>
                     {active ? <Check className="size-4 text-brand" /> : null}
