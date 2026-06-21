@@ -62,6 +62,8 @@ class PostgresRepositoryTests(unittest.TestCase):
             "created_at": datetime.now(timezone.utc),
         }
         record = PostgresAgentRepository._decode_record(row)
+        self.assertIsNotNone(record.output.evidence[0].amount)
+        assert record.output.evidence[0].amount is not None
         self.assertEqual(record.output.evidence[0].amount.minor_units, 1000)
         self.assertEqual(record.redacted_fields, ("account_number",))
 

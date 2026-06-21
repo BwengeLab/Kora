@@ -1,4 +1,5 @@
 import unittest
+from dataclasses import replace
 
 from agents.reconciliation_agent.agent import AGENT_NAME, run
 from agents.runtime.runtime import AgentRequest
@@ -17,6 +18,19 @@ class ReconciliationAgentTests(unittest.TestCase):
     def test_auto_match_and_low_score_are_refused(self) -> None:
         self.assertTrue(run(self.request(0.95)).refused)
         self.assertTrue(run(self.request(0.69)).refused)
+
+    def test_non_finite_score_and_invalid_policy_are_refused(self) -> None:
+        self.assertTrue(run(self.request(float("nan"))).refused)
+        request = self.request(0.82)
+        request = replace(
+            request,
+            context={
+                **request.context,
+                "suggested_threshold": 0.98,
+                "auto_threshold": 0.95,
+            },
+        )
+        self.assertTrue(run(request).refused)
 
     @staticmethod
     def request(score: float) -> AgentRequest:

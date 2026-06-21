@@ -40,6 +40,19 @@ class DataIntakeAgentTests(unittest.TestCase):
         )
         self.assertTrue(output.refused)
 
+    def test_malformed_quality_flags_are_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "string lists"):
+            run(
+                AgentRequest(
+                    organization_id="org-1",
+                    user_id="user-1",
+                    agent_name=AGENT_NAME,
+                    objective="review extraction",
+                    evidence=[evidence("row-1")],
+                    context={"quality_flags": "low-confidence"},
+                )
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

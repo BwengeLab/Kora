@@ -63,6 +63,22 @@ class SchemaTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             output.validate()
 
+    def test_output_collections_are_immutable(self) -> None:
+        output = AgentOutput(
+            organization_id="org-1",
+            agent_name="fixture_agent",
+            output_type="classification",
+            action="classify extraction",
+            confidence=Confidence(score=0.9, tier="auto", method="fixture"),
+            evidence=[],
+            metadata={"status": "clean"},
+            requires_human_approval=False,
+        )
+        with self.assertRaises(TypeError):
+            output.metadata["status"] = "changed"
+        with self.assertRaises(AttributeError):
+            output.evidence.append("changed")  # type: ignore[attr-defined]
+
 
 if __name__ == "__main__":
     unittest.main()

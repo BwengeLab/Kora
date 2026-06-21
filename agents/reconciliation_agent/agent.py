@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 from agents.runtime.runtime import AgentRequest
 from agents.shared.schemas import AgentOutput, Confidence, Evidence, refusal_output
 
@@ -23,6 +25,14 @@ def run(request: AgentRequest) -> AgentOutput:
     auto_threshold = float(
         request.context.get("auto_threshold", DEFAULT_AUTO_THRESHOLD)
     )
+    if not all(math.isfinite(value) for value in (score, suggested_threshold, auto_threshold)):
+        return refusal_output(
+            request.organization_id, AGENT_NAME, "match confidence values are invalid"
+        )
+    if not 0 <= suggested_threshold < auto_threshold <= 1:
+        return refusal_output(
+            request.organization_id, AGENT_NAME, "match confidence policy is invalid"
+        )
     if not candidate_id or not workflow_task_id:
         return refusal_output(
             request.organization_id,

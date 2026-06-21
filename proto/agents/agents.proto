@@ -4,6 +4,7 @@ package kora.agents.v1;
 
 import "proto/common/kora_common.proto";
 import "proto/reconciliation/reconciliation.proto";
+import "google/protobuf/struct.proto";
 
 option go_package = "github.com/kora-finance/kora/gen/go/agents;agentsv1";
 
@@ -12,7 +13,7 @@ message AgentRunRequest {
   string agent_name = 2;
   string objective = 3;
   repeated kora.common.v1.Evidence evidence = 4;
-  map<string, string> context = 5;
+  google.protobuf.Struct context = 5;
   string idempotency_key = 6;
   bool contains_sensitive_financial_data = 7;
   bool external_models_allowed = 8;

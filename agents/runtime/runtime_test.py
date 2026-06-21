@@ -1,7 +1,7 @@
 import unittest
 from dataclasses import replace
 
-from agents.runtime.runtime import AgentRequest, AgentRuntime
+from agents.runtime.runtime import AgentRequest, AgentRuntime, RunRecord
 from agents.shared.schemas import AgentOutput, Confidence, Evidence, Money
 
 
@@ -20,6 +20,14 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(self.runtime.get_run("org-1", record.run_id), record)
         with self.assertRaises(ValueError):
             self.runtime.get_run("org-2", record.run_id)
+
+        forced_external = replace(
+            request,
+            contains_sensitive_financial_data=False,
+            external_models_allowed=True,
+            idempotency_key="external-attempt",
+        )
+        self.assertFalse(self.runtime.run(forced_external).external_model)
 
     def test_missing_evidence_returns_structured_refusal(self) -> None:
         request = replace(self.request(), evidence=[])
@@ -97,7 +105,7 @@ class RuntimeTests(unittest.TestCase):
 
 class FakeRepository:
     def __init__(self) -> None:
-        self.runs = {}
+        self.runs: dict[str, RunRecord] = {}
 
     def find_by_idempotency(self, organization_id, idempotency_key):
         return next(

@@ -44,7 +44,7 @@ class EvaluatorTests(unittest.TestCase):
         self.assertEqual(store.list_for_run("org-1", "run-1"), [record])
         self.assertEqual(store.list_for_run("org-2", "run-1"), [])
         with self.assertRaises(Exception):
-            record.label = "incorrect"
+            record.label = "incorrect"  # type: ignore[misc]
 
 
 if __name__ == "__main__":

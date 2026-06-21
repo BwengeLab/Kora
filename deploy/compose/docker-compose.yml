@@ -76,6 +76,7 @@ services:
       KORA_AGENT_RUNTIME_HOST: 0.0.0.0
       KORA_AGENT_RUNTIME_PORT: 8089
       KORA_AGENT_RUNTIME_TOKEN: ${KORA_AGENT_RUNTIME_TOKEN:-development-only-agent-token}
+      KORA_JWT_SECRET: ${KORA_JWT_SECRET:-development-only-jwt-secret}
       DATABASE_URL: postgres://kora:kora@postgres:5432/kora?sslmode=disable
     depends_on:
       postgres:

@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from agents.runtime.service import app
 import agents.runtime.service as service
+from agents.runtime.auth_test import sign
 
 
 class AgentRuntimeServiceTests(unittest.TestCase):
@@ -96,6 +97,41 @@ class AgentRuntimeServiceTests(unittest.TestCase):
                 },
             )
             self.assertEqual(allowed.status_code, 200)
+
+    def test_gateway_identity_cannot_cross_tenants_or_users(self) -> None:
+        token = sign(
+            {"sub": "user-1", "org": "org-service", "exp": 4_102_444_800},
+            "jwt-secret",
+        )
+        with patch.object(service, "INTERNAL_TOKEN", "service-secret"), patch.object(
+            service, "JWT_SECRET", "jwt-secret"
+        ):
+            headers = {
+                "X-Kora-Internal-Token": "service-secret",
+                "Authorization": f"Bearer {token}",
+            }
+            allowed = self.client.post(
+                "/v1/agent-runs",
+                headers=headers,
+                json={
+                    "organization_id": "org-service",
+                    "user_id": "user-1",
+                    "agent_name": "data_intake_agent",
+                    "objective": "review extraction",
+                },
+            )
+            self.assertEqual(allowed.status_code, 200, allowed.text)
+            denied = self.client.post(
+                "/v1/agent-runs",
+                headers=headers,
+                json={
+                    "organization_id": "org-other",
+                    "user_id": "user-1",
+                    "agent_name": "data_intake_agent",
+                    "objective": "review extraction",
+                },
+            )
+            self.assertEqual(denied.status_code, 403)
 
     @staticmethod
     def evidence(record_id: str) -> dict[str, object]:

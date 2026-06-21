@@ -3,13 +3,13 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 from threading import RLock
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Protocol, Sequence
 from uuid import uuid4
 import hashlib
 import json
 
 from agents.model_router.router import ModelPlan, ModelRequest, route_model
-from agents.shared.schemas import AgentOutput, Evidence, refusal_output
+from agents.shared.schemas import AgentOutput, Evidence, FrozenDict, refusal_output
 
 
 AgentHandler = Callable[["AgentRequest"], AgentOutput]
@@ -21,12 +21,16 @@ class AgentRequest:
     user_id: str
     agent_name: str
     objective: str
-    evidence: list[Evidence]
+    evidence: Sequence[Evidence]
     context: dict[str, Any]
     estimated_complexity: str = "low"
     contains_sensitive_financial_data: bool = True
     external_models_allowed: bool = False
     idempotency_key: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "evidence", tuple(self.evidence))
+        object.__setattr__(self, "context", FrozenDict(self.context))
 
     def validate(self) -> None:
         if not self.organization_id or not self.user_id:
@@ -35,6 +39,10 @@ class AgentRequest:
             raise ValueError("agent_name and objective are required")
         if self.estimated_complexity not in {"low", "medium", "high"}:
             raise ValueError("estimated_complexity is invalid")
+        try:
+            json.dumps(self.context, sort_keys=True)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("agent context must be JSON serializable") from exc
 
 
 @dataclass(frozen=True)
@@ -97,18 +105,18 @@ class AgentRuntime:
                     raise ValueError("idempotency key was reused with a different request")
                 return existing
         if self._repository:
-            existing = self._repository.find_by_idempotency(
+            persisted = self._repository.find_by_idempotency(
                 request.organization_id, idempotency_key
             )
-            if existing:
-                if existing.request_fingerprint != request_fingerprint:
+            if persisted:
+                if persisted.request_fingerprint != request_fingerprint:
                     raise ValueError("idempotency key was reused with a different request")
                 with self._lock:
-                    self._runs[existing.run_id] = existing
+                    self._runs[persisted.run_id] = persisted
                     self._idempotency[
                         (request.organization_id, idempotency_key)
-                    ] = existing.run_id
-                return existing
+                    ] = persisted.run_id
+                return persisted
         handler = self._handlers.get(request.agent_name)
         if handler is None:
             raise ValueError("unknown agent")
@@ -193,7 +201,9 @@ class AgentRuntime:
         return route_model(
             ModelRequest(
                 objective=request.objective,
-                contains_sensitive_financial_data=request.contains_sensitive_financial_data,
+                contains_sensitive_financial_data=(
+                    request.contains_sensitive_financial_data or bool(request.evidence)
+                ),
                 estimated_complexity=request.estimated_complexity,
                 context=request.context,
                 external_models_allowed=request.external_models_allowed,

@@ -12,8 +12,8 @@ def run(request: AgentRequest) -> AgentOutput:
         return refusal_output(
             request.organization_id, AGENT_NAME, "extraction review requires evidence"
         )
-    quality_flags = sorted(set(request.context.get("quality_flags", [])))
-    missing_fields = sorted(set(request.context.get("missing_fields", [])))
+    quality_flags = _string_list(request.context.get("quality_flags", []))
+    missing_fields = _string_list(request.context.get("missing_fields", []))
     classification = str(request.context.get("classification", "")).strip()
     workflow_task_id = str(request.context.get("workflow_task_id", "")).strip()
     needs_review = bool(quality_flags or missing_fields)
@@ -86,3 +86,9 @@ def _explain(
     if classification:
         reasons.append("proposed classification: " + classification)
     return "; ".join(reasons) if reasons else "all required extraction checks passed"
+
+
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, (list, tuple)) or not all(isinstance(item, str) for item in value):
+        raise ValueError("quality flags and missing fields must be string lists")
+    return sorted(set(value))

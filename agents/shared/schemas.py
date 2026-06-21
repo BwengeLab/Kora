@@ -1,7 +1,38 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from typing import Any
+from typing import Any, Sequence
+import copy
+
+
+class FrozenDict(dict):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        values = dict(*args, **kwargs)
+        dict.__init__(self, {key: _freeze(value) for key, value in values.items()})
+
+    def _immutable(self, *args: Any, **kwargs: Any) -> None:
+        raise TypeError("mapping is immutable")
+
+    __setitem__ = _immutable
+    __delitem__ = _immutable
+    clear = _immutable
+    pop = _immutable
+    popitem = _immutable  # type: ignore[assignment]
+    setdefault = _immutable
+    update = _immutable
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> "FrozenDict":
+        return FrozenDict(copy.deepcopy(dict(self), memo))
+
+
+def _freeze(value: Any) -> Any:
+    if isinstance(value, dict):
+        return FrozenDict(value)
+    if isinstance(value, list):
+        return tuple(_freeze(item) for item in value)
+    if isinstance(value, set):
+        return frozenset(_freeze(item) for item in value)
+    return value
 
 
 CONFIDENCE_TIERS = {"auto", "suggested", "review", "rejected"}
@@ -92,7 +123,7 @@ class AgentOutput:
     output_type: str
     action: str
     confidence: Confidence
-    evidence: list[Evidence]
+    evidence: Sequence[Evidence]
     requires_human_approval: bool = True
     refused: bool = False
     refusal_reason: str = ""
@@ -101,6 +132,10 @@ class AgentOutput:
     run_id: str = ""
     schema_version: str = "v1"
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "evidence", tuple(self.evidence))
+        object.__setattr__(self, "metadata", FrozenDict(self.metadata))
 
     def validate(self) -> None:
         if not self.organization_id:

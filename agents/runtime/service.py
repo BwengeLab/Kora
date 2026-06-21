@@ -15,6 +15,7 @@ from agents.reconciliation_agent.agent import (
     run as run_reconciliation,
 )
 from agents.runtime.runtime import AgentRequest, AgentRuntime
+from agents.runtime.auth import Identity, verify_gateway_token
 from agents.shared.schemas import Confidence, Evidence, Money
 
 
@@ -72,7 +73,6 @@ class FeedbackRequest(BaseModel):
 class EvaluationRequest(BaseModel):
     organization_id: str = Field(min_length=1)
     run_id: str = Field(min_length=1)
-    case_id: str = Field(min_length=1)
     dataset_id: str = Field(min_length=1)
     case_id: str = Field(min_length=1)
 
@@ -98,15 +98,39 @@ EVALUATION_CASES = {
 }
 app = FastAPI(title="Kora Agent Runtime", version="1.0.0")
 INTERNAL_TOKEN = os.getenv("KORA_AGENT_RUNTIME_TOKEN", "")
-if os.getenv("KORA_ENV") == "production" and not INTERNAL_TOKEN:
-    raise RuntimeError("KORA_AGENT_RUNTIME_TOKEN is required in production")
+JWT_SECRET = os.getenv("KORA_JWT_SECRET", "")
+if os.getenv("KORA_ENV") == "production" and (
+    not INTERNAL_TOKEN
+    or not JWT_SECRET
+    or INTERNAL_TOKEN == "development-only-agent-token"
+    or JWT_SECRET == "development-only-jwt-secret"
+):
+    raise RuntimeError("strong agent runtime and JWT secrets are required in production")
 
 
-def require_internal_token(
+def authenticate(
     x_kora_internal_token: str = Header(default=""),
-) -> None:
+    authorization: str = Header(default=""),
+) -> Identity | None:
     if INTERNAL_TOKEN and x_kora_internal_token != INTERNAL_TOKEN:
         raise HTTPException(status_code=401, detail="invalid internal service token")
+    if not JWT_SECRET:
+        return None
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="missing gateway bearer token")
+    try:
+        return verify_gateway_token(authorization.removeprefix("Bearer "), JWT_SECRET)
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+
+def enforce_identity(identity: Identity | None, organization_id: str, user_id: str = "") -> None:
+    if identity is None:
+        return
+    if identity.organization_id != organization_id:
+        raise HTTPException(status_code=403, detail="cross-tenant request denied")
+    if user_id and identity.user_id != user_id:
+        raise HTTPException(status_code=403, detail="request user does not match gateway identity")
 
 
 @app.get("/healthz")
@@ -114,8 +138,11 @@ def health() -> dict[str, str]:
     return {"service": "agent_runtime", "status": "ok"}
 
 
-@app.post("/v1/agent-runs", dependencies=[Depends(require_internal_token)])
-def run_agent(request: RunAgentRequest) -> dict[str, Any]:
+@app.post("/v1/agent-runs")
+def run_agent(
+    request: RunAgentRequest, identity: Identity | None = Depends(authenticate)
+) -> dict[str, Any]:
+    enforce_identity(identity, request.organization_id, request.user_id)
     try:
         record = runtime.run(
             AgentRequest(
@@ -136,8 +163,13 @@ def run_agent(request: RunAgentRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.get("/v1/agent-runs/{run_id}", dependencies=[Depends(require_internal_token)])
-def get_run(run_id: str, organization_id: str) -> dict[str, Any]:
+@app.get("/v1/agent-runs/{run_id}")
+def get_run(
+    run_id: str,
+    organization_id: str,
+    identity: Identity | None = Depends(authenticate),
+) -> dict[str, Any]:
+    enforce_identity(identity, organization_id)
     try:
         return asdict(runtime.get_run(organization_id, run_id))
     except ValueError as exc:
@@ -147,9 +179,11 @@ def get_run(run_id: str, organization_id: str) -> dict[str, Any]:
 @app.post(
     "/v1/agent-feedback",
     status_code=201,
-    dependencies=[Depends(require_internal_token)],
 )
-def add_feedback(request: FeedbackRequest) -> dict[str, Any]:
+def add_feedback(
+    request: FeedbackRequest, identity: Identity | None = Depends(authenticate)
+) -> dict[str, Any]:
+    enforce_identity(identity, request.organization_id, request.reviewer_user_id)
     try:
         runtime.get_run(request.organization_id, request.run_id)
         return asdict(
@@ -165,8 +199,11 @@ def add_feedback(request: FeedbackRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@app.post("/v1/agent-evaluations", dependencies=[Depends(require_internal_token)])
-def evaluate_run(request: EvaluationRequest) -> dict[str, Any]:
+@app.post("/v1/agent-evaluations")
+def evaluate_run(
+    request: EvaluationRequest, identity: Identity | None = Depends(authenticate)
+) -> dict[str, Any]:
+    enforce_identity(identity, request.organization_id)
     try:
         run_record = runtime.get_run(request.organization_id, request.run_id)
         if request.dataset_id != "agent_evaluation_cases" or request.case_id not in EVALUATION_CASES:
