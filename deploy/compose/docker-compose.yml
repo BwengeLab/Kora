@@ -67,6 +67,27 @@ services:
       timeout: 5s
       retries: 5
 
+  agent-runtime:
+    build:
+      context: ../..
+      dockerfile: deploy/containers/agent-runtime.Dockerfile
+    container_name: kora-agent-runtime
+    environment:
+      KORA_AGENT_RUNTIME_HOST: 0.0.0.0
+      KORA_AGENT_RUNTIME_PORT: 8089
+      KORA_AGENT_RUNTIME_TOKEN: ${KORA_AGENT_RUNTIME_TOKEN:-development-only-agent-token}
+      DATABASE_URL: postgres://kora:kora@postgres:5432/kora?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8089:8089"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8089/healthz')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   postgres-data:
   timescale-data:

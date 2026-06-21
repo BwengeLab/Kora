@@ -13,6 +13,9 @@ message AgentRunRequest {
   string objective = 3;
   repeated kora.common.v1.Evidence evidence = 4;
   map<string, string> context = 5;
+  string idempotency_key = 6;
+  bool contains_sensitive_financial_data = 7;
+  bool external_models_allowed = 8;
 }
 
 message AgentRunResponse {
@@ -23,6 +26,14 @@ message AgentRunResponse {
   bool requires_human_approval = 5;
   bool refused = 6;
   string refusal_reason = 7;
+  string workflow_task_id = 8;
+  string match_candidate_id = 9;
+  string action = 10;
+  string schema_version = 11;
+  string model_route = 12;
+  repeated string redacted_fields = 13;
+  string request_fingerprint = 14;
+  string output_type = 15;
 }
 
 message ReconciliationAgentRequest {
@@ -34,11 +45,33 @@ message ReconciliationAgentResponse {
   repeated kora.reconciliation.v1.MatchCandidate suggested_candidates = 1;
 }
 
+message RecordAgentFeedbackRequest {
+  kora.common.v1.TenantContext tenant = 1;
+  string run_id = 2;
+  string label = 3;
+  string comment = 4;
+}
+
+message RecordAgentFeedbackResponse { string feedback_id = 1; }
+
+message EvaluateAgentRunRequest {
+  kora.common.v1.TenantContext tenant = 1;
+  string run_id = 2;
+  string dataset_id = 3;
+  string case_id = 4;
+}
+
+message EvaluateAgentRunResponse {
+  kora.common.v1.AgentEvaluationResult result = 1;
+  bool passed = 2;
+}
+
 service AgentRuntimeService {
   rpc RunAgent(AgentRunRequest) returns (AgentRunResponse);
+  rpc RecordAgentFeedback(RecordAgentFeedbackRequest) returns (RecordAgentFeedbackResponse);
+  rpc EvaluateAgentRun(EvaluateAgentRunRequest) returns (EvaluateAgentRunResponse);
 }
 
 service ReconciliationAgentService {
   rpc SuggestMatches(ReconciliationAgentRequest) returns (ReconciliationAgentResponse);
 }
-

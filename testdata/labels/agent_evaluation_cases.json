@@ -1,0 +1,22 @@
+{
+  "cases": [
+    {
+      "case_id": "ambiguous-payment-invoice-001",
+      "agent_name": "reconciliation_agent",
+      "expected_action": "suggest reconciliation match",
+      "expected_confidence": 0.82,
+      "expected_evidence_record_ids": ["payment", "invoice"],
+      "confidence_tolerance": 0.05,
+      "expect_refusal": false
+    },
+    {
+      "case_id": "missing-evidence-refusal-001",
+      "agent_name": "reconciliation_agent",
+      "expected_action": "refuse",
+      "expected_confidence": 0.0,
+      "expected_evidence_record_ids": [],
+      "confidence_tolerance": 0.0,
+      "expect_refusal": true
+    }
+  ]
+}

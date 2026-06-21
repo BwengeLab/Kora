@@ -1,89 +1,74 @@
-// Route placeholders. Every nav target referenced by a canonical blueprint
-// resolves to one of these so the router doesn't 404 while we wait for the
-// UI/UX descriptions. Each component intentionally renders nothing.
-//
-// When real pages land they replace these one by one, keyed by the path.
+// Route components. Tenant-plane pages resolve through <RolePage/> so each
+// role gets ITS OWN experience (or a role-scoped placeholder) — never another
+// role's screen. Platform/portal pages are single-role (guarded), so they use
+// a simple stub until built.
 
 import { useRouterState } from '@tanstack/react-router';
-import { useSession } from '../auth/hooks';
-import { CANONICAL_BLUEPRINT_IDS } from '../auth/catalog';
 import { GlassSurface } from '../design-system';
-import { HomeOrgOwner } from '../modules/home-org-owner';
-import { ReconciliationCockpit } from '../modules/reconciliation-cockpit';
+import { CreditPassportPortal } from '../modules/credit-passport-portal';
+import { HomeSuperAdmin } from '../modules/home-super-admin';
+import { RolePage } from './RolePage';
 
-// Visible-but-empty placeholder for routes whose real screen hasn't been
-// designed yet. Tells the developer/preview-user where they are and that the
-// shell is working. Replaced one-by-one as UI/UX descriptions land.
-const Placeholder = () => {
+// Generic stub for single-role (platform / portal / settings) routes.
+const Stub = () => {
   const path = useRouterState({ select: (s) => s.location.pathname });
   return (
-    <GlassSurface className="grid place-items-center px-8 py-16">
-      <div className="flex flex-col items-center gap-2 text-center">
-        <span className="rounded-full bg-white/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
-          Route stub
-        </span>
-        <h2 className="font-display text-xl font-semibold text-ink">
-          <code className="font-mono text-base">{path}</code>
-        </h2>
-        <p className="max-w-md text-sm text-ink-muted">
-          This route is registered and permission-guarded. The screen lands here once
-          its UI/UX description is provided.
-        </p>
-      </div>
-    </GlassSurface>
+    <div className="px-8 pb-8 pt-2">
+      <GlassSurface tone="strong" className="grid min-h-[60vh] place-items-center p-10">
+        <div className="flex flex-col items-center gap-2 text-center">
+          <span className="rounded-full bg-white/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
+            Route stub
+          </span>
+          <h2 className="font-display text-xl font-semibold text-ink">
+            <code className="font-mono text-base">{path}</code>
+          </h2>
+          <p className="max-w-md text-sm text-ink-muted">
+            This route is registered and permission-guarded. The screen lands here once it&apos;s built.
+          </p>
+        </div>
+      </GlassSurface>
+    </div>
   );
 };
 
-// Home routes by role: Org Owner gets the full Business Command Center now;
-// other roles still see the route-stub until their Home is built.
-export const HomePage = () => {
-  const session = useSession();
-  const blueprintId = session?.roles[0]?.blueprintId;
-  if (blueprintId === CANONICAL_BLUEPRINT_IDS.ORG_OWNER) {
-    return <HomeOrgOwner />;
-  }
-  return <Placeholder />;
-};
-// The Reconciliation Cockpit is the trust-spine surface — same workspace for
-// every role that has reconciliation:review (Finance Operator prepares,
-// Finance Lead approves, Org Owner/Auditor see read-only via permission gating
-// on the action bar — wired when those flows are built).
-export const ReconciliationPage = () => <ReconciliationCockpit />;
-export const ApprovalsPage = Placeholder;
-export const LedgerPage = Placeholder;
-export const CollectionsPage = Placeholder;
-export const ReportsPage = Placeholder;
-export const RoiPage = Placeholder;
-export const RelationshipsPage = Placeholder;
-export const ContractsPage = Placeholder;
-export const CreditPassportPage = Placeholder;
-export const AgentsPage = Placeholder;
-export const AuditPage = Placeholder;
-export const ConsentPage = Placeholder;
-export const DataIntakePage = Placeholder;
-export const TransactionsPage = Placeholder;
+// ─── Tenant plane — role-isolated ──────────────────────────────────────────
+export const HomePage = () => <RolePage pageKey="home" label="Home" />;
+export const ReconciliationPage = () => <RolePage pageKey="reconciliation" label="Reconciliation" />;
+export const ApprovalsPage = () => <RolePage pageKey="approvals" label="Action Center" />;
+export const LedgerPage = () => <RolePage pageKey="ledger" label="Ledger & Cashflow" />;
+export const CollectionsPage = () => <RolePage pageKey="collections" label="Collections" />;
+export const ReportsPage = () => <RolePage pageKey="reports" label="Reports" />;
+export const RoiPage = () => <RolePage pageKey="roi" label="Value / ROI" />;
+export const RelationshipsPage = () => <RolePage pageKey="relationships" label="Relationships" />;
+export const ContractsPage = () => <RolePage pageKey="contracts" label="Contracts" />;
+export const CreditPassportPage = () => <RolePage pageKey="credit_passport" label="Credit Passport" />;
+export const AgentsPage = () => <RolePage pageKey="agents" label="AI Agents" />;
+export const AuditPage = () => <RolePage pageKey="audit" label="Audit & Risk" />;
+export const ConsentPage = () => <RolePage pageKey="consent" label="Consent" />;
+export const DataIntakePage = () => <RolePage pageKey="data_intake" label="Data Intake" />;
+export const TransactionsPage = () => <RolePage pageKey="transactions" label="Transactions" />;
 
-// Settings (Org Admin)
-export const SettingsLayout = Placeholder;
-export const SettingsOrgPage = Placeholder;
-export const SettingsUsersPage = Placeholder;
-export const SettingsPoliciesPage = Placeholder;
-export const SettingsIntegrationsPage = Placeholder;
-export const SettingsBillingPage = Placeholder;
-export const SettingsDataPage = Placeholder;
+// ─── Settings (Org Admin / Owner) ──────────────────────────────────────────
+export const SettingsLayout = Stub;
+export const SettingsOrgPage = Stub;
+export const SettingsUsersPage = Stub;
+export const SettingsPoliciesPage = Stub;
+export const SettingsIntegrationsPage = Stub;
+export const SettingsBillingPage = Stub;
+export const SettingsDataPage = Stub;
 
-// Platform plane (Super Admin)
-export const PlatformHomePage = Placeholder;
-export const PlatformTenantsPage = Placeholder;
-export const PlatformPlansPage = Placeholder;
-export const PlatformConfigPage = Placeholder;
-export const PlatformHealthPage = Placeholder;
-export const PlatformUsagePage = Placeholder;
-export const PlatformUsersPage = Placeholder;
-export const PlatformSupportPage = Placeholder;
-export const PlatformAuditPage = Placeholder;
+// ─── Platform plane (Super Admin) ──────────────────────────────────────────
+export const PlatformHomePage = () => <HomeSuperAdmin />;
+export const PlatformTenantsPage = Stub;
+export const PlatformPlansPage = Stub;
+export const PlatformConfigPage = Stub;
+export const PlatformHealthPage = Stub;
+export const PlatformUsagePage = Stub;
+export const PlatformUsersPage = Stub;
+export const PlatformSupportPage = Stub;
+export const PlatformAuditPage = Stub;
 
-// External Collaborator portal
-export const PortalHomePage = Placeholder;
-export const PortalCreditPassportPage = Placeholder;
-export const PortalAccessPage = Placeholder;
+// ─── External Collaborator portal ──────────────────────────────────────────
+export const PortalHomePage = () => <CreditPassportPortal />;
+export const PortalCreditPassportPage = () => <CreditPassportPortal />;
+export const PortalAccessPage = Stub;

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Sidebar } from './Sidebar';
+import { Toaster } from './Toaster';
 import { TopBar } from './TopBar';
 
 // Persistent chrome wrapping every routed page. Sidebar + (TopBar + main).
@@ -25,6 +26,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <TopBar />
         <main className="scrollbar-thin flex-1 overflow-y-auto overflow-x-hidden pb-10">{children}</main>
       </div>
+      <Toaster />
     </div>
   );
 }

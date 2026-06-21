@@ -1,72 +1,61 @@
-import {
-  AlertTriangle,
-  ChevronRight,
-  CreditCard,
-  FileSignature,
-  GitBranch,
-  Inbox,
-  type LucideIcon,
-} from 'lucide-react';
+import { Link } from '@tanstack/react-router';
+import { ChevronRight } from 'lucide-react';
 import { GlassSurface, cn } from '../../design-system';
-import { seedActionCount, seedActions, type ActionSeed } from '../../seed/orgOwnerHome';
+import { VARIANTS } from '../action-center/variant';
+import { RISK_TONE, TYPE_ICON, TYPE_TONE } from '../action-center/typeMeta';
+import { useWorkflowStore } from '../../state/workflowStore';
 
-const ICON_MAP: Record<ActionSeed['iconKey'], LucideIcon> = {
-  recon: GitBranch,
-  approve: CreditCard,
-  collect: Inbox,
-  contract: FileSignature,
-  flag: AlertTriangle,
-};
-
-const TONE_MAP: Record<ActionSeed['tone'], string> = {
-  neutral: 'bg-white/80 text-ink-soft',
-  info: 'bg-info-soft text-info',
-  warning: 'bg-warning-soft text-warning',
-  danger: 'bg-danger-soft text-danger',
-};
-
+// LIVE: the owner's top-tier approvals (high-value / high-risk / dual-approval)
+// pulled from the shared workflow store — updates as items are prepared/approved.
 export function ActionCenterCard() {
+  const approvals = useWorkflowStore((s) => s.approvals);
+  const topTier = approvals.filter(
+    (a) => (a.stage === 'awaiting' || a.stage === 'partial') && VARIANTS.org_owner.includes(a),
+  );
+
   return (
     <GlassSurface tone="strong" className="flex h-full flex-col gap-3 p-5">
       <header className="flex items-center justify-between gap-3">
-        <h3 className="font-display text-base font-semibold text-ink">Action Center</h3>
+        <h3 className="font-display text-base font-semibold text-ink">Top approvals</h3>
         <span className="inline-flex items-center justify-center rounded-full bg-brand px-2.5 py-0.5 text-[11px] font-bold text-white">
-          {seedActionCount}
+          {topTier.length}
         </span>
       </header>
       <ul className="flex flex-col gap-2">
-        {seedActions.map((a) => (
-          <ActionRow key={a.id} action={a} />
-        ))}
+        {topTier.slice(0, 5).map((a) => {
+          const Icon = TYPE_ICON[a.type];
+          return (
+            <li key={a.id}>
+              <Link
+                to="/approvals"
+                className="group flex w-full items-center gap-3 rounded-2xl bg-white/55 p-2.5 text-left ring-1 ring-white/60 hover:bg-white"
+              >
+                <span className={cn('grid size-9 shrink-0 place-items-center rounded-xl', TYPE_TONE[a.type])}>
+                  <Icon className="size-[18px]" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-semibold text-ink">{a.title}</p>
+                  <p className="truncate text-[11px] text-ink-muted">{a.subtitle}</p>
+                </div>
+                <span className={cn('shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase', RISK_TONE[a.risk])}>{a.risk}</span>
+                <ChevronRight className="size-4 text-ink-muted group-hover:text-ink" />
+              </Link>
+            </li>
+          );
+        })}
+        {topTier.length === 0 ? (
+          <li className="grid place-items-center py-8 text-center text-[12px] text-ink-muted">
+            No high-stakes approvals waiting. 🎉
+          </li>
+        ) : null}
       </ul>
-      <button
-        type="button"
-        className="mt-1 inline-flex items-center justify-center gap-2 rounded-xl bg-white/65 py-2.5 text-[13px] font-semibold text-brand ring-1 ring-white/70 hover:bg-white"
+      <Link
+        to="/approvals"
+        className="mt-auto inline-flex items-center justify-center gap-2 rounded-xl bg-white/65 py-2.5 text-[13px] font-semibold text-brand ring-1 ring-white/70 hover:bg-white"
       >
-        View all actions
+        Go to Action Center
         <ChevronRight className="size-3.5" />
-      </button>
+      </Link>
     </GlassSurface>
-  );
-}
-
-function ActionRow({ action: a }: { action: ActionSeed }) {
-  const Icon = ICON_MAP[a.iconKey];
-  return (
-    <li>
-      <button
-        type="button"
-        className="group flex w-full items-center gap-3 rounded-2xl bg-white/55 p-2.5 text-left ring-1 ring-white/60 hover:bg-white"
-      >
-        <span className={cn('grid size-9 shrink-0 place-items-center rounded-xl', TONE_MAP[a.tone])}>
-          <Icon className="size-[18px]" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-semibold text-ink">{a.title}</p>
-          <p className="truncate text-[11px] text-ink-muted">{a.subtitle}</p>
-        </div>
-        <ChevronRight className="size-4 text-ink-muted group-hover:text-ink" />
-      </button>
-    </li>
   );
 }

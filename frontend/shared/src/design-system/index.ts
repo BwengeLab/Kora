@@ -18,3 +18,4 @@ export { AreaChart, type AreaChartProps, type AreaSeries } from './components/ch
 export { DonutChart, type DonutChartProps, type DonutSlice } from './components/charts/DonutChart';
 export { GaugeChart, type GaugeChartProps } from './components/charts/GaugeChart';
 export { Sparkline, type SparklineProps } from './components/charts/Sparkline';
+export { ProgressRing, type ProgressRingProps } from './components/charts/ProgressRing';

@@ -6,7 +6,10 @@ import { useAutoResize } from './useAutoResize';
 export interface AreaSeries {
   name: string;
   color: string;
-  data: number[];
+  /** null values create a gap — used to split actual vs forecast. */
+  data: (number | null)[];
+  /** dashed line (e.g. for the forecast portion) */
+  dashed?: boolean;
 }
 
 export interface AreaChartProps {
@@ -70,7 +73,8 @@ export function AreaChart({ xLabels, series, height = 220, showLegend = false, g
         symbol: 'circle',
         symbolSize: 8,
         emphasis: { focus: 'series', itemStyle: { borderColor: 'white', borderWidth: 3 } },
-        lineStyle: { width: 2.5, color: s.color },
+        connectNulls: false,
+        lineStyle: { width: 2.5, color: s.color, type: s.dashed ? 'dashed' : 'solid' },
         itemStyle: { color: s.color, borderColor: 'white', borderWidth: 2 },
         areaStyle: {
           color: {
