@@ -6,6 +6,19 @@ import "proto/common/kora_common.proto";
 
 option go_package = "github.com/kora-finance/kora/gen/go/insurance;insurancev1";
 
+enum InsuranceRecordType {
+  INSURANCE_RECORD_TYPE_UNSPECIFIED = 0;
+  INSURANCE_RECORD_TYPE_POLICY = 1;
+  INSURANCE_RECORD_TYPE_CLAIM = 2;
+  INSURANCE_RECORD_TYPE_BROKER = 3;
+  INSURANCE_RECORD_TYPE_PREMIUM = 4;
+  INSURANCE_RECORD_TYPE_CLAIM_PAYMENT = 5;
+  INSURANCE_RECORD_TYPE_COMMISSION = 6;
+  INSURANCE_RECORD_TYPE_SUPPLIER_PAYMENT = 7;
+  INSURANCE_RECORD_TYPE_BANK_CHARGE = 8;
+  INSURANCE_RECORD_TYPE_REFUND = 9;
+}
+
 message PolicyMapping {
   string policy_id = 1;
   string customer_external_party_id = 2;
@@ -34,14 +47,29 @@ message MapInsuranceRecordRequest {
   string adapter_record_type = 2;
   map<string, string> source_fields = 3;
   kora.common.v1.Evidence evidence = 4;
+  InsuranceRecordType record_type = 5;
 }
 
 message MapInsuranceRecordResponse {
   repeated kora.common.v1.BusinessEvent events = 1;
   repeated string quality_flags = 2;
+  string mapping_id = 3;
+  map<string, string> related_ids = 4;
+  string reference = 5;
+  bool created = 6;
+  kora.common.v1.Evidence evidence = 7;
 }
+
+message ImportTemplate {
+  InsuranceRecordType record_type = 1;
+  repeated string required_columns = 2;
+  repeated string optional_columns = 3;
+}
+
+message ListImportTemplatesRequest { kora.common.v1.TenantContext tenant = 1; }
+message ListImportTemplatesResponse { repeated ImportTemplate templates = 1; }
 
 service InsuranceAdapterService {
   rpc MapInsuranceRecord(MapInsuranceRecordRequest) returns (MapInsuranceRecordResponse);
+  rpc ListImportTemplates(ListImportTemplatesRequest) returns (ListImportTemplatesResponse);
 }
-

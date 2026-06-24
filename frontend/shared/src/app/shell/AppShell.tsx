@@ -3,6 +3,7 @@ import { CopilotPanel } from './CopilotPanel';
 import { DocViewer } from './DocViewer';
 import { Sidebar } from './Sidebar';
 import { Toaster } from './Toaster';
+import { ToolsLauncher } from './ToolsLauncher';
 import { TopBar } from './TopBar';
 
 // Persistent chrome wrapping every routed page. Sidebar + (TopBar + main).
@@ -31,6 +32,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <Toaster />
       <DocViewer />
       <CopilotPanel />
+      <ToolsLauncher />
     </div>
   );
 }

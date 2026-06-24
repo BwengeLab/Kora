@@ -1,6 +1,11 @@
 # Kora Document AI
 
-Deterministic Phase 4 extraction service for CSV, Excel, text PDF, and receipt/image sources.
+Enterprise document-intelligence pipeline for CSV, Excel, PDF, and image sources.
+
+The v2 path performs signature-based file inspection, bounded parsing, malware-policy
+enforcement, provider routing, page/line/token extraction with coordinates, and
+replay-safe asynchronous processing. It does not classify document types or map
+business fields. Semantic interpretation happens in a separate validator stage.
 
 ## Run locally
 
@@ -24,3 +29,9 @@ The service listens on `http://127.0.0.1:8088` by default.
 - Evidence suitable for downstream normalization and reconciliation.
 
 OCR is performed with Tesseract in the container. If OCR is unavailable or returns no text, the service emits review flags and no trusted records.
+
+The complete production contract is documented in
+`docs/15-DOCUMENT-EXTRACTION.md`.
+
+Large, irregular tables and handwriting require a stronger layout-aware provider.
+External providers are tenant-policy gated and disabled by default.

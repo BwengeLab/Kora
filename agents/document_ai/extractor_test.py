@@ -1,9 +1,11 @@
 import json
 import tempfile
 import unittest
+import io
 from pathlib import Path
 
 from PIL import Image
+from reportlab.pdfgen import canvas  # type: ignore[import-untyped]
 
 from agents.document_ai.extractor import extract_csv, extract_document
 from agents.document_ai.schemas import ExtractionContext
@@ -113,6 +115,30 @@ class ExtractorTests(unittest.TestCase):
         self.assertEqual(result.records, ())
         self.assertIn("needs-review", result.quality_flags)
         self.assertIn("OCR unavailable", result.warnings[0])
+
+    def test_scanned_pdf_uses_page_level_ocr_fallback(self) -> None:
+        pdf = io.BytesIO()
+        document = canvas.Canvas(pdf)
+        document.rect(10, 10, 100, 100, fill=1)
+        document.showPage()
+        document.save()
+        context = ExtractionContext(
+            organization_id="org-1",
+            source_document_id="doc-scan",
+            ingestion_batch_id="batch-1",
+            extraction_version_id="version-1",
+            file_name="scan.pdf",
+            content_type="application/pdf",
+        )
+        result = extract_document(
+            pdf.getvalue(),
+            context,
+            ocr_backend=lambda image, language: RECEIPT_OCR_TEXT,
+            pdf_page_renderer=lambda content, page: Image.new("RGB", (100, 100)),
+        )
+        self.assertEqual(len(result.records), 1)
+        self.assertEqual(result.records[0].evidence.confidence.method, "pdf-ocr")
+        self.assertIn("page-ocr-fallback:1", result.warnings)
 
     @staticmethod
     def _fixture_ocr(image: object, language: str) -> str:

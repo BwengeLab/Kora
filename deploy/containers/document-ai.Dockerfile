@@ -6,7 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     KORA_DOCUMENT_AI_PORT=8088
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends tesseract-ocr \
+    && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng tesseract-ocr-fra clamav \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

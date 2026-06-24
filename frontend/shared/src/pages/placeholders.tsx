@@ -3,11 +3,16 @@
 // role's screen. Platform/portal pages are single-role (guarded), so they use
 // a simple stub until built.
 
-import { useRouterState } from '@tanstack/react-router';
+import { Outlet, useRouterState } from '@tanstack/react-router';
 import { GlassSurface } from '../design-system';
+import { AccountSettings } from '../modules/account';
+import { PortalAccessPage as PortalAccess } from '../modules/portal-access';
 import { ClaimsWorkspace } from '../modules/claims';
 import { CreditPassportPortal } from '../modules/credit-passport-portal';
 import { HomeSuperAdmin } from '../modules/home-super-admin';
+import { Mailbox } from '../modules/mailbox';
+import * as Platform from '../modules/platform';
+import * as Settings from '../modules/settings';
 import { RolePage } from './RolePage';
 
 // Generic stub for single-role (platform / portal / settings) routes.
@@ -51,28 +56,34 @@ export const TransactionsPage = () => <RolePage pageKey="transactions" label="Tr
 // The Claims route renders the workspace directly — it self-gates to the
 // locked "unlock this pack" state when the Insurance feature is disabled.
 export const ClaimsPage = () => <ClaimsWorkspace />;
+// Mail is a per-user feature available to every role (not behind RolePage).
+export const MailPage = () => <Mailbox />;
+// Personal account & preferences — the gear icon. Per-user, every role.
+export const AccountPage = () => <AccountSettings />;
 
 // ─── Settings (Org Admin / Owner) ──────────────────────────────────────────
-export const SettingsLayout = Stub;
-export const SettingsOrgPage = Stub;
-export const SettingsUsersPage = Stub;
-export const SettingsPoliciesPage = Stub;
-export const SettingsIntegrationsPage = Stub;
-export const SettingsBillingPage = Stub;
-export const SettingsDataPage = Stub;
+export const SettingsLayout = Settings.SettingsLayout;
+export const SettingsOrgPage = Settings.SettingsOrgPage;
+export const SettingsUsersPage = Settings.SettingsUsersPage;
+export const SettingsPoliciesPage = Settings.SettingsPoliciesPage;
+export const SettingsIntegrationsPage = Settings.SettingsIntegrationsPage;
+export const SettingsBillingPage = Settings.SettingsBillingPage;
+export const SettingsDataPage = Settings.SettingsDataPage;
 
 // ─── Platform plane (Super Admin) ──────────────────────────────────────────
+export const PlatformLayout = Platform.PlatformLayout;
 export const PlatformHomePage = () => <HomeSuperAdmin />;
-export const PlatformTenantsPage = Stub;
-export const PlatformPlansPage = Stub;
-export const PlatformConfigPage = Stub;
-export const PlatformHealthPage = Stub;
-export const PlatformUsagePage = Stub;
-export const PlatformUsersPage = Stub;
-export const PlatformSupportPage = Stub;
-export const PlatformAuditPage = Stub;
+export const PlatformTenantsPage = Platform.PlatformTenantsPage;
+export const PlatformPlansPage = Platform.PlatformPlansPage;
+export const PlatformConfigPage = Platform.PlatformConfigPage;
+export const PlatformHealthPage = Platform.PlatformHealthPage;
+export const PlatformUsagePage = Platform.PlatformUsagePage;
+export const PlatformUsersPage = Platform.PlatformUsersPage;
+export const PlatformSupportPage = Platform.PlatformSupportPage;
+export const PlatformAuditPage = Platform.PlatformAuditPage;
 
 // ─── External Collaborator portal ──────────────────────────────────────────
+export const PortalLayout = () => <Outlet />;
 export const PortalHomePage = () => <CreditPassportPortal />;
 export const PortalCreditPassportPage = () => <CreditPassportPortal />;
-export const PortalAccessPage = Stub;
+export const PortalAccessPage = () => <PortalAccess />;

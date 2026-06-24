@@ -12,6 +12,105 @@ message SourceLocation {
   string sheet_name = 3;
 }
 
+message BoundingBox {
+  int32 page_number = 1;
+  double x0 = 2;
+  double y0 = 3;
+  double x1 = 4;
+  double y1 = 5;
+  string unit = 6;
+}
+
+message FieldLineage {
+  string field_name = 1;
+  string raw_text = 2;
+  string normalized_value = 3;
+  double confidence = 4;
+  string extraction_method = 5;
+  string model_name = 6;
+  string model_version = 7;
+  string source_record_id = 8;
+  BoundingBox bounding_box = 9;
+  bool calibrated = 10;
+  repeated string validation_codes = 11;
+}
+
+message ValidationIssue {
+  string code = 1;
+  string severity = 2;
+  string message = 3;
+  string field_name = 4;
+}
+
+message ContentToken {
+  string text = 1;
+  double confidence = 2;
+  BoundingBox bounding_box = 3;
+}
+
+message ContentLine {
+  string text = 1;
+  int32 reading_order = 2;
+  repeated ContentToken tokens = 3;
+  BoundingBox bounding_box = 4;
+}
+
+message ContentCell {
+  string text = 1;
+  int32 row_index = 2;
+  int32 column_index = 3;
+  repeated ContentToken tokens = 4;
+  BoundingBox bounding_box = 5;
+}
+
+message ContentTable {
+  int32 page_number = 1;
+  int32 reading_order = 2;
+  int32 row_count = 3;
+  int32 column_count = 4;
+  repeated ContentCell cells = 5;
+  double confidence = 6;
+  BoundingBox bounding_box = 7;
+}
+
+message ExtractionQuality {
+  int32 token_count = 1;
+  int32 positioned_token_count = 2;
+  int32 scored_token_count = 3;
+  int32 low_confidence_token_count = 4;
+  optional double mean_confidence = 5;
+  double coordinate_coverage = 6;
+  double printable_character_ratio = 7;
+}
+
+message ContentPage {
+  int32 page_number = 1;
+  int32 width = 2;
+  int32 height = 3;
+  repeated ContentLine lines = 4;
+  repeated ContentTable tables = 5;
+}
+
+message RawDocumentContent {
+  string full_text = 1;
+  repeated ContentPage pages = 2;
+  string extraction_method = 3;
+  string language = 4;
+  repeated string warnings = 5;
+  ExtractionQuality quality = 6;
+}
+
+message FileInspection {
+  string disposition = 1;
+  string detected_type = 2;
+  string sha256 = 3;
+  int64 size_bytes = 4;
+  int32 page_count = 5;
+  repeated string warnings = 6;
+  repeated string reasons = 7;
+  string malware_status = 8;
+}
+
 message ExtractDocumentRequest {
   kora.common.v1.TenantContext tenant = 1;
   string source_document_id = 2;
@@ -45,6 +144,65 @@ message ExtractDocumentResponse {
   map<string, string> metadata = 6;
 }
 
+message AnalyzeDocumentResponse {
+  FileInspection inspection = 1;
+  ExtractDocumentResponse extraction = 2;
+  string provider_name = 3;
+  string provider_version = 4;
+  repeated FieldLineage field_lineage = 5;
+  repeated ValidationIssue validation_issues = 6;
+  bool requires_human_review = 7;
+  RawDocumentContent raw_content = 8;
+}
+
+enum ExtractionJobState {
+  EXTRACTION_JOB_STATE_UNSPECIFIED = 0;
+  EXTRACTION_JOB_STATE_QUEUED = 1;
+  EXTRACTION_JOB_STATE_PROCESSING = 2;
+  EXTRACTION_JOB_STATE_RETRY = 3;
+  EXTRACTION_JOB_STATE_NEEDS_REVIEW = 4;
+  EXTRACTION_JOB_STATE_COMPLETED = 5;
+  EXTRACTION_JOB_STATE_FAILED = 6;
+  EXTRACTION_JOB_STATE_DEAD_LETTER = 7;
+}
+
+message SubmitExtractionJobRequest {
+  kora.common.v1.TenantContext tenant = 1;
+  string document_id = 2;
+  string extraction_version_id = 3;
+  string idempotency_key = 4;
+  string document_fingerprint = 5;
+  string object_key = 6;
+  string file_name = 7;
+  string content_type = 8;
+  string preferred_provider = 9;
+  bool external_provider_allowed = 10;
+  string ocr_language = 11;
+  int32 max_attempts = 12;
+  string ingestion_batch_id = 13;
+}
+
+message ExtractionJob {
+  string id = 1;
+  kora.common.v1.TenantContext tenant = 2;
+  string document_id = 3;
+  string extraction_version_id = 4;
+  ExtractionJobState state = 5;
+  int32 attempt_count = 6;
+  int32 max_attempts = 7;
+  string last_error = 8;
+  string created_at = 9;
+  string updated_at = 10;
+  string ingestion_batch_id = 11;
+}
+
+message SubmitExtractionJobResponse { ExtractionJob job = 1; }
+message GetExtractionJobRequest { kora.common.v1.TenantContext tenant = 1; string job_id = 2; }
+message GetExtractionJobResponse { ExtractionJob job = 1; }
+
 service DocumentAIService {
   rpc ExtractDocument(ExtractDocumentRequest) returns (ExtractDocumentResponse);
+  rpc AnalyzeDocument(ExtractDocumentRequest) returns (AnalyzeDocumentResponse);
+  rpc SubmitExtractionJob(SubmitExtractionJobRequest) returns (SubmitExtractionJobResponse);
+  rpc GetExtractionJob(GetExtractionJobRequest) returns (GetExtractionJobResponse);
 }

@@ -1,0 +1,135 @@
+syntax = "proto3";
+
+package kora.creditpassport.v1;
+
+import "proto/common/kora_common.proto";
+
+option go_package = "github.com/kora-finance/kora/gen/go/creditpassport;creditpassportv1";
+
+message AffordabilityPolicy {
+  string id = 1;
+  kora.common.v1.TenantContext tenant = 2;
+  int32 version = 3;
+  string currency = 4;
+  int32 max_debt_service_basis_points = 5;
+  int32 stress_buffer_basis_points = 6;
+  int32 annual_interest_basis_points = 7;
+  int32 term_months = 8;
+  kora.common.v1.Evidence evidence = 9;
+}
+
+message RiskFlag {
+  string id = 1;
+  kora.common.v1.TenantContext tenant = 2;
+  string source_event_id = 3;
+  string type = 4;
+  string severity = 5;
+  string reason = 6;
+  kora.common.v1.Evidence evidence = 7;
+}
+
+message CashflowSummary {
+  kora.common.v1.Money money_in = 1;
+  kora.common.v1.Money money_out = 2;
+  kora.common.v1.Money net_cashflow = 3;
+  kora.common.v1.Money average_monthly = 4;
+  int32 months_observed = 5;
+  repeated kora.common.v1.Evidence evidence = 6;
+}
+
+message PaymentDiscipline {
+  int32 matched_payments = 1;
+  int32 on_time_payments = 2;
+  int32 late_payments = 3;
+  int32 suggested_matches = 4;
+  int32 duplicate_payments = 5;
+  repeated kora.common.v1.Evidence evidence = 6;
+}
+
+message ReceivableSummary {
+  kora.common.v1.Money outstanding = 1;
+  kora.common.v1.Money overdue = 2;
+  int32 outstanding_invoice_count = 3;
+  int32 overdue_invoice_count = 4;
+  int32 undated_invoice_count = 5;
+  repeated kora.common.v1.Evidence evidence = 6;
+}
+
+message ObligationSummary {
+  kora.common.v1.Money total = 1;
+  kora.common.v1.Money monthly_debt_service = 2;
+  int32 active_obligation_count = 3;
+  repeated kora.common.v1.Evidence evidence = 4;
+}
+
+message LedgerBalance {
+  string account_id = 1;
+  string account_code = 2;
+  string account_name = 3;
+  string account_type = 4;
+  kora.common.v1.Money balance = 5;
+  repeated kora.common.v1.Evidence evidence = 6;
+}
+
+message AffordabilityEstimate {
+  kora.common.v1.Money average_monthly_cashflow = 1;
+  kora.common.v1.Money existing_debt_service = 2;
+  kora.common.v1.Money max_monthly_payment = 3;
+  kora.common.v1.Money estimated_principal = 4;
+  int32 term_months = 5;
+  int32 annual_interest_basis_points = 6;
+  repeated string assumptions = 7;
+  string policy_id = 8;
+  int32 policy_version = 9;
+  kora.common.v1.Evidence policy_evidence = 10;
+}
+
+message CreditPassport {
+  string id = 1;
+  kora.common.v1.TenantContext tenant = 2;
+  string period_start = 3;
+  string period_end = 4;
+  string as_of = 5;
+  CashflowSummary cashflow = 6;
+  PaymentDiscipline payment_discipline = 7;
+  ReceivableSummary receivables = 8;
+  ObligationSummary obligations = 9;
+  repeated LedgerBalance ledger = 10;
+  repeated RiskFlag risk_flags = 11;
+  AffordabilityEstimate affordability = 12;
+  repeated kora.common.v1.Evidence evidence = 13;
+}
+
+message GenerateCreditPassportRequest {
+  kora.common.v1.TenantContext tenant = 1;
+  string period_start = 2;
+  string period_end = 3;
+  string as_of = 4;
+  repeated string event_ids = 5;
+  repeated string account_ids = 6;
+  repeated string approval_task_ids = 7;
+  repeated string posting_group_ids = 8;
+  repeated string risk_flag_ids = 9;
+  AffordabilityPolicy policy = 10;
+}
+message GenerateCreditPassportResponse { CreditPassport passport = 1; bool created = 2; }
+
+message ReadCreditPassportRequest {
+  kora.common.v1.TenantContext tenant = 1;
+  string passport_id = 2;
+}
+message ReadCreditPassportResponse { CreditPassport passport = 1; }
+
+message ShareCreditPassportRequest {
+  kora.common.v1.TenantContext external_tenant = 1;
+  string grant_id = 2;
+  string passport_id = 3;
+  repeated string data_categories = 4;
+}
+message ShareCreditPassportResponse { CreditPassport passport = 1; }
+
+service CreditPassportService {
+  rpc GenerateCreditPassport(GenerateCreditPassportRequest) returns (GenerateCreditPassportResponse);
+  rpc ReadCreditPassport(ReadCreditPassportRequest) returns (ReadCreditPassportResponse);
+  rpc ShareCreditPassport(ShareCreditPassportRequest) returns (ShareCreditPassportResponse);
+}

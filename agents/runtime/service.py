@@ -9,6 +9,10 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from agents.data_intake_agent.agent import AGENT_NAME as INTAKE_AGENT, run as run_intake
+from agents.credit_passport_agent.agent import (
+    AGENT_NAME as CREDIT_PASSPORT_AGENT,
+    run as run_credit_passport,
+)
 from agents.evaluation.evaluator import FeedbackStore, evaluate_output, load_cases
 from agents.reconciliation_agent.agent import (
     AGENT_NAME as RECONCILIATION_AGENT,
@@ -86,6 +90,7 @@ if os.getenv("DATABASE_URL"):
 runtime = AgentRuntime(repository=repository)
 runtime.register(INTAKE_AGENT, run_intake, {"classification", "review_request"})
 runtime.register(RECONCILIATION_AGENT, run_reconciliation, {"suggestion"})
+runtime.register(CREDIT_PASSPORT_AGENT, run_credit_passport, {"explanation"})
 feedback = FeedbackStore(repository=repository)
 EVALUATION_CASES = {
     case.case_id: case

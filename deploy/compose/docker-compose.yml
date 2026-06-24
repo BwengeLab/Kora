@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: kora
       POSTGRES_DB: kora
     ports:
-      - "5432:5432"
+      - "${KORA_POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ../migrations:/docker-entrypoint-initdb.d:ro
@@ -59,6 +59,12 @@ services:
     environment:
       KORA_DOCUMENT_AI_HOST: 0.0.0.0
       KORA_DOCUMENT_AI_PORT: 8088
+      KORA_DOCUMENT_AI_TOKEN: ${KORA_DOCUMENT_AI_TOKEN:-development-only-document-token}
+      KORA_JWT_SECRET: ${KORA_JWT_SECRET:-development-only-jwt-secret}
+      DATABASE_URL: postgres://kora:kora@postgres:5432/kora?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "8088:8088"
     healthcheck:
@@ -66,6 +72,25 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  document-ai-worker:
+    build:
+      context: ../..
+      dockerfile: deploy/containers/document-ai.Dockerfile
+    container_name: kora-document-ai-worker
+    command: ["python", "-m", "agents.document_ai.worker_main"]
+    environment:
+      DATABASE_URL: postgres://kora:kora@postgres:5432/kora?sslmode=disable
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: kora
+      MINIO_SECRET_KEY: kora-password
+      MINIO_DOCUMENT_BUCKET: kora-documents
+      KORA_EXTRACTION_POLL_SECONDS: 2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
 
   agent-runtime:
     build:

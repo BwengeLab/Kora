@@ -24,8 +24,53 @@ message RevokeConsentGrantResponse {
   kora.common.v1.ConsentGrant grant = 1;
 }
 
+message AuthorizeExternalAccessRequest {
+  kora.common.v1.TenantContext external_tenant = 1;
+  string grant_id = 2;
+  string permission = 3;
+  string data_category = 4;
+  string period_start = 5;
+  string period_end = 6;
+  bool monitoring = 7;
+  string resource = 8;
+  string occurred_at = 9;
+}
+
+message ExternalAccessLog {
+  string id = 1;
+  string grant_id = 2;
+  kora.common.v1.TenantContext external_tenant = 3;
+  string permission = 4;
+  string data_category = 5;
+  string period_start = 6;
+  string period_end = 7;
+  bool monitoring = 8;
+  string resource = 9;
+  bool allowed = 10;
+  string reason = 11;
+  string occurred_at = 12;
+}
+
+message AuthorizeExternalAccessResponse {
+  bool authorized = 1;
+  ExternalAccessLog access_log = 2;
+}
+
+message ConsentTemplate {
+  string id = 1;
+  string name = 2;
+  repeated string allowed_data_categories = 3;
+  repeated string allowed_permissions = 4;
+  int32 default_validity_days = 5;
+  bool ongoing_monitoring = 6;
+}
+
+message ListConsentTemplatesRequest {}
+message ListConsentTemplatesResponse { repeated ConsentTemplate templates = 1; }
+
 service ConsentService {
   rpc CreateConsentGrant(CreateConsentGrantRequest) returns (CreateConsentGrantResponse);
   rpc RevokeConsentGrant(RevokeConsentGrantRequest) returns (RevokeConsentGrantResponse);
+  rpc AuthorizeExternalAccess(AuthorizeExternalAccessRequest) returns (AuthorizeExternalAccessResponse);
+  rpc ListConsentTemplates(ListConsentTemplatesRequest) returns (ListConsentTemplatesResponse);
 }
-

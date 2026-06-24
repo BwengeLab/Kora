@@ -100,10 +100,13 @@ func Reconcile(organizationID string, events []eventledger.Event, rules policy.P
 		} else if bestFactors["reference"] == 1 && bestFactors["amount"] == 0 {
 			state, reason = Suspicious, "same reference with amount conflict"
 		}
-		// Reconciliation candidates are one-to-one. Pairing both sides here avoids
-		// emitting the same proposal again from the opposite direction.
+		// Accepted and reviewable proposals are one-to-one. A rejected low-score
+		// candidate must not consume its counterpart because a later event may be
+		// a materially stronger match.
 		consumed[left.ID] = true
-		consumed[best.ID] = true
+		if state == Matched || state == Suggested || state == Suspicious {
+			consumed[best.ID] = true
+		}
 		result.Candidates = append(result.Candidates, candidate(left, best, state, bestScore, bestFactors, reason, rules))
 		if state != Matched {
 			result.Exceptions = append(result.Exceptions, exception(left, state, reason))
@@ -127,8 +130,14 @@ func score(left, right eventledger.Event, rules policy.Policy) (float64, map[str
 	}
 	f["date"] = dateScore(left.Evidence.OccurredOn, right.Evidence.OccurredOn)
 	f["counterparty"] = boolScore(norm(left.Attributes["party_name"]) != "" && norm(left.Attributes["party_name"]) == norm(right.Attributes["party_name"]))
-	f["document"] = boolScore(left.Attributes["document_link"] != "" && left.Attributes["document_link"] == right.Attributes["document_link"])
-	return round(f["reference"]*.40 + f["amount"]*.30 + f["date"]*.15 + f["counterparty"]*.10 + f["document"]*.05), f
+	leftLink := firstNonEmpty(left.Attributes["document_link"], left.Attributes["contract_link"], left.Attributes["obligation_link"])
+	rightLink := firstNonEmpty(right.Attributes["document_link"], right.Attributes["contract_link"], right.Attributes["obligation_link"])
+	f["document"] = boolScore(leftLink != "" && leftLink == rightLink)
+	// A shared generic business-object link is an authoritative reference even
+	// when each source uses a different transaction reference (for example, a
+	// claim number and its bank payment reference).
+	referenceStrength := math.Max(f["reference"], f["document"])
+	return round(referenceStrength*.40 + f["amount"]*.30 + f["date"]*.15 + f["counterparty"]*.10 + f["document"]*.05), f
 }
 func compatible(a, b eventledger.Event) bool {
 	return (a.Type == eventledger.PaymentReceived && b.Type == eventledger.InvoiceIssued) || (b.Type == eventledger.PaymentReceived && a.Type == eventledger.InvoiceIssued) || (a.Type == eventledger.PaymentSent && b.Type == eventledger.BillReceived) || (b.Type == eventledger.PaymentSent && a.Type == eventledger.BillReceived) || (a.Type == eventledger.PaymentSent && b.Type == eventledger.ObligationCreated) || (b.Type == eventledger.PaymentSent && a.Type == eventledger.ObligationCreated)
@@ -183,6 +192,14 @@ func boolScore(v bool) float64 {
 		return 1
 	}
 	return 0
+}
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 func abs(v int64) int64 {
 	if v < 0 {

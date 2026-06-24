@@ -1,0 +1,30 @@
+package main
+
+import (
+	"log"
+	"net/http"
+	"os"
+
+	"github.com/kora-finance/kora/libs/entities"
+	"github.com/kora-finance/kora/libs/eventledger"
+	"github.com/kora-finance/kora/libs/normalization"
+	"github.com/kora-finance/kora/services/insurance/internal/httpapi"
+	insurance "github.com/kora-finance/kora/verticals/insurance"
+)
+
+func main() {
+	normalizer := normalization.NewService(entities.NewResolver(), eventledger.NewStore())
+	server := httpapi.New(insurance.NewAdapter(normalizer))
+	address := ":" + env("PORT", "8080")
+	log.Printf("insurance adapter listening on %s", address)
+	if err := http.ListenAndServe(address, server); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func env(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
+}

@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import csv
 import io
+import json
+import os
 import re
+import subprocess
+import tempfile
 from dataclasses import replace
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Callable
+from collections.abc import Mapping
+from typing import Any, Callable, cast
 
 from agents.document_ai.schemas import (
     ExtractedRecord,
@@ -38,8 +43,10 @@ _HEADER_ALIASES = {
     "receipt_number": "reference",
     "payment_reference": "reference",
     "contract_number": "reference",
-    "policy_number": "reference",
-    "claim_number": "reference",
+    "policy_number": "policy_number",
+    "policy_no": "policy_number",
+    "claim_number": "claim_reference",
+    "claim_ref": "claim_reference",
     "amount": "amount",
     "total": "amount",
     "total_amount": "amount",
@@ -91,6 +98,7 @@ def extract_document(
     context: ExtractionContext,
     ocr_backend: Callable[[object, str], str] | None = None,
     ocr_language: str = "eng",
+    pdf_page_renderer: Callable[[bytes, int], object] | None = None,
 ) -> ExtractionResult:
     context.validate()
     if not content:
@@ -103,7 +111,13 @@ def extract_document(
     if suffix in {".xlsx", ".xlsm"} or "spreadsheetml" in content_type:
         return _extract_excel_bytes(content, context)
     if suffix == ".pdf" or content_type == "application/pdf":
-        return _extract_pdf_bytes(content, context)
+        return _extract_pdf_bytes(
+            content,
+            context,
+            ocr_backend=ocr_backend,
+            ocr_language=ocr_language,
+            page_renderer=pdf_page_renderer,
+        )
     if suffix in {".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff"} or content_type.startswith("image/"):
         return _extract_image_bytes(content, context, ocr_backend, ocr_language)
     return _empty_result(context, "unsupported-format", f"unsupported document format: {suffix or content_type}")
@@ -148,7 +162,7 @@ def _extract_csv_bytes(content: bytes, context: ExtractionContext) -> Extraction
 
 def _extract_excel_bytes(content: bytes, context: ExtractionContext) -> ExtractionResult:
     try:
-        from openpyxl import load_workbook
+        from openpyxl import load_workbook  # type: ignore[import-untyped]
     except ImportError as exc:
         return _empty_result(context, "excel", f"Excel parser unavailable: {exc}")
 
@@ -188,13 +202,23 @@ def _extract_excel_bytes(content: bytes, context: ExtractionContext) -> Extracti
     return replace(result, metadata={"sheet_count": str(len(workbook.sheetnames))})
 
 
-def _extract_pdf_bytes(content: bytes, context: ExtractionContext) -> ExtractionResult:
+def _extract_pdf_bytes(
+    content: bytes,
+    context: ExtractionContext,
+    ocr_backend: Callable[[object, str], str] | None,
+    ocr_language: str,
+    page_renderer: Callable[[bytes, int], object] | None,
+) -> ExtractionResult:
     try:
         try:
             from pypdf import PdfReader
+
+            reader_type: Any = PdfReader
         except ImportError:
-            from PyPDF2 import PdfReader
-        reader = PdfReader(io.BytesIO(content))
+            from PyPDF2 import PdfReader as LegacyPdfReader
+
+            reader_type = LegacyPdfReader
+        reader = reader_type(io.BytesIO(content))
     except Exception as exc:
         return _empty_result(context, "pdf", f"invalid PDF: {exc}")
 
@@ -202,21 +226,49 @@ def _extract_pdf_bytes(content: bytes, context: ExtractionContext) -> Extraction
     warnings: list[str] = []
     for page_number, page in enumerate(reader.pages, start=1):
         text = page.extract_text() or ""
+        parser = "pdf-text"
+        base_confidence = 0.90
         if not text.strip():
-            warnings.append(f"page-without-text:{page_number}")
-            continue
+            renderer = page_renderer or _pymupdf_render_page
+            backend = ocr_backend or _pytesseract_ocr
+            try:
+                image = renderer(content, page_number)
+                text = backend(image, ocr_language)
+                parser = "pdf-ocr"
+                base_confidence = 0.78
+                warnings.append(f"page-ocr-fallback:{page_number}")
+            except Exception as exc:
+                warnings.append(f"page-without-text:{page_number}")
+                warnings.append(f"page-ocr-unavailable:{page_number}:{exc}")
+                continue
+            if not text.strip():
+                warnings.append(f"page-ocr-empty:{page_number}")
+                continue
         records.append(
             _record_from_text(
                 text,
                 context,
                 source_record_id=f"page-{page_number}",
                 source_location=SourceLocation(page_number=page_number),
-                parser="pdf-text",
-                base_confidence=0.90,
+                parser=parser,
+                base_confidence=base_confidence,
             )
         )
     result = _finalize_result(context, "pdf", records, warnings)
     return replace(result, metadata={"page_count": str(len(reader.pages))})
+
+
+def _pymupdf_render_page(content: bytes, page_number: int) -> object:
+    import pymupdf  # type: ignore[import-not-found]
+    from PIL import Image
+
+    document = pymupdf.open(stream=content, filetype="pdf")
+    try:
+        page = document.load_page(page_number - 1)
+        pixmap = page.get_pixmap(matrix=pymupdf.Matrix(2, 2), alpha=False)
+        return Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)
+    finally:
+        document.close()
 
 
 def _extract_image_bytes(
@@ -228,13 +280,13 @@ def _extract_image_bytes(
     try:
         from PIL import Image
 
-        image = Image.open(io.BytesIO(content))
-        image.verify()
+        candidate = Image.open(io.BytesIO(content))
+        candidate.verify()
         image = Image.open(io.BytesIO(content)).convert("RGB")
     except Exception as exc:
         return _empty_result(context, "image-ocr", f"invalid image: {exc}")
 
-    backend = ocr_backend or _pytesseract_ocr
+    backend = ocr_backend or _local_ocr
     try:
         text = backend(image, ocr_language)
     except Exception as exc:
@@ -254,12 +306,98 @@ def _extract_image_bytes(
 
 
 def _pytesseract_ocr(image: object, language: str) -> str:
-    import pytesseract
-    from PIL import ImageOps
+    import pytesseract  # type: ignore[import-untyped]
+    from PIL import Image, ImageOps
 
-    prepared = ImageOps.autocontrast(ImageOps.grayscale(image))
+    prepared = ImageOps.autocontrast(ImageOps.grayscale(cast(Image.Image, image)))
     prepared = prepared.resize((prepared.width * 2, prepared.height * 2))
     return pytesseract.image_to_string(prepared, lang=language, config="--psm 6")
+
+
+def _local_ocr(image: object, language: str) -> str:
+    try:
+        return _pytesseract_ocr(image, language)
+    except Exception:
+        if os.name != "nt":
+            raise
+        return _windows_ocr(image, language)
+
+
+def _windows_ocr(image: object, language: str) -> str:
+    from PIL import Image
+
+    script = r"""
+$ErrorActionPreference='Stop'
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$generic=([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
+  $_.Name -eq 'AsTask' -and $_.IsGenericMethod -and $_.GetParameters().Count -eq 1
+})[0]
+function Await($operation,[Type]$type) {
+  $task=$generic.MakeGenericMethod($type).Invoke($null,@($operation)); $task.Wait(); $task.Result
+}
+[Windows.Storage.StorageFile,Windows.Storage,ContentType=WindowsRuntime] | Out-Null
+[Windows.Storage.Streams.IRandomAccessStream,Windows.Storage.Streams,ContentType=WindowsRuntime] | Out-Null
+[Windows.Graphics.Imaging.BitmapDecoder,Windows.Graphics.Imaging,ContentType=WindowsRuntime] | Out-Null
+[Windows.Graphics.Imaging.SoftwareBitmap,Windows.Graphics.Imaging,ContentType=WindowsRuntime] | Out-Null
+[Windows.Media.Ocr.OcrEngine,Windows.Foundation,ContentType=WindowsRuntime] | Out-Null
+$file=Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($env:KORA_OCR_FILE)) ([Windows.Storage.StorageFile])
+$stream=Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
+$decoder=Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
+$bitmap=Await ($decoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
+$engine=[Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
+if ($null -eq $engine) { throw 'Windows OCR engine is unavailable' }
+$result=Await ($engine.RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
+$result.Lines | ForEach-Object {
+  $first=@($_.Words)[0]
+  [pscustomobject]@{Text=$_.Text;X=$first.BoundingRect.X;Y=$first.BoundingRect.Y}
+} | ConvertTo-Json -Compress
+"""
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temporary:
+        path = temporary.name
+    try:
+        cast(Image.Image, image).save(path, format="PNG")
+        environment = dict(os.environ)
+        environment["KORA_OCR_FILE"] = path
+        completed = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+            capture_output=True,
+            check=True,
+            encoding="utf-8",
+            errors="replace",
+            env=environment,
+            timeout=45,
+        )
+        payload = completed.stdout.strip()
+        if not payload:
+            raise RuntimeError("Windows OCR returned no text")
+        lines = json.loads(payload)
+        if isinstance(lines, dict):
+            lines = [lines]
+        return _order_ocr_lines(lines)
+    finally:
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass
+
+
+def _order_ocr_lines(lines: list[dict[str, object]]) -> str:
+    ordered = sorted(lines, key=lambda line: (float(str(line["Y"])), float(str(line["X"]))))
+    bands: list[list[dict[str, object]]] = []
+    for line in ordered:
+        if not bands or abs(
+            float(str(line["Y"])) - float(str(bands[-1][0]["Y"]))
+        ) > 8:
+            bands.append([line])
+        else:
+            bands[-1].append(line)
+    return "\n".join(
+        "\t".join(
+            str(line["Text"])
+            for line in sorted(band, key=lambda item: float(str(item["X"])))
+        )
+        for band in bands
+    )
 
 
 def _record_from_text(
@@ -284,7 +422,7 @@ def _record_from_text(
 
 
 def _record_from_row(
-    row: dict[str, object],
+    row: Mapping[str, object],
     context: ExtractionContext,
     source_record_id: str,
     source_location: SourceLocation,
@@ -413,7 +551,7 @@ def _finalize_result(
         all_flags.update({"incomplete", "needs-review"})
         warnings.append("no-records-extracted")
     if all_flags == {"complete"}:
-        quality_flags = ("complete",)
+        quality_flags: tuple[str, ...] = ("complete",)
     else:
         all_flags.discard("complete")
         quality_flags = tuple(sorted(all_flags))
@@ -497,7 +635,14 @@ def _normalize_date(value: str) -> tuple[str, str]:
         return datetime.fromisoformat(normalized.replace("Z", "+00:00")).date().isoformat(), ""
     except ValueError:
         pass
-    for date_format in ("%d/%m/%Y", "%Y/%m/%d", "%d-%m-%Y", "%m/%d/%Y"):
+    for date_format in (
+        "%d/%m/%Y",
+        "%Y/%m/%d",
+        "%d-%m-%Y",
+        "%m/%d/%Y",
+        "%B %d, %Y",
+        "%b %d, %Y",
+    ):
         try:
             parsed = datetime.strptime(normalized, date_format).date().isoformat()
             ambiguous = bool(re.fullmatch(r"\d{1,2}/\d{1,2}/\d{4}", normalized))
@@ -538,7 +683,9 @@ def _money_from_fields(fields: dict[str, str]) -> Money | None:
         amount = Decimal(amount_value)
     except InvalidOperation:
         return None
-    currency = fields.get("currency", "RWF").upper()
+    currency = fields.get("currency", "").upper()
+    if not currency:
+        return None
     precision = 0 if currency in {"RWF", "UGX", "JPY"} else 2
     minor_units = int(amount * (10**precision))
     return Money(currency=currency, minor_units=minor_units, precision=precision)

@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package kora.reporting.v1;
+
+import "proto/common/kora_common.proto";
+import "proto/reconciliation/reconciliation.proto";
+
+option go_package = "github.com/kora-finance/kora/gen/go/reporting;reportingv1";
+
+enum ImpactType {
+  IMPACT_TYPE_UNSPECIFIED = 0;
+  IMPACT_TYPE_MONEY_RECOVERED = 1;
+  IMPACT_TYPE_DUPLICATE_PAYMENT_AVOIDED = 2;
+  IMPACT_TYPE_UNSUPPORTED_PAYMENT_CAUGHT = 3;
+  IMPACT_TYPE_LATE_INVOICE_COLLECTED = 4;
+  IMPACT_TYPE_HOURS_SAVED = 5;
+  IMPACT_TYPE_MISSING_DOCUMENT_FIXED = 6;
+}
+
+message VerifiedOutcome {
+  ImpactType type = 1;
+  string source_event_id = 2;
+  string approval_task_id = 3;
+  string posting_group_id = 4;
+  string audit_entry_id = 5;
+  string processing_started_at = 6;
+  string processing_ended_at = 7;
+  string benchmark_id = 8;
+  int32 benchmark_version = 9;
+}
+
+message GenerateReportRequest {
+  kora.common.v1.TenantContext tenant = 1;
+  repeated string event_ids = 2;
+  repeated string approval_task_ids = 3;
+  repeated string posting_group_ids = 4;
+  repeated string audit_entry_ids = 5;
+  bool include_roi = 6;
+  repeated VerifiedOutcome outcomes = 7;
+}
+
+message CurrencyLedgerSummary {
+  string currency = 1;
+  int64 debit_minor = 2;
+  int64 credit_minor = 3;
+  int32 posting_groups = 4;
+  int32 reversal_groups = 5;
+  int32 ledger_entry_count = 6;
+}
+
+message ROIMetric {
+  ImpactType type = 1;
+  kora.common.v1.Money amount = 2;
+  int64 minutes_saved = 3;
+  int32 count = 4;
+  repeated string source_event_ids = 5;
+  repeated kora.common.v1.Evidence evidence = 6;
+}
+
+message GeneratedReport {
+  string id = 1;
+  kora.common.v1.TenantContext tenant = 2;
+  string generated_at = 3;
+  repeated CurrencyLedgerSummary ledger = 4;
+  map<string, int32> approval_states = 5;
+  repeated kora.reconciliation.v1.ReconciliationException exceptions = 6;
+  int32 verified_audit_entries = 7;
+  repeated ROIMetric roi = 8;
+}
+
+message GenerateReportResponse { GeneratedReport report = 1; }
+
+service ReportingService {
+  rpc GenerateReport(GenerateReportRequest) returns (GenerateReportResponse);
+}

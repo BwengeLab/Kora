@@ -43,6 +43,8 @@ const consentRoute = route('/consent', P.ConsentPage, requirePermission(PERMISSI
 const dataIntakeRoute = route('/data-intake', P.DataIntakePage, requirePermission(PERMISSIONS.DOCUMENTS_UPLOAD));
 const transactionsRoute = route('/transactions', P.TransactionsPage, requirePermission(PERMISSIONS.EVENTS_READ));
 const claimsRoute = route('/claims', P.ClaimsPage);
+const mailRoute = route('/mail', P.MailPage);
+const accountRoute = route('/account', P.AccountPage);
 
 // --- Settings (Org Admin) ---
 const settingsRoute = createRoute({
@@ -51,6 +53,7 @@ const settingsRoute = createRoute({
   component: P.SettingsLayout,
   beforeLoad: requirePermission(PERMISSIONS.TENANT_READ),
 });
+const settingsIndexRoute = createRoute({ getParentRoute: () => settingsRoute, path: '/', component: P.SettingsOrgPage });
 const settingsOrgRoute = createRoute({ getParentRoute: () => settingsRoute, path: 'org', component: P.SettingsOrgPage });
 const settingsUsersRoute = createRoute({ getParentRoute: () => settingsRoute, path: 'users-and-roles', component: P.SettingsUsersPage, beforeLoad: requirePermission(PERMISSIONS.USERS_MANAGE) });
 const settingsPoliciesRoute = createRoute({ getParentRoute: () => settingsRoute, path: 'rules-and-policies', component: P.SettingsPoliciesPage, beforeLoad: requirePermission(PERMISSIONS.POLICY_MANAGE) });
@@ -60,7 +63,8 @@ const settingsDataRoute = createRoute({ getParentRoute: () => settingsRoute, pat
 
 // --- Platform plane (Super Admin) ---
 const platformGate = requirePermission(PERMISSIONS.PLATFORM_ADMIN);
-const platformRoute = createRoute({ getParentRoute: () => rootRoute, path: '/platform', component: P.PlatformHomePage, beforeLoad: platformGate });
+const platformRoute = createRoute({ getParentRoute: () => rootRoute, path: '/platform', component: P.PlatformLayout, beforeLoad: platformGate });
+const platformIndexRoute = createRoute({ getParentRoute: () => platformRoute, path: '/', component: P.PlatformHomePage });
 const platformTenantsRoute = createRoute({ getParentRoute: () => platformRoute, path: 'tenants', component: P.PlatformTenantsPage });
 const platformPlansRoute = createRoute({ getParentRoute: () => platformRoute, path: 'plans-and-billing', component: P.PlatformPlansPage });
 const platformConfigRoute = createRoute({ getParentRoute: () => platformRoute, path: 'config', component: P.PlatformConfigPage });
@@ -71,7 +75,8 @@ const platformSupportRoute = createRoute({ getParentRoute: () => platformRoute, 
 const platformAuditRoute = createRoute({ getParentRoute: () => platformRoute, path: 'audit', component: P.PlatformAuditPage });
 
 // --- External Collaborator portal ---
-const portalRoute = createRoute({ getParentRoute: () => rootRoute, path: '/portal', component: P.PortalHomePage });
+const portalRoute = createRoute({ getParentRoute: () => rootRoute, path: '/portal', component: P.PortalLayout });
+const portalIndexRoute = createRoute({ getParentRoute: () => portalRoute, path: '/', component: P.PortalHomePage });
 const portalCreditPassportRoute = createRoute({ getParentRoute: () => portalRoute, path: 'credit-passport', component: P.PortalCreditPassportPage, beforeLoad: requirePermission(PERMISSIONS.CREDIT_PASSPORT_READ) });
 const portalAccessRoute = createRoute({ getParentRoute: () => portalRoute, path: 'access', component: P.PortalAccessPage });
 
@@ -92,7 +97,10 @@ const routeTree = rootRoute.addChildren([
   dataIntakeRoute,
   transactionsRoute,
   claimsRoute,
+  mailRoute,
+  accountRoute,
   settingsRoute.addChildren([
+    settingsIndexRoute,
     settingsOrgRoute,
     settingsUsersRoute,
     settingsPoliciesRoute,
@@ -101,6 +109,7 @@ const routeTree = rootRoute.addChildren([
     settingsDataRoute,
   ]),
   platformRoute.addChildren([
+    platformIndexRoute,
     platformTenantsRoute,
     platformPlansRoute,
     platformConfigRoute,
@@ -110,7 +119,7 @@ const routeTree = rootRoute.addChildren([
     platformSupportRoute,
     platformAuditRoute,
   ]),
-  portalRoute.addChildren([portalCreditPassportRoute, portalAccessRoute]),
+  portalRoute.addChildren([portalIndexRoute, portalCreditPassportRoute, portalAccessRoute]),
 ] as AnyRoute[]);
 
 export const router = createRouter({ routeTree });

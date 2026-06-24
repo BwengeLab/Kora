@@ -1,10 +1,24 @@
 package main
 
-import "github.com/kora-finance/kora/libs/servicekit"
+import (
+	"log"
+	"net/http"
+	"os"
+
+	"github.com/kora-finance/kora/services/reporting/internal/httpapi"
+)
 
 func main() {
-	if err := servicekit.ListenAndServe("reporting"); err != nil {
-		panic(err)
+	address := ":" + env("PORT", "8080")
+	log.Printf("reporting listening on %s", address)
+	if err := http.ListenAndServe(address, httpapi.New()); err != nil {
+		log.Fatal(err)
 	}
 }
 
+func env(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
+}

@@ -62,6 +62,23 @@ func TestExactPaymentInvoiceMatch(t *testing.T) {
 		t.Fatalf("expected a single non-symmetric match, got %+v", r.Candidates)
 	}
 }
+
+func TestSharedBusinessLinkMatchesDifferentSourceReferences(t *testing.T) {
+	p := policy.DefaultInsurance("org-1")
+	obligation := evt("claim", eventledger.ObligationCreated, "CLM-1", 1000, "2026-01-02")
+	payment := evt("payment", eventledger.PaymentSent, "BANK-9", -1000, "2026-01-03")
+	obligation.Attributes["obligation_link"] = "CLM-1"
+	payment.Attributes["obligation_link"] = "CLM-1"
+
+	r, err := Reconcile("org-1", []eventledger.Event{obligation, payment}, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Candidates) != 1 || r.Candidates[0].State != Matched {
+		t.Fatalf("expected linked business events to match: %+v", r.Candidates)
+	}
+}
+
 func TestDuplicateAndSuspiciousDetection(t *testing.T) {
 	p := policy.DefaultSME("org-1")
 	events := []eventledger.Event{evt("p1", eventledger.PaymentReceived, "INV-1", 1000, "2026-01-02"), evt("p2", eventledger.PaymentReceived, "INV-1", 1000, "2026-01-03"), evt("inv", eventledger.InvoiceIssued, "INV-1", 9000, "2026-01-02")}

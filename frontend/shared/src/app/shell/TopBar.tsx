@@ -2,9 +2,11 @@ import * as Popover from '@radix-ui/react-popover';
 import {
   Bell,
   Building2,
+  Calculator,
   CheckCircle2,
   ChevronDown,
   GitBranch,
+  Mail,
   Search,
   Settings as SettingsIcon,
   ShieldAlert,
@@ -15,6 +17,8 @@ import type { ReactNode } from 'react';
 import { useSession } from '../../auth/hooks';
 import { GlassSurface, cn } from '../../design-system';
 import { useCopilotStore } from '../../state/copilotStore';
+import { useUnreadCount } from '../../state/mailStore';
+import { useToolsStore } from '../../state/toolsStore';
 import { useWorkflowStore } from '../../state/workflowStore';
 
 // Slim top bar: centered search, then a working Copilot button + a live
@@ -22,6 +26,8 @@ import { useWorkflowStore } from '../../state/workflowStore';
 export function TopBar() {
   const session = useSession();
   const toggleCopilot = useCopilotStore((s) => s.toggle);
+  const openTools = useToolsStore((s) => s.open);
+  const unread = useUnreadCount();
 
   return (
     <header className="flex items-center gap-3 px-8 pt-6 pb-2">
@@ -37,13 +43,24 @@ export function TopBar() {
         </kbd>
       </GlassSurface>
 
+      <button type="button" aria-label="Tools" title="Tools & calculators" onClick={openTools} className={circleClass}>
+        <Calculator className="size-[18px]" />
+      </button>
+
+      <CircleLink to="/mail" label="Mail">
+        <Mail className="size-[18px]" />
+        {unread > 0 ? (
+          <span className="absolute -right-1 -top-1 grid min-w-[18px] place-items-center rounded-full bg-brand px-1 text-[10px] font-bold text-white ring-2 ring-white">{unread}</span>
+        ) : null}
+      </CircleLink>
+
       <button type="button" aria-label="Kora copilot" title="Kora copilot" onClick={toggleCopilot} className={circleClass}>
         <Sparkles className="size-[18px]" />
       </button>
 
       <NotificationsBell />
 
-      <CircleLink to="/settings" label="Settings">
+      <CircleLink to="/account" label="Account & preferences">
         <SettingsIcon className="size-[18px]" />
       </CircleLink>
 

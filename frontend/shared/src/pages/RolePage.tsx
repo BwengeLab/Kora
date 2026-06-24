@@ -7,8 +7,17 @@ import { ActionCenter } from '../modules/action-center';
 import { AiAgentsPage } from '../modules/ai-agents';
 import { ClaimsWorkspace } from '../modules/claims';
 import { CreditPassportPortal } from '../modules/credit-passport-portal';
+import { CollectionsPage } from '../modules/collections';
+import { DataIntakePage } from '../modules/data-intake';
+import { TransactionsPage } from '../modules/transactions';
+import { ContractsPage } from '../modules/contracts';
+import { ConsentPage } from '../modules/consent';
 import { LedgerCashflow } from '../modules/ledger-cashflow';
 import { OwnerAuditRisk } from '../modules/owner-audit';
+import { ReconciliationOverview } from '../modules/reconciliation-overview';
+import { RelationshipsPage } from '../modules/relationships';
+import { ReportsPage } from '../modules/reports';
+import { ValueRoiPage } from '../modules/value-roi';
 import { HomeAuditor } from '../modules/home-auditor';
 import { HomeFinanceLead } from '../modules/home-finance-lead';
 import { HomeFinanceOperator } from '../modules/home-finance-operator';
@@ -51,17 +60,66 @@ const REGISTRY: Record<string, Partial<Record<string, ComponentType>>> = {
   reconciliation: {
     [B.FINANCE_OPERATOR]: ReconciliationCockpit,
     [CUSTOM_BLUEPRINT_IDS.CLAIMS_OFFICER]: ReconciliationCockpit,
+    [B.ORG_OWNER]: ReconciliationOverview,
+    [B.FINANCE_LEAD]: ReconciliationOverview,
+    [B.AUDITOR]: ReconciliationOverview,
+  },
+  data_intake: {
+    [B.FINANCE_OPERATOR]: DataIntakePage,
+  },
+  transactions: {
+    [B.FINANCE_OPERATOR]: TransactionsPage,
+    [B.AUDITOR]: () => <TransactionsPage readOnly />,
   },
   ledger: {
     [B.ORG_OWNER]: LedgerCashflow,
+    [B.FINANCE_OPERATOR]: LedgerCashflow,
+    [B.FINANCE_LEAD]: LedgerCashflow,
+    [B.AUDITOR]: LedgerCashflow,
   },
   agents: {
     [B.ORG_OWNER]: AiAgentsPage,
+    [B.FINANCE_OPERATOR]: AiAgentsPage,
+    [B.FINANCE_LEAD]: AiAgentsPage,
+    [B.AUDITOR]: AiAgentsPage,
   },
   audit: {
     [B.ORG_OWNER]: OwnerAuditRisk,
+    [B.FINANCE_LEAD]: OwnerAuditRisk,
+    [B.AUDITOR]: OwnerAuditRisk,
+  },
+  roi: {
+    [B.ORG_OWNER]: ValueRoiPage,
+    [B.FINANCE_LEAD]: ValueRoiPage,
+  },
+  reports: {
+    [B.ORG_OWNER]: ReportsPage,
+    [B.FINANCE_LEAD]: ReportsPage,
+    [B.AUDITOR]: ReportsPage,
+  },
+  relationships: {
+    [B.ORG_OWNER]: RelationshipsPage,
+    [B.FINANCE_LEAD]: RelationshipsPage,
+    [B.AUDITOR]: RelationshipsPage,
+  },
+  collections: {
+    [B.ORG_OWNER]: CollectionsPage,
+    [B.FINANCE_OPERATOR]: CollectionsPage,
+    [B.FINANCE_LEAD]: CollectionsPage,
+  },
+  contracts: {
+    [B.FINANCE_LEAD]: ContractsPage,
+    [B.AUDITOR]: () => <ContractsPage readOnly />,
+  },
+  consent: {
+    [B.FINANCE_LEAD]: ConsentPage,
+    [B.AUDITOR]: () => <ConsentPage readOnly />,
+  },
+  credit_passport: {
+    [B.FINANCE_LEAD]: CreditPassportPortal,
   },
   approvals: {
+    [B.FINANCE_OPERATOR]: () => <ActionCenter variant="finance_operator" />,
     [B.FINANCE_LEAD]: () => <ActionCenter variant="finance_lead" />,
     [B.ORG_OWNER]: () => <ActionCenter variant="org_owner" />,
   },

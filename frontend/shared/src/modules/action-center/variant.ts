@@ -4,7 +4,7 @@ import type { ApprovalItem } from '../../seed/approvals';
 //  • finance_lead — the operational control point: the FULL approval queue.
 //  • org_owner    — top-tier only: the highest-value / high-risk / escalated
 //                   items routed UP for final sign-off (owner is 2nd approver).
-export type ActionVariant = 'finance_lead' | 'org_owner';
+export type ActionVariant = 'finance_lead' | 'org_owner' | 'finance_operator';
 
 export interface VariantConfig {
   title: string;
@@ -14,6 +14,13 @@ export interface VariantConfig {
 }
 
 export const VARIANTS: Record<ActionVariant, VariantConfig> = {
+  // The preparer's tracker: items THEY prepared and routed up, with live status.
+  // They prepare and propose; approval is someone else's signature.
+  finance_operator: {
+    title: 'My Tasks',
+    subtitle: 'What you prepared and routed for approval — track its status here. You prepare & propose; an approver signs.',
+    includes: (a) => a.preparedBy.role === 'Finance Operator',
+  },
   finance_lead: {
     title: 'Action Center',
     subtitle: 'Approve what Kora and your team prepared. You decide · the system executes & logs every action.',

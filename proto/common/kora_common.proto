@@ -173,6 +173,15 @@ message ConsentGrant {
   string purpose = 8;
   bool revoked = 9;
   bool ongoing_monitoring_allowed = 10;
+  string external_user_id = 11;
+  repeated string allowed_permissions = 12;
+  string approval_task_id = 13;
+  string consented_by = 14;
+  Evidence evidence = 15;
+  string revoked_at = 16;
+  string revoked_by = 17;
+  Evidence revocation_evidence = 18;
+  string created_at = 19;
 }
 
 message AgentEvaluationResult {
