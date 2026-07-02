@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package kora.integrations.v1;
+
+import "proto/common/kora_common.proto";
+
+option go_package = "github.com/kora-finance/kora/gen/go/integrations;integrationsv1";
+
+enum ConnectorKind {
+  CONNECTOR_KIND_UNSPECIFIED = 0;
+  CONNECTOR_KIND_MOMO = 1;
+  CONNECTOR_KIND_EBM_RRA = 2;
+  CONNECTOR_KIND_BANK_STATEMENT = 3;
+  CONNECTOR_KIND_ACCOUNTING = 4;
+  CONNECTOR_KIND_EMAIL_SMS = 5;
+}
+
+message ConnectorConnection {
+  string id = 1;
+  kora.common.v1.TenantContext tenant = 2;
+  ConnectorKind kind = 3;
+  string display_name = 4;
+  string secret_ref = 5;
+  map<string, string> config = 6;
+  bool active = 7;
+}
+
+message ConnectorRecord {
+  string source_record_id = 1;
+  string record_type = 2;
+  map<string, string> fields = 3;
+  double confidence = 4;
+  repeated string warnings = 5;
+  int32 source_page = 6;
+  int32 source_row = 7;
+  string source_sheet = 8;
+}
+
+message ValidateConnectionRequest {
+  kora.common.v1.TenantContext tenant = 1;
+  ConnectorConnection connection = 2;
+}
+
+message ValidateConnectionResponse { bool valid = 1; }
+
+message ImportConnectorRecordsRequest {
+  kora.common.v1.TenantContext tenant = 1;
+  ConnectorConnection connection = 2;
+  string source_name = 3;
+  string window_start = 4;
+  string window_end = 5;
+  string sync_cursor = 6;
+  string idempotency_key = 7;
+  repeated ConnectorRecord records = 8;
+}
+
+message ImportedEvent {
+  string source_record_id = 1;
+  string event_id = 2;
+  bool created = 3;
+}
+
+message ImportConnectorRecordsResponse {
+  string batch_id = 1;
+  string document_id = 2;
+  string extraction_version_id = 3;
+  string fingerprint = 4;
+  bool replayed = 5;
+  bool duplicate_source = 6;
+  repeated ImportedEvent normalized_events = 7;
+}
+
+service IntegrationsService {
+  rpc ValidateConnection(ValidateConnectionRequest) returns (ValidateConnectionResponse);
+  rpc ImportConnectorRecords(ImportConnectorRecordsRequest) returns (ImportConnectorRecordsResponse);
+}

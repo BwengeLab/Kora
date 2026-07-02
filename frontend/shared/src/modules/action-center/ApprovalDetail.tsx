@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Clock,
   FileText,
   Forward,
   Info,
@@ -19,6 +20,7 @@ import { useMemo, useState } from 'react';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
 import { useSession } from '../../auth/hooks';
 import { openDoc } from '../../state/docViewerStore';
+import { toast } from '../../state/toastStore';
 import type { ApprovalItem } from '../../seed/approvals';
 import type { EvidenceDoc, HistoryEvent } from '../../seed/reconciliation';
 import { approvalBlockReason, type ApproveResult } from '../../state/workflowStore';
@@ -31,6 +33,7 @@ type Tab = 'summary' | 'evidence' | 'history';
 export function ApprovalDetail({
   items,
   variant,
+  track = false,
   selectedId,
   onSelect,
   onApprove,
@@ -38,6 +41,7 @@ export function ApprovalDetail({
 }: {
   items: ApprovalItem[];
   variant: ActionVariant;
+  track?: boolean;
   selectedId: string;
   onSelect: (id: string) => void;
   onApprove: (id: string) => void;
@@ -110,8 +114,8 @@ export function ApprovalDetail({
 
       {/* Body */}
       <div className="scrollbar-thin mt-5 flex-1 overflow-y-auto px-7">
-        {/* Policy check + SoD guard */}
-        <PolicyCheck item={item} block={block} />
+        {/* Policy check + SoD guard — or, for the preparer, a tracking note */}
+        {track ? <TrackNote /> : <PolicyCheck item={item} block={block} />}
 
         {/* Agent recommendation */}
         {item.agentRecommendation ? (
@@ -152,9 +156,52 @@ export function ApprovalDetail({
         </div>
       </div>
 
-      {/* Action bar */}
-      <ActionBar item={item} canApprove={canApprove} done={done} block={block} onApprove={() => onApprove(item.id)} onReject={() => onReject(item.id)} />
+      {/* Action bar — preparer tracks status; approver acts */}
+      {track ? <TrackBar item={item} /> : <ActionBar item={item} canApprove={canApprove} done={done} block={block} onApprove={() => onApprove(item.id)} onReject={() => onReject(item.id)} />}
     </GlassSurface>
+  );
+}
+
+// The preparer (Finance Operator) cannot approve — they prepared it. This note
+// replaces the approver's policy/SoD panel.
+function TrackNote() {
+  return (
+    <div className="mt-1 flex items-start gap-3 rounded-3xl bg-info-soft/60 p-4 ring-1 ring-info/20">
+      <ShieldCheck className="mt-0.5 size-5 shrink-0 text-info" />
+      <div>
+        <p className="text-[13.5px] font-bold text-info">You prepared this — it&apos;s with the approver</p>
+        <p className="text-[12.5px] text-ink-soft">You prepare &amp; propose; a Finance Lead signs off. You can&apos;t approve your own work (segregation of duties). Track its status below.</p>
+      </div>
+    </div>
+  );
+}
+
+// Status + light follow-up actions for the preparer — never approve/reject.
+function TrackBar({ item }: { item: ApprovalItem }) {
+  const status =
+    item.stage === 'approved' ? { label: 'Approved & posted', tone: 'bg-success-soft text-success' }
+    : item.stage === 'rejected' ? { label: 'Sent back to you', tone: 'bg-danger-soft text-danger' }
+    : item.stage === 'partial' ? { label: 'Approved 1 of 2 · awaiting final', tone: 'bg-info-soft text-info' }
+    : { label: 'Awaiting Finance Lead', tone: 'bg-warning-soft text-warning' };
+  const pending = item.stage === 'awaiting' || item.stage === 'partial';
+  return (
+    <footer className="border-t border-white/55 bg-white/45 px-7 py-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span className={cn('inline-flex items-center gap-2 rounded-xl px-3 py-2 text-[12.5px] font-bold', status.tone)}><Clock className="size-3.5" /> {status.label}</span>
+        <div className="flex items-center gap-2">
+          {pending ? (
+            <>
+              <button type="button" onClick={() => toast({ tone: 'warning', title: 'Withdrawn', body: `${item.title} pulled back to your drafts to revise.` })} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-white px-4 text-[13.5px] font-bold text-ink-soft ring-1 ring-white/70 hover:bg-white/80">Withdraw</button>
+              <button type="button" onClick={() => toast({ tone: 'info', title: 'Reminder sent', body: 'Nudged the Finance Lead to review your submission.' })} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink px-5 text-[13.5px] font-bold text-white shadow-glass-soft hover:brightness-110"><Forward className="size-4" /> Nudge approver</button>
+            </>
+          ) : item.stage === 'rejected' ? (
+            <button type="button" onClick={() => toast({ tone: 'info', title: 'Reopened', body: `${item.title} reopened to fix and resubmit.` })} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink px-5 text-[13.5px] font-bold text-white shadow-glass-soft hover:brightness-110">Fix &amp; resubmit</button>
+          ) : (
+            <span className="inline-flex h-11 items-center gap-2 rounded-2xl bg-success-soft px-5 text-[14px] font-bold text-success"><Check className="size-[18px]" /> Done</span>
+          )}
+        </div>
+      </div>
+    </footer>
   );
 }
 

@@ -12,15 +12,17 @@ import {
   type CashMovement,
   type Direction,
 } from '../../seed/cashLedger';
-import { MovementDrawer } from './MovementDrawer';
+import { entityName } from '../../seed/entities';
+import { useEntityStore } from '../../state/entityStore';
+import { MovementDrawer, type LedgerMode } from './MovementDrawer';
 
 type DirFilter = 'all' | Direction;
 
-// True running balance computed over ALL movements (date order), regardless of
-// the active filter — so the balance column always reflects reality.
-function useRunningBalances() {
+// Running balance computed over the entity-scoped set (date order) — so the
+// balance column reflects that entity's book, or the consolidated group.
+function useRunningBalances(base: CashMovement[]) {
   return useMemo(() => {
-    const asc = [...seedCashMovements].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+    const asc = [...base].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
     const map = new Map<string, bigint>();
     let bal = OPENING_BALANCE.amountMinor;
     for (const m of asc) {
@@ -28,11 +30,11 @@ function useRunningBalances() {
       map.set(m.id, bal);
     }
     return map;
-  }, []);
+  }, [base]);
 }
 
-export function CashMovementsTab() {
-  const balances = useRunningBalances();
+export function CashMovementsTab({ mode = 'oversight' }: { mode?: LedgerMode }) {
+  const scope = useEntityStore((s) => s.scope);
   const [query, setQuery] = useState('');
   const [dir, setDir] = useState<DirFilter>('all');
   const [category, setCategory] = useState<CashCategory | 'all'>('all');
@@ -40,9 +42,13 @@ export function CashMovementsTab() {
   const [onlyUnreconciled, setOnlyUnreconciled] = useState(false);
   const [selected, setSelected] = useState<CashMovement | null>(null);
 
+  // Entity context scopes the whole ledger first; the toolbar filters apply on top.
+  const base = useMemo(() => (scope === 'all' ? seedCashMovements : seedCashMovements.filter((m) => m.entity === scope)), [scope]);
+  const balances = useRunningBalances(base);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return seedCashMovements
+    return base
       .filter((m) => (dir === 'all' ? true : m.direction === dir))
       .filter((m) => (category === 'all' ? true : m.category === category))
       .filter((m) => (account === 'all' ? true : m.account === account))
@@ -51,12 +57,12 @@ export function CashMovementsTab() {
         q === '' ? true : [m.description, m.counterparty, m.purpose, m.reference].some((s) => s.toLowerCase().includes(q)),
       )
       .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
-  }, [query, dir, category, account, onlyUnreconciled]);
+  }, [base, query, dir, category, account, onlyUnreconciled]);
 
   const totalIn: Money = { amountMinor: filtered.filter((m) => m.direction === 'in').reduce((a, m) => a + m.amount.amountMinor, 0n), currency: 'USD' };
   const totalOut: Money = { amountMinor: filtered.filter((m) => m.direction === 'out').reduce((a, m) => a + m.amount.amountMinor, 0n), currency: 'USD' };
   const net: Money = { amountMinor: totalIn.amountMinor - totalOut.amountMinor, currency: 'USD' };
-  const unreconciledCount = seedCashMovements.filter((m) => !m.reconciled).length;
+  const unreconciledCount = base.filter((m) => !m.reconciled).length;
 
   return (
     <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 @5xl:grid-cols-[1fr_300px]">
@@ -105,7 +111,7 @@ export function CashMovementsTab() {
 
         {/* Totals footer */}
         <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-white/55 bg-white/45 px-4 py-3">
-          <span className="text-[12px] font-semibold text-ink-muted"><span className="tabular text-ink">{filtered.length}</span> movements</span>
+          <span className="text-[12px] font-semibold text-ink-muted"><span className="tabular text-ink">{filtered.length}</span> movements · <span className="font-bold text-ink">{entityName(scope)}</span>{scope === 'all' ? ' (consolidated)' : ''}</span>
           <div className="flex items-center gap-4 text-[12.5px]">
             <span className="inline-flex items-center gap-1.5 font-bold text-success"><ArrowDownLeft className="size-3.5" /> <MoneyCell amount={totalIn} size="sm" className="!text-[12.5px] text-success" /></span>
             <span className="inline-flex items-center gap-1.5 font-bold text-danger"><ArrowUpRight className="size-3.5" /> <MoneyCell amount={totalOut} size="sm" className="!text-[12.5px] text-danger" /></span>
@@ -114,14 +120,14 @@ export function CashMovementsTab() {
         </footer>
       </GlassSurface>
 
-      {/* Helper rail */}
+      {/* Helper rail — scoped to the same entity base as the table */}
       <div className="flex flex-col gap-4">
-        <CategoryBreakdown />
+        <CategoryBreakdown movements={base} />
         <UnreconciledCard count={unreconciledCount} active={onlyUnreconciled} onToggle={() => setOnlyUnreconciled((v) => !v)} />
-        <AgentFlags onFilterSuspicious={() => { setQuery('OFFSHORE'); setOnlyUnreconciled(false); }} />
+        <AgentFlags hasSuspicious={base.some((m) => m.counterparty === 'OFFSHORE LTD')} onFilterSuspicious={() => { setQuery('OFFSHORE'); setOnlyUnreconciled(false); }} />
       </div>
 
-      <MovementDrawer movement={selected} onClose={() => setSelected(null)} />
+      <MovementDrawer movement={selected} onClose={() => setSelected(null)} mode={mode} />
     </div>
   );
 }
@@ -159,10 +165,10 @@ function Row({ m, balance, onClick }: { m: CashMovement; balance: Money; onClick
   );
 }
 
-function CategoryBreakdown() {
+function CategoryBreakdown({ movements }: { movements: CashMovement[] }) {
   const totals = useMemo(() => {
     const map = new Map<CashCategory, { in: bigint; out: bigint }>();
-    for (const m of seedCashMovements) {
+    for (const m of movements) {
       const e = map.get(m.category) ?? { in: 0n, out: 0n };
       if (m.direction === 'in') e.in += m.amount.amountMinor;
       else e.out += m.amount.amountMinor;
@@ -171,10 +177,11 @@ function CategoryBreakdown() {
     const rows = [...map.entries()].map(([cat, v]) => ({ cat, net: v.in - v.out, gross: v.in + v.out }));
     const max = Math.max(...rows.map((r) => Number(r.gross)), 1);
     return rows.sort((a, b) => Number(b.gross - a.gross)).slice(0, 6).map((r) => ({ ...r, pct: (Number(r.gross) / max) * 100 }));
-  }, []);
+  }, [movements]);
   return (
     <GlassSurface tone="strong" className="flex flex-col gap-2.5 p-4">
       <h4 className="text-[12px] font-bold text-ink">Flow by category</h4>
+      {totals.length === 0 ? <p className="text-[11.5px] text-ink-muted">No movements in this view.</p> : null}
       {totals.map((r) => (
         <div key={r.cat}>
           <div className="flex items-center justify-between text-[11.5px]">
@@ -204,16 +211,20 @@ function UnreconciledCard({ count, active, onToggle }: { count: number; active: 
   );
 }
 
-function AgentFlags({ onFilterSuspicious }: { onFilterSuspicious: () => void }) {
+function AgentFlags({ hasSuspicious, onFilterSuspicious }: { hasSuspicious: boolean; onFilterSuspicious: () => void }) {
   return (
     <GlassSurface tone="strong" className="flex flex-col gap-2.5 bg-gradient-to-br from-ai-soft/60 to-white/40 p-4 ring-1 ring-ai/15">
       <header className="flex items-center gap-1.5">
         <Sparkles className="size-3.5 text-ai" />
         <h4 className="text-[12px] font-bold text-ink">CFO agent flags</h4>
       </header>
-      <button type="button" onClick={onFilterSuspicious} className="rounded-xl bg-white/65 p-2.5 text-left text-[11.5px] text-ink ring-1 ring-white/60 hover:bg-white">
-        <span className="font-bold text-danger">Suspicious $15,400</span> transfer to OFFSHORE LTD is unreconciled with no contract. <span className="font-semibold text-brand">Review →</span>
-      </button>
+      {hasSuspicious ? (
+        <button type="button" onClick={onFilterSuspicious} className="rounded-xl bg-white/65 p-2.5 text-left text-[11.5px] text-ink ring-1 ring-white/60 hover:bg-white">
+          <span className="font-bold text-danger">Suspicious $15,400</span> transfer to OFFSHORE LTD is unreconciled with no contract. <span className="font-semibold text-brand">Review →</span>
+        </button>
+      ) : (
+        <div className="rounded-xl bg-white/55 p-2.5 text-[11.5px] text-ink-muted ring-1 ring-white/60">No suspicious activity flagged in this view.</div>
+      )}
       <div className="rounded-xl bg-white/55 p-2.5 text-[11.5px] text-ink ring-1 ring-white/60">
         <span className="font-bold text-warning">Software & subscriptions up 22%</span> MoM ($4,100). Worth a supplier review.
       </div>

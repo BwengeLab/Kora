@@ -61,10 +61,11 @@ export function ActionCenter({ variant = 'finance_lead' }: { variant?: ActionVar
       <div className="@container flex min-h-0 flex-1 flex-col gap-5 px-8">
         <ApprovalStatsBand variant={variant} items={items} />
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 pb-6 @5xl:grid-cols-[400px_1fr]">
-          <ApprovalQueue items={items} variant={variant} selectedId={selectedId} onSelect={setSelectedId} tab={tab} onTab={setTab} />
+          <ApprovalQueue items={items} variant={variant} track={!!cfg.track} selectedId={selectedId} onSelect={setSelectedId} tab={tab} onTab={setTab} />
           <ApprovalDetail
             items={items}
             variant={variant}
+            track={!!cfg.track}
             selectedId={selectedId}
             onSelect={setSelectedId}
             onApprove={handleApprove}

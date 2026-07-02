@@ -21,23 +21,23 @@ import (
 type ExpenseClass string
 
 const (
-	CostOfGoodsSold ExpenseClass = "COST_OF_GOODS_SOLD"
+	CostOfGoodsSold  ExpenseClass = "COST_OF_GOODS_SOLD"
 	OperatingExpense ExpenseClass = "OPERATING_EXPENSE"
 )
 
 type Input struct {
-	OrganizationID        string                  `json:"organization_id"`
-	Currency              string                  `json:"currency"`
-	PeriodStart           time.Time               `json:"period_start"`
-	PeriodEnd             time.Time               `json:"period_end"`
-	AsOf                  time.Time               `json:"as_of"`
-	AgingBucketsDays      []int                   `json:"aging_buckets_days"`
-	Accounts              []ledger.Account        `json:"accounts"`
+	OrganizationID         string                  `json:"organization_id"`
+	Currency               string                  `json:"currency"`
+	PeriodStart            time.Time               `json:"period_start"`
+	PeriodEnd              time.Time               `json:"period_end"`
+	AsOf                   time.Time               `json:"as_of"`
+	AgingBucketsDays       []int                   `json:"aging_buckets_days"`
+	Accounts               []ledger.Account        `json:"accounts"`
 	ExpenseClassifications map[string]ExpenseClass `json:"expense_classifications"`
-	ApprovalTasks         []workflow.Task         `json:"approval_tasks"`
-	PostingGroups         []ledger.Group          `json:"posting_groups"`
-	Events                []eventledger.EventView `json:"events"`
-	Reconciliation        reconciliation.Result   `json:"reconciliation"`
+	ApprovalTasks          []workflow.Task         `json:"approval_tasks"`
+	PostingGroups          []ledger.Group          `json:"posting_groups"`
+	Events                 []eventledger.EventView `json:"events"`
+	Reconciliation         reconciliation.Result   `json:"reconciliation"`
 }
 
 type Cashflow struct {
@@ -48,46 +48,46 @@ type Cashflow struct {
 }
 
 type ProfitAndLoss struct {
-	RevenueMinor          int64               `json:"revenue_minor"`
-	CostOfGoodsSoldMinor  int64               `json:"cost_of_goods_sold_minor"`
-	OperatingExpenseMinor int64               `json:"operating_expense_minor"`
-	GrossProfitMinor      int64               `json:"gross_profit_minor"`
-	NetProfitMinor        int64               `json:"net_profit_minor"`
+	RevenueMinor           int64               `json:"revenue_minor"`
+	CostOfGoodsSoldMinor   int64               `json:"cost_of_goods_sold_minor"`
+	OperatingExpenseMinor  int64               `json:"operating_expense_minor"`
+	GrossProfitMinor       int64               `json:"gross_profit_minor"`
+	NetProfitMinor         int64               `json:"net_profit_minor"`
 	GrossMarginBasisPoints int                 `json:"gross_margin_basis_points"`
-	NetMarginBasisPoints  int                 `json:"net_margin_basis_points"`
-	Evidence              []evidence.Evidence `json:"evidence"`
+	NetMarginBasisPoints   int                 `json:"net_margin_basis_points"`
+	Evidence               []evidence.Evidence `json:"evidence"`
 }
 
 type AgingBucket struct {
-	Label       string              `json:"label"`
-	MinimumDays int                 `json:"minimum_days"`
-	MaximumDays int                 `json:"maximum_days"`
-	AmountMinor int64               `json:"amount_minor"`
-	InvoiceCount int                `json:"invoice_count"`
-	Evidence    []evidence.Evidence `json:"evidence"`
+	Label        string              `json:"label"`
+	MinimumDays  int                 `json:"minimum_days"`
+	MaximumDays  int                 `json:"maximum_days"`
+	AmountMinor  int64               `json:"amount_minor"`
+	InvoiceCount int                 `json:"invoice_count"`
+	Evidence     []evidence.Evidence `json:"evidence"`
 }
 
 type ReceivablesAging struct {
-	CurrentMinor          int64               `json:"current_minor"`
-	CurrentInvoiceCount   int                 `json:"current_invoice_count"`
-	OverdueMinor          int64               `json:"overdue_minor"`
-	OverdueInvoiceCount   int                 `json:"overdue_invoice_count"`
-	MissingDueDateMinor   int64               `json:"missing_due_date_minor"`
-	MissingDueDateCount   int                 `json:"missing_due_date_count"`
-	Buckets               []AgingBucket       `json:"buckets"`
-	Evidence              []evidence.Evidence `json:"evidence"`
+	CurrentMinor        int64               `json:"current_minor"`
+	CurrentInvoiceCount int                 `json:"current_invoice_count"`
+	OverdueMinor        int64               `json:"overdue_minor"`
+	OverdueInvoiceCount int                 `json:"overdue_invoice_count"`
+	MissingDueDateMinor int64               `json:"missing_due_date_minor"`
+	MissingDueDateCount int                 `json:"missing_due_date_count"`
+	Buckets             []AgingBucket       `json:"buckets"`
+	Evidence            []evidence.Evidence `json:"evidence"`
 }
 
 type Report struct {
-	ID             string             `json:"id"`
-	OrganizationID string             `json:"organization_id"`
-	Currency       string             `json:"currency"`
-	PeriodStart    time.Time          `json:"period_start"`
-	PeriodEnd      time.Time          `json:"period_end"`
-	AsOf           time.Time          `json:"as_of"`
-	Cashflow       Cashflow           `json:"cashflow"`
-	ProfitAndLoss  ProfitAndLoss      `json:"profit_and_loss"`
-	Aging          ReceivablesAging   `json:"receivables_aging"`
+	ID             string           `json:"id"`
+	OrganizationID string           `json:"organization_id"`
+	Currency       string           `json:"currency"`
+	PeriodStart    time.Time        `json:"period_start"`
+	PeriodEnd      time.Time        `json:"period_end"`
+	AsOf           time.Time        `json:"as_of"`
+	Cashflow       Cashflow         `json:"cashflow"`
+	ProfitAndLoss  ProfitAndLoss    `json:"profit_and_loss"`
+	Aging          ReceivablesAging `json:"receivables_aging"`
 }
 
 func Generate(actor access.Actor, input Input) (Report, error) {
@@ -343,7 +343,9 @@ func reportID(input Input) string {
 	sort.Slice(canonical.ApprovalTasks, func(i, j int) bool { return canonical.ApprovalTasks[i].ID < canonical.ApprovalTasks[j].ID })
 	sort.Slice(canonical.PostingGroups, func(i, j int) bool { return canonical.PostingGroups[i].ID < canonical.PostingGroups[j].ID })
 	sort.Slice(canonical.Events, func(i, j int) bool { return canonical.Events[i].ID < canonical.Events[j].ID })
-	sort.Slice(canonical.Reconciliation.Candidates, func(i, j int) bool { return canonical.Reconciliation.Candidates[i].LeftEventID < canonical.Reconciliation.Candidates[j].LeftEventID })
+	sort.Slice(canonical.Reconciliation.Candidates, func(i, j int) bool {
+		return canonical.Reconciliation.Candidates[i].LeftEventID < canonical.Reconciliation.Candidates[j].LeftEventID
+	})
 	payload, err := json.Marshal(canonical)
 	if err != nil {
 		panic("validated finance analytics input is not serializable")

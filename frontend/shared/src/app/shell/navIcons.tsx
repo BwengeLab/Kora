@@ -1,6 +1,7 @@
 import {
   Activity,
   BarChart3,
+  BookOpen,
   Bot,
   Briefcase,
   Building2,
@@ -46,6 +47,9 @@ export const navIcons: Record<string, IconCmp> = {
   reconciliation: GitBranch,
   approvals: CheckSquare,
   ledger: Wallet,
+  gl: BookOpen,
+  statements: FileText,
+  payables: Receipt,
   collections: Inbox,
   reports: BarChart3,
   roi: TrendingUp,

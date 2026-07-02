@@ -9,9 +9,23 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from agents.data_intake_agent.agent import AGENT_NAME as INTAKE_AGENT, run as run_intake
+from agents.audit_compliance_agent.agent import (
+    AGENT_NAME as AUDIT_COMPLIANCE_AGENT,
+    run as run_audit_compliance,
+)
+from agents.collections_agent.agent import AGENT_NAME as COLLECTIONS_AGENT, run as run_collections
 from agents.credit_passport_agent.agent import (
     AGENT_NAME as CREDIT_PASSPORT_AGENT,
     run as run_credit_passport,
+)
+from agents.finance_intelligence_agent.agent import (
+    AGENT_NAME as FINANCE_INTELLIGENCE_AGENT,
+    run as run_finance_intelligence,
+)
+from agents.sales_growth_agent.agent import AGENT_NAME as SALES_GROWTH_AGENT, run as run_sales_growth
+from agents.supplier_margin_agent.agent import (
+    AGENT_NAME as SUPPLIER_MARGIN_AGENT,
+    run as run_supplier_margin,
 )
 from agents.evaluation.evaluator import FeedbackStore, evaluate_output, load_cases
 from agents.reconciliation_agent.agent import (
@@ -91,6 +105,11 @@ runtime = AgentRuntime(repository=repository)
 runtime.register(INTAKE_AGENT, run_intake, {"classification", "review_request"})
 runtime.register(RECONCILIATION_AGENT, run_reconciliation, {"suggestion"})
 runtime.register(CREDIT_PASSPORT_AGENT, run_credit_passport, {"explanation"})
+runtime.register(FINANCE_INTELLIGENCE_AGENT, run_finance_intelligence, {"explanation"})
+runtime.register(COLLECTIONS_AGENT, run_collections, {"suggestion"})
+runtime.register(SUPPLIER_MARGIN_AGENT, run_supplier_margin, {"suggestion"})
+runtime.register(AUDIT_COMPLIANCE_AGENT, run_audit_compliance, {"review_request"})
+runtime.register(SALES_GROWTH_AGENT, run_sales_growth, {"explanation"})
 feedback = FeedbackStore(repository=repository)
 EVALUATION_CASES = {
     case.case_id: case

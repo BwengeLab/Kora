@@ -13,6 +13,8 @@ export const financeOperatorBlueprint: RoleBlueprint = {
     { id: 'approvals', labelKey: 'nav.approvals.mine', path: '/approvals', requires: [{ permission: PERMISSIONS.APPROVAL_CREATE }] },
     { id: 'collections', labelKey: 'nav.collections', path: '/collections', requires: [{ permission: PERMISSIONS.COLLECTIONS_SEND }] },
     { id: 'ledger', labelKey: 'nav.ledger.read', path: '/ledger', requires: [{ permission: PERMISSIONS.EVENTS_READ }] },
+    { id: 'gl', labelKey: 'nav.gl', path: '/general-ledger', requires: [{ permission: PERMISSIONS.EVENTS_READ }] },
+    { id: 'payables', labelKey: 'nav.payables', path: '/payables', requires: [{ permission: PERMISSIONS.EVENTS_READ }] },
     { id: 'agents', labelKey: 'nav.agents', path: '/agents', requires: [] },
   ],
   homeModules: [

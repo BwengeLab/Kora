@@ -7,15 +7,20 @@ import { ActionCenter } from '../modules/action-center';
 import { AiAgentsPage } from '../modules/ai-agents';
 import { ClaimsWorkspace } from '../modules/claims';
 import { CreditPassportPortal } from '../modules/credit-passport-portal';
-import { CollectionsPage } from '../modules/collections';
+import { CollectionsPage, CollectionsOverview } from '../modules/collections';
+import { CollectionsManagement } from '../modules/collections-lead';
 import { DataIntakePage } from '../modules/data-intake';
 import { TransactionsPage } from '../modules/transactions';
 import { ContractsPage } from '../modules/contracts';
 import { ConsentPage } from '../modules/consent';
 import { LedgerCashflow } from '../modules/ledger-cashflow';
+import { GeneralLedger } from '../modules/general-ledger';
+import { FinancialStatements } from '../modules/financial-statements';
+import { Payables } from '../modules/payables';
 import { OwnerAuditRisk } from '../modules/owner-audit';
 import { ReconciliationOverview } from '../modules/reconciliation-overview';
 import { RelationshipsPage } from '../modules/relationships';
+import { ReceivablesPayables } from '../modules/relationships-lead';
 import { ReportsPage } from '../modules/reports';
 import { ValueRoiPage } from '../modules/value-roi';
 import { HomeAuditor } from '../modules/home-auditor';
@@ -25,6 +30,9 @@ import { HomeOrgAdmin } from '../modules/home-org-admin';
 import { HomeOrgOwner } from '../modules/home-org-owner';
 import { HomeSuperAdmin } from '../modules/home-super-admin';
 import { ReconciliationCockpit } from '../modules/reconciliation-cockpit';
+import { FinanceLeadReconciliation } from '../modules/reconciliation-lead';
+import { ControlsClose } from '../modules/controls-close';
+import { AuditInvestigations } from '../modules/audit-investigations';
 import { CUSTOM_BLUEPRINT_IDS } from '../auth/catalog';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -61,8 +69,8 @@ const REGISTRY: Record<string, Partial<Record<string, ComponentType>>> = {
     [B.FINANCE_OPERATOR]: ReconciliationCockpit,
     [CUSTOM_BLUEPRINT_IDS.CLAIMS_OFFICER]: ReconciliationCockpit,
     [B.ORG_OWNER]: ReconciliationOverview,
-    [B.FINANCE_LEAD]: ReconciliationOverview,
-    [B.AUDITOR]: ReconciliationOverview,
+    [B.FINANCE_LEAD]: FinanceLeadReconciliation,
+    [B.AUDITOR]: () => <ReconciliationOverview readOnly />,
   },
   data_intake: {
     [B.FINANCE_OPERATOR]: DataIntakePage,
@@ -72,10 +80,32 @@ const REGISTRY: Record<string, Partial<Record<string, ComponentType>>> = {
     [B.AUDITOR]: () => <TransactionsPage readOnly />,
   },
   ledger: {
-    [B.ORG_OWNER]: LedgerCashflow,
-    [B.FINANCE_OPERATOR]: LedgerCashflow,
-    [B.FINANCE_LEAD]: LedgerCashflow,
-    [B.AUDITOR]: LedgerCashflow,
+    // Owner & Lead oversee (view, understand, ask/flag); the Operator reconciles;
+    // the Auditor reads only. Everyone sees every movement and its "why".
+    [B.ORG_OWNER]: () => <LedgerCashflow mode="oversight" />,
+    [B.FINANCE_OPERATOR]: () => <LedgerCashflow mode="operate" />,
+    [B.FINANCE_LEAD]: () => <LedgerCashflow mode="post" />,
+    [B.AUDITOR]: () => <LedgerCashflow mode="read" />,
+  },
+  gl: {
+    // The double-entry books. Finance Lead & Operator post; Owner & Auditor read.
+    [B.FINANCE_LEAD]: () => <GeneralLedger canEdit />,
+    [B.FINANCE_OPERATOR]: () => <GeneralLedger canEdit />,
+    [B.ORG_OWNER]: GeneralLedger,
+    [B.AUDITOR]: GeneralLedger,
+  },
+  statements: {
+    // P&L / Balance Sheet / Cash Flow — derived from the GL, same for whoever reads.
+    [B.ORG_OWNER]: FinancialStatements,
+    [B.FINANCE_LEAD]: FinancialStatements,
+    [B.AUDITOR]: FinancialStatements,
+  },
+  payables: {
+    // Procure-to-Pay. Operator prepares bills; Finance Lead approves & pays (posts to GL).
+    [B.FINANCE_LEAD]: () => <Payables canApprove />,
+    [B.FINANCE_OPERATOR]: Payables,
+    [B.ORG_OWNER]: Payables,
+    [B.AUDITOR]: Payables,
   },
   agents: {
     [B.ORG_OWNER]: AiAgentsPage,
@@ -85,31 +115,33 @@ const REGISTRY: Record<string, Partial<Record<string, ComponentType>>> = {
   },
   audit: {
     [B.ORG_OWNER]: OwnerAuditRisk,
-    [B.FINANCE_LEAD]: OwnerAuditRisk,
-    [B.AUDITOR]: OwnerAuditRisk,
+    [B.FINANCE_LEAD]: ControlsClose,
+    [B.AUDITOR]: AuditInvestigations,
   },
   roi: {
+    // ROI is an owner/exec metric — not the Finance Lead's page.
     [B.ORG_OWNER]: ValueRoiPage,
-    [B.FINANCE_LEAD]: ValueRoiPage,
   },
   reports: {
     [B.ORG_OWNER]: ReportsPage,
-    [B.FINANCE_LEAD]: ReportsPage,
+    [B.FINANCE_LEAD]: () => <ReportsPage variant="produce" />,
     [B.AUDITOR]: ReportsPage,
   },
   relationships: {
     [B.ORG_OWNER]: RelationshipsPage,
-    [B.FINANCE_LEAD]: RelationshipsPage,
-    [B.AUDITOR]: RelationshipsPage,
+    [B.FINANCE_LEAD]: ReceivablesPayables,
+    [B.AUDITOR]: () => <RelationshipsPage readOnly />,
   },
   collections: {
-    [B.ORG_OWNER]: CollectionsPage,
+    // Owner gets the OVERSIGHT view (watch health, delegate, flag); the finance
+    // roles get the working desk where reminders are actually sent.
+    [B.ORG_OWNER]: CollectionsOverview,
     [B.FINANCE_OPERATOR]: CollectionsPage,
-    [B.FINANCE_LEAD]: CollectionsPage,
+    [B.FINANCE_LEAD]: CollectionsManagement,
   },
   contracts: {
     [B.FINANCE_LEAD]: ContractsPage,
-    [B.AUDITOR]: () => <ContractsPage readOnly />,
+    [B.AUDITOR]: () => <ContractsPage variant="read" />,
   },
   consent: {
     [B.FINANCE_LEAD]: ConsentPage,

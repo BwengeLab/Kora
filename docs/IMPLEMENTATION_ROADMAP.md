@@ -93,3 +93,68 @@ Implementation evidence: `docs/18-PHASE-12-CONSENT-DATA-SHARING.md`.
 - [ ] Review the passport and assumptions with a lender, MFI, SACCO, or credit advisor.
 
 Implementation evidence: `docs/19-PHASE-13-CREDIT-PASSPORT.md`.
+
+## Phase 14: Finance Intelligence, Collections, Contracts
+
+- [x] Full ledger analytics for cashflow, P&L, margin, and receivables aging.
+- [x] Finance intelligence agent explains deterministic analytics only.
+- [x] Collections cases and draft reminders from overdue unmatched invoices.
+- [x] Collections agent drafts only; humans must send.
+- [x] Relationship graph from generic entities and business events.
+- [x] Contract records, obligations, renewal alerts, and payment-contract mismatch flags.
+- [x] Append-only persistence schema and SQL acceptance fixture.
+- [ ] Review reminder tone, escalation rules, and contract-obligation outputs with a finance user.
+- [ ] Add real sample contracts and receivables/payables workflows.
+
+Implementation evidence: `docs/20-PHASE-14-FINANCE-COLLECTIONS-CONTRACTS.md`.
+
+## Phase 15: Advanced Agents And Risk Detection
+
+- [x] Deterministic anomaly detector for supplier price hikes.
+- [x] Missing approval and unsupported payment detection.
+- [x] Duplicate vendor detection.
+- [x] Margin drop detection from finance analytics reports.
+- [x] Supplier & Margin agent.
+- [x] Audit & Compliance agent.
+- [x] Sales & Growth agent.
+- [x] Human feedback persistence for false positives and review labels.
+- [ ] Calibrate anomaly thresholds with real customer data.
+- [ ] Track false-positive rates over a larger seeded dataset.
+
+Implementation evidence: `docs/21-PHASE-15-ADVANCED-AGENTS-RISK.md`.
+
+## Phase 16: Integrations
+
+- [x] Replay-safe connector import framework.
+- [x] MoMo, EBM/RRA, bank statement/API, accounting, and email/SMS connector kinds.
+- [x] Connector imports feed existing ingestion and normalization paths.
+- [x] Connector retries are idempotent.
+- [x] Duplicate connector payloads do not duplicate generic events.
+- [x] Raw credentials are rejected; integrations use secret references.
+- [x] Integration API, proto, persistence schema, and SQL acceptance fixture.
+- [x] MoMo sandbox auth, balance, account-holder validation, request-to-pay, callback ingestion, and bulk transaction import.
+- [ ] Add live provider adapters after sandbox/API access is available.
+- [ ] Validate connector mappings with real MoMo, EBM/RRA, bank, and accounting exports.
+
+Implementation evidence: `docs/22-PHASE-16-INTEGRATIONS.md`.
+
+## Phase 17: Web And Desktop Clients
+
+- [ ] Owned by separate frontend agent.
+- [ ] Backend should support the web client through existing service contracts.
+
+## Phase 18: Backend Production Hardening
+
+- [x] Structured request logging and trace ID propagation.
+- [x] Metrics endpoint foundation.
+- [x] Health dependency reporting foundation.
+- [x] Backup manifest and local Postgres backup script.
+- [x] Restore drill verification and local restore script.
+- [x] Tenant isolation security-check records.
+- [x] Append-only operational persistence schema.
+- [x] Tenant and agent/model cost tracking.
+- [ ] Run load tests on realistic datasets.
+- [ ] Complete external security/compliance review.
+- [ ] Provision staging and production infrastructure.
+
+Implementation evidence: `docs/23-PHASE-18-PRODUCTION-HARDENING.md`.

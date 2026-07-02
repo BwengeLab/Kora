@@ -1,1 +1,1 @@
-export { ContractsPage } from './ContractsPage';
+export { ContractsPage, ContractsView, type ContractVariant } from './ContractsPage';

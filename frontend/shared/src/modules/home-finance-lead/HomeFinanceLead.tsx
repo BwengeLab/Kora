@@ -6,7 +6,7 @@ import { seedFinanceLeadKpis, type FlKpi } from '../../seed/financeLeadHome';
 import { seedApprovalStats } from '../../seed/approvals';
 import { ApprovalsAwaitingCard } from './ApprovalsAwaitingCard';
 import { CashForecastCard } from './CashForecastCard';
-import { RoiValueCard } from './RoiValueCard';
+import { CloseStatusCard } from './CloseStatusCard';
 
 const KPI_ICON = {
   cash: <Banknote />,
@@ -70,9 +70,9 @@ export function HomeFinanceLead() {
           </div>
         </section>
 
-        {/* ROI / value */}
+        {/* Month-end close status */}
         <section>
-          <RoiValueCard />
+          <CloseStatusCard />
         </section>
       </div>
     </div>

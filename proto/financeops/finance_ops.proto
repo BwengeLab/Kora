@@ -1,0 +1,200 @@
+syntax = "proto3";
+
+package kora.financeops.v1;
+
+import "proto/common/kora_common.proto";
+
+option go_package = "github.com/kora-finance/kora/gen/go/financeops;financeopsv1";
+
+message AgingBucket {
+  string label = 1;
+  int32 minimum_days = 2;
+  int32 maximum_days = 3;
+  kora.common.v1.Money amount = 4;
+  int32 invoice_count = 5;
+  repeated kora.common.v1.Evidence evidence = 6;
+}
+
+message Cashflow {
+  kora.common.v1.Money money_in = 1;
+  kora.common.v1.Money money_out = 2;
+  kora.common.v1.Money net_cashflow = 3;
+  repeated kora.common.v1.Evidence evidence = 4;
+}
+
+message ProfitAndLoss {
+  kora.common.v1.Money revenue = 1;
+  kora.common.v1.Money cost_of_goods_sold = 2;
+  kora.common.v1.Money operating_expense = 3;
+  kora.common.v1.Money gross_profit = 4;
+  kora.common.v1.Money net_profit = 5;
+  int32 gross_margin_basis_points = 6;
+  int32 net_margin_basis_points = 7;
+  repeated kora.common.v1.Evidence evidence = 8;
+}
+
+message ReceivablesAging {
+  kora.common.v1.Money current = 1;
+  int32 current_invoice_count = 2;
+  kora.common.v1.Money overdue = 3;
+  int32 overdue_invoice_count = 4;
+  kora.common.v1.Money missing_due_date = 5;
+  int32 missing_due_date_count = 6;
+  repeated AgingBucket buckets = 7;
+  repeated kora.common.v1.Evidence evidence = 8;
+}
+
+message FinanceAnalyticsReport {
+  string id = 1;
+  kora.common.v1.TenantContext tenant = 2;
+  string currency = 3;
+  string period_start = 4;
+  string period_end = 5;
+  string as_of = 6;
+  Cashflow cashflow = 7;
+  ProfitAndLoss profit_and_loss = 8;
+  ReceivablesAging receivables_aging = 9;
+}
+
+message GenerateFinanceAnalyticsRequest {
+  kora.common.v1.TenantContext tenant = 1;
+  string period_start = 2;
+  string period_end = 3;
+  string as_of = 4;
+  string currency = 5;
+  repeated int32 aging_buckets_days = 6;
+}
+
+message GenerateFinanceAnalyticsResponse { FinanceAnalyticsReport report = 1; }
+
+message CollectionCase {
+  string id = 1;
+  string invoice_event_id = 2;
+  string external_party_id = 3;
+  kora.common.v1.Money amount = 4;
+  string due_date = 5;
+  int32 days_overdue = 6;
+  string state = 7;
+  string suggested_tone = 8;
+  string draft_message = 9;
+  kora.common.v1.Evidence evidence = 10;
+}
+
+message BuildCollectionCasesRequest {
+  kora.common.v1.TenantContext tenant = 1;
+  string as_of = 2;
+  int32 reminder_after_days = 3;
+  int32 escalate_after_days = 4;
+}
+
+message BuildCollectionCasesResponse { repeated CollectionCase cases = 1; }
+
+message SendCollectionReminderRequest {
+  kora.common.v1.TenantContext tenant = 1;
+  string case_id = 2;
+  string delivery_channel = 3;
+  kora.common.v1.Evidence evidence = 4;
+}
+
+message SendCollectionReminderResponse {
+  string case_id = 1;
+  string sent_by_user_id = 2;
+  string sent_at = 3;
+}
+
+message ContractRecord {
+  string id = 1;
+  string event_id = 2;
+  string external_party_id = 3;
+  string contract_number = 4;
+  string start_date = 5;
+  string end_date = 6;
+  string renewal_date = 7;
+  repeated kora.common.v1.Evidence evidence = 8;
+}
+
+message ObligationRecord {
+  string id = 1;
+  string event_id = 2;
+  string contract_id = 3;
+  string due_date = 4;
+  kora.common.v1.Money amount = 5;
+  string description = 6;
+  kora.common.v1.Evidence evidence = 7;
+}
+
+message RenewalAlert {
+  string contract_id = 1;
+  int32 days_until_renewal = 2;
+  string alert_date = 3;
+  kora.common.v1.Evidence evidence = 4;
+}
+
+message MismatchFlag {
+  string event_id = 1;
+  string type = 2;
+  string reason = 3;
+  kora.common.v1.Evidence evidence = 4;
+}
+
+message AnalyzeContractsRequest {
+  kora.common.v1.TenantContext tenant = 1;
+  string as_of = 2;
+  int32 renewal_alert_days = 3;
+}
+
+message AnalyzeContractsResponse {
+  repeated ContractRecord contracts = 1;
+  repeated ObligationRecord obligations = 2;
+  repeated RenewalAlert renewal_alerts = 3;
+  repeated MismatchFlag mismatch_flags = 4;
+}
+
+message RelationshipNode {
+  string id = 1;
+  string type = 2;
+  string label = 3;
+  map<string, string> attributes = 4;
+}
+
+message RelationshipEdge {
+  string id = 1;
+  string from_node_id = 2;
+  string to_node_id = 3;
+  string type = 4;
+  kora.common.v1.Evidence evidence = 5;
+}
+
+message BuildRelationshipGraphRequest { kora.common.v1.TenantContext tenant = 1; }
+
+message BuildRelationshipGraphResponse {
+  repeated RelationshipNode nodes = 1;
+  repeated RelationshipEdge edges = 2;
+}
+
+message RiskFlag {
+  string id = 1;
+  string type = 2;
+  string severity = 3;
+  string source_id = 4;
+  string reason = 5;
+  kora.common.v1.Evidence evidence = 6;
+}
+
+message DetectRiskFlagsRequest {
+  kora.common.v1.TenantContext tenant = 1;
+  string as_of = 2;
+  int32 supplier_price_increase_threshold_basis_points = 3;
+  int32 margin_drop_threshold_basis_points = 4;
+}
+
+message DetectRiskFlagsResponse { repeated RiskFlag risk_flags = 1; }
+
+service FinanceOpsService {
+  rpc GenerateFinanceAnalytics(GenerateFinanceAnalyticsRequest) returns (GenerateFinanceAnalyticsResponse);
+  rpc BuildCollectionCases(BuildCollectionCasesRequest) returns (BuildCollectionCasesResponse);
+  rpc SendCollectionReminder(SendCollectionReminderRequest) returns (SendCollectionReminderResponse);
+  rpc AnalyzeContracts(AnalyzeContractsRequest) returns (AnalyzeContractsResponse);
+  rpc BuildRelationshipGraph(BuildRelationshipGraphRequest) returns (BuildRelationshipGraphResponse);
+  rpc DetectRiskFlags(DetectRiskFlagsRequest) returns (DetectRiskFlagsResponse);
+}

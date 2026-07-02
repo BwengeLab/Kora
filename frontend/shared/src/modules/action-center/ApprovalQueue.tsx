@@ -20,19 +20,20 @@ function matchesTab(a: ApprovalItem, tab: TabId): boolean {
 export interface ApprovalQueueProps {
   items: ApprovalItem[];
   variant: ActionVariant;
+  track?: boolean;
   selectedId: string;
   onSelect: (id: string) => void;
   tab: TabId;
   onTab: (t: TabId) => void;
 }
 
-export function ApprovalQueue({ items, variant, selectedId, onSelect, tab, onTab }: ApprovalQueueProps) {
+export function ApprovalQueue({ items, variant, track = false, selectedId, onSelect, tab, onTab }: ApprovalQueueProps) {
   const filtered = items.filter((a) => matchesTab(a, tab));
   return (
     <GlassSurface tone="strong" className="flex h-full min-h-0 flex-col">
       <header className="flex items-center justify-between gap-3 px-5 pt-5">
         <h2 className="font-display text-[16px] font-bold text-ink">
-          {variant === 'org_owner' ? 'Routed up to you' : 'Approval queue'}
+          {variant === 'org_owner' ? 'Routed up to you' : track ? 'My submissions' : 'Approval queue'}
         </h2>
         <button type="button" className="inline-flex h-8 items-center gap-1.5 rounded-xl bg-white/60 px-3 text-[12px] font-semibold text-ink-soft ring-1 ring-white/70 hover:bg-white hover:text-ink">
           <ArrowUpDown className="size-3.5" /> Risk
@@ -42,6 +43,7 @@ export function ApprovalQueue({ items, variant, selectedId, onSelect, tab, onTab
       <div className="mt-3 flex gap-1 px-5">
         {TABS.map((t) => {
           const count = items.filter((a) => matchesTab(a, t.id)).length;
+          const label = track && t.id === 'awaiting' ? 'Awaiting approval' : t.label;
           return (
             <button
               key={t.id}
@@ -49,7 +51,7 @@ export function ApprovalQueue({ items, variant, selectedId, onSelect, tab, onTab
               onClick={() => onTab(t.id)}
               className={cn('relative pb-2.5 text-[13px] font-semibold transition-colors', tab === t.id ? 'text-ink' : 'text-ink-muted hover:text-ink-soft')}
             >
-              <span className="px-2">{t.label} <span className="tabular text-ink-muted">{count}</span></span>
+              <span className="px-2">{label} <span className="tabular text-ink-muted">{count}</span></span>
               {tab === t.id ? <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-brand" /> : null}
             </button>
           );

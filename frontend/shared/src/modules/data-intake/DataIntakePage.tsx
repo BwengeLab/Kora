@@ -11,7 +11,7 @@ const STAGE_META: Record<IntakeStage, { label: string; tone: string }> = {
   extracting: { label: 'Extracting', tone: 'bg-ai-soft text-ai' },
   'needs-review': { label: 'Needs review', tone: 'bg-warning-soft text-warning' },
   matched: { label: 'Matched', tone: 'bg-info-soft text-info' },
-  posted: { label: 'Posted', tone: 'bg-success-soft text-success' },
+  posted: { label: 'Recorded', tone: 'bg-success-soft text-success' },
 };
 
 const SOURCE_ICON: Record<IntakeSource, typeof Mail> = { 'bank-feed': Link2, email: Mail, scan: Smartphone, upload: Upload };
@@ -139,7 +139,7 @@ function IntakeDetail({ doc }: { doc: IntakeDoc }) {
       {!extracting ? (
         <footer className="flex items-center gap-2 border-t border-white/55 p-4">
           {done ? (
-            <span className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-success-soft text-[13px] font-bold text-success"><CheckCircle2 className="size-4" /> Posted to the ledger</span>
+            <span className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-success-soft text-[13px] font-bold text-success"><CheckCircle2 className="size-4" /> Recorded to the books</span>
           ) : (
             <>
               {doc.suggestedMatch ? (
@@ -147,8 +147,8 @@ function IntakeDetail({ doc }: { doc: IntakeDoc }) {
                   <Link2 className="size-4" /> {doc.stage === 'matched' ? 'Matched' : 'Confirm match'}
                 </button>
               ) : null}
-              <button type="button" onClick={() => { post(doc.id); toast({ tone: 'success', title: 'Posted', body: `${doc.name} written to the ledger with evidence.` }); }} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">
-                <CheckCircle2 className="size-4" /> Post to ledger
+              <button type="button" onClick={() => { post(doc.id); toast({ tone: 'success', title: 'Recorded', body: `${doc.name} recorded to the books with evidence — ready for reconciliation.` }); }} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">
+                <CheckCircle2 className="size-4" /> Record transaction
               </button>
             </>
           )}

@@ -3,6 +3,7 @@
 // Shaped like the Business Event Ledger the backend will expose.
 
 import type { EvidenceDoc } from './reconciliation';
+import type { EntityId } from './entities';
 import type { Money } from '../lib/money';
 
 const M = (amount: number, currency = 'USD'): Money => ({
@@ -35,6 +36,7 @@ export interface CashMovement {
   amount: Money; // always positive
   reference: string;
   reconciled: boolean;
+  entity: EntityId; // which legal entity this movement belongs to
   linked?: LinkedRecord;
   evidence: EvidenceDoc[];
 }
@@ -62,7 +64,7 @@ const ev = (id: string, name: string, kind: EvidenceDoc['kind'], sizeText: strin
 
 // A month of real movements (May 2025). Mix of inflows and outflows, every one
 // with a category, account, reference, reconciliation status and purpose.
-export const seedCashMovements: CashMovement[] = [
+const RAW_MOVEMENTS: Omit<CashMovement, 'entity'>[] = [
   { id: 'cm-01', date: '2025-05-02', description: 'Premium — Kigali Corporate Group', counterparty: 'Kigali Corporate Group', category: 'premium', purpose: 'Annual motor fleet policy premium', account: 'BK', direction: 'in', amount: M(186000), reference: 'PRM-2025-0421', reconciled: true, linked: { kind: 'policy', ref: 'POL-MOT-7781' }, evidence: [ev('e1', 'Premium advice.pdf', 'invoice', '120 KB')] },
   { id: 'cm-02', date: '2025-05-02', description: 'Reinsurance recovery — Swiss Re', counterparty: 'Swiss Re', category: 'reinsurance', purpose: 'Recovery on prior-period large claim', account: 'HSBC', direction: 'in', amount: M(42000), reference: 'RI-2025-118', reconciled: true, evidence: [ev('e2', 'Reinsurance statement.pdf', 'statement', '210 KB')] },
   { id: 'cm-03', date: '2025-05-03', description: 'Office lease — Kigali Office Park', counterparty: 'Kigali Office Park Ltd.', category: 'rent', purpose: 'May office rent', account: 'BK', direction: 'out', amount: M(12480), reference: 'RENT-MAY', reconciled: true, linked: { kind: 'contract', ref: 'OL-2025-05' }, evidence: [ev('e3', 'Office Lease 2025.pdf', 'contract', '850 KB')] },
@@ -89,3 +91,14 @@ export const seedCashMovements: CashMovement[] = [
   { id: 'cm-24', date: '2025-05-18', description: 'Commission — agent network payout', counterparty: 'Agent network', category: 'commission', purpose: 'Monthly tied-agent commissions', account: 'MTN MoMo', direction: 'out', amount: M(14200), reference: 'COMM-2025-05', reconciled: false, evidence: [] },
   { id: 'cm-25', date: '2025-05-18', description: 'Software — analytics platform', counterparty: 'DataViz Co', category: 'software', purpose: 'BI & reporting subscription', account: 'HSBC', direction: 'out', amount: M(1860), reference: 'DV-2025-05', reconciled: false, evidence: [] },
 ];
+
+// Distribute movements across the group's entities — most in Rwanda (the base
+// entity), the rest across Kenya and Uganda — so the entity switcher shows real,
+// different books per subsidiary and a consolidated "All entities" view.
+const ENTITY_BY_INDEX: EntityId[] = [
+  'ent-rw', 'ent-rw', 'ent-rw', 'ent-ke', 'ent-rw', 'ent-rw', 'ent-rw', 'ent-ke', 'ent-ke', 'ent-rw',
+  'ent-ug', 'ent-rw', 'ent-ug', 'ent-rw', 'ent-rw', 'ent-rw', 'ent-rw', 'ent-ke', 'ent-ug', 'ent-rw',
+  'ent-rw', 'ent-ug', 'ent-ke', 'ent-ug', 'ent-rw',
+];
+
+export const seedCashMovements: CashMovement[] = RAW_MOVEMENTS.map((m, i) => ({ ...m, entity: ENTITY_BY_INDEX[i] ?? 'ent-rw' }));

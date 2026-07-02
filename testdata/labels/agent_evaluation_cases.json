@@ -26,6 +26,33 @@
       "expected_evidence_record_ids": ["payment-1"],
       "confidence_tolerance": 0.01,
       "expect_refusal": false
+    },
+    {
+      "case_id": "supplier-margin-review-001",
+      "agent_name": "supplier_margin_agent",
+      "expected_action": "suggest supplier margin review",
+      "expected_confidence": 0.95,
+      "expected_evidence_record_ids": ["risk_1"],
+      "confidence_tolerance": 0.05,
+      "expect_refusal": false
+    },
+    {
+      "case_id": "audit-compliance-review-001",
+      "agent_name": "audit_compliance_agent",
+      "expected_action": "request compliance review",
+      "expected_confidence": 0.95,
+      "expected_evidence_record_ids": ["risk_1"],
+      "confidence_tolerance": 0.05,
+      "expect_refusal": false
+    },
+    {
+      "case_id": "sales-growth-explanation-001",
+      "agent_name": "sales_growth_agent",
+      "expected_action": "explain sales growth signal",
+      "expected_confidence": 0.95,
+      "expected_evidence_record_ids": ["report_1"],
+      "confidence_tolerance": 0.05,
+      "expect_refusal": false
     }
   ]
 }

@@ -6,14 +6,13 @@ import {
   type Reconciliation,
   type ReconciliationTier,
 } from '../seed/reconciliation';
+import { dualThreshold, resolveChain } from './approvalPolicyStore';
 import type { Money } from '../lib/money';
 
 // Live, shared workflow state. Both the Reconciliation Cockpit and the Action
 // Center read/write this, so preparing a match in the cockpit creates an
 // approval that appears in the Finance Lead's Action Center — the real
 // operator → lead handoff, with shared state instead of static seed.
-
-const POLICY_LIMIT: Money = { amountMinor: 10000000n, currency: 'USD' }; // $100,000
 
 function riskFromTier(tier: ReconciliationTier): ApprovalItem['risk'] {
   if (tier === 'suspicious' || tier === 'review') return 'high';
@@ -36,6 +35,8 @@ interface WorkflowState {
   auditLog: AuditEvent[];
   dismissedReconIds: string[];
   prepareMatch: (reconId: string, by: Actor) => void;
+  agentSuggestMatches: (max?: number) => number; // Reconciliation Agent: detected → reviewing
+  approveReconciliation: (reconId: string, by: Actor) => void;
   rejectReconciliation: (reconId: string) => void;
   dismissSuggestion: (reconId: string) => void;
   approve: (approvalId: string, by: Actor) => ApproveResult;
@@ -110,8 +111,12 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       ),
     }));
 
-    // 2. create an approval item from it (deduped by id)
-    const overLimit = recon.transaction.amount.amountMinor > POLICY_LIMIT.amountMinor;
+    // 2. create an approval item from it (deduped by id). The required approval
+    // chain comes from the DOA matrix, not a hardcoded limit.
+    const amountMajor = Number(recon.transaction.amount.amountMinor) / 100;
+    const chain = resolveChain(amountMajor);
+    const overLimit = chain.requiresDual;
+    const limit: Money = { amountMinor: BigInt(Math.round(dualThreshold() * 100)), currency: recon.transaction.amount.currency };
     const approvalId = `ap-from-${reconId}`;
     if (get().approvals.some((a) => a.id === approvalId)) return;
 
@@ -129,7 +134,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       confidence: recon.confidence,
       stage: 'awaiting',
       requiresDualApproval: overLimit,
-      policyLimit: POLICY_LIMIT,
+      policyLimit: limit,
       withinLimit: !overLimit,
       approvals: [],
       isOwnItem: false,
@@ -140,6 +145,50 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       ],
     };
     set((s) => ({ approvals: [newApproval, ...s.approvals] }));
+  },
+
+  // The Reconciliation Agent proposes matches: detected items become "reviewing"
+  // (suggested), which is the observable change the operator/lead then act on.
+  agentSuggestMatches: (max = 2) => {
+    const detected = get().reconciliations.filter((r) => r.stage === 'detected');
+    const pick = detected.slice(0, max);
+    if (pick.length === 0) return 0;
+    const ids = new Set(pick.map((r) => r.id));
+    set((s) => ({
+      reconciliations: s.reconciliations.map((r) =>
+        ids.has(r.id)
+          ? { ...r, stage: 'reviewing', ageText: 'Suggested by agent', history: [...r.history, { id: `h-${Date.now()}-${r.id}`, at: nowIso(), actor: 'Reconciliation Agent', actorRole: 'Kora AI', kind: 'agent', action: `Suggested match (${r.confidence}%)` }] }
+          : r,
+      ),
+    }));
+    return pick.length;
+  },
+
+  // The Finance Lead reviews a prepared/suggested match and approves it: the
+  // reconciliation is posted and written to the immutable audit log.
+  approveReconciliation: (reconId, by) => {
+    const recon = get().reconciliations.find((r) => r.id === reconId);
+    if (!recon || recon.stage === 'posted') return;
+    const ev: AuditEvent = {
+      id: `al-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      at: nowIso(),
+      actor: by.name,
+      role: by.role,
+      kind: 'posting',
+      action: 'Reconciliation approved & posted · audited',
+      target: `${recon.transaction.counterparty} · ${recon.suggestedRecord?.reference ?? recon.transaction.reference ?? 'match'}`,
+      amount: recon.transaction.amount,
+      hasEvidence: recon.evidence.length > 0,
+    };
+    set((s) => ({
+      reconciliations: s.reconciliations.map((r) =>
+        r.id === reconId
+          ? { ...r, stage: 'posted', ageText: 'Posted just now', history: [...r.history, { id: `h-${Date.now()}`, at: nowIso(), actor: by.name, actorRole: by.role, kind: 'user', action: 'Approved match · posted' }] }
+          : r,
+      ),
+      approvals: s.approvals.map((a) => (a.id === `ap-from-${reconId}` ? { ...a, stage: 'approved' } : a)),
+      auditLog: [ev, ...s.auditLog],
+    }));
   },
 
   rejectReconciliation: (reconId) => {

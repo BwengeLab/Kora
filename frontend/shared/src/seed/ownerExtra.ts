@@ -80,27 +80,33 @@ export interface Party {
   phone: string;
   since: string;
   activity: PartyActivity[];
+  // Operational AR/AP fields (Finance Lead view). balance > 0 = they owe us
+  // (receivable); balance < 0 = we owe them (payable).
+  balance: Money;
+  terms: string;
+  creditLimit: Money;
+  overdue: boolean;
 }
 
 export const seedRelationshipStats = { customers: 248, suppliers: 186, partners: 42, contracts: 78, renewalsDue: 9 };
 
 export const seedParties: Party[] = [
   { id: 'p1', name: 'BK Insurance Brokers', type: 'partner', moneyIn: M(212000), moneyOut: M(18000), openInvoices: 2, risk: 'low', contracts: 3, contact: 'Jean Bizimana', email: 'finance@bkbrokers.rw', phone: '+250 788 110 220', since: '2021',
-    activity: [{ date: '2025-05-07', text: 'Commission settlement', amount: M(18600), dir: 'out' }, { date: '2025-05-02', text: 'New business placement', amount: M(96000), dir: 'in' }, { date: '2025-04-28', text: 'Quarterly reconciliation signed' }] },
+    activity: [{ date: '2025-05-07', text: 'Commission settlement', amount: M(18600), dir: 'out' }, { date: '2025-05-02', text: 'New business placement', amount: M(96000), dir: 'in' }, { date: '2025-04-28', text: 'Quarterly reconciliation signed' }], balance: M(28600), terms: 'Net 30', creditLimit: M(100000), overdue: false },
   { id: 'p2', name: 'ACME Supplies Ltd.', type: 'supplier', moneyIn: M(0), moneyOut: M(184000), openInvoices: 4, risk: 'medium', contracts: 2, contact: 'Claudine Mukamana', email: 'ar@acmesupplies.rw', phone: '+250 788 330 441', since: '2022',
-    activity: [{ date: '2025-05-10', text: 'Invoice INV-10356 received', amount: M(45600), dir: 'out' }, { date: '2025-05-17', text: 'Hardware delivery', amount: M(9800), dir: 'out' }, { date: '2025-05-01', text: 'Price list updated' }] },
+    activity: [{ date: '2025-05-10', text: 'Invoice INV-10356 received', amount: M(45600), dir: 'out' }, { date: '2025-05-17', text: 'Hardware delivery', amount: M(9800), dir: 'out' }, { date: '2025-05-01', text: 'Price list updated' }], balance: M(-45600), terms: 'Net 15', creditLimit: M(60000), overdue: false },
   { id: 'p3', name: 'Kigali Corporate Group', type: 'customer', moneyIn: M(486000), moneyOut: M(0), openInvoices: 6, risk: 'low', contracts: 5, contact: 'Eric Nshuti', email: 'finance@kcg.rw', phone: '+250 788 550 660', since: '2019',
-    activity: [{ date: '2025-05-02', text: 'Annual fleet premium', amount: M(186000), dir: 'in' }, { date: '2025-05-12', text: 'Fleet renewal premium', amount: M(96000), dir: 'in' }, { date: '2025-04-30', text: 'Reminder sent — INV-10198' }] },
+    activity: [{ date: '2025-05-02', text: 'Annual fleet premium', amount: M(186000), dir: 'in' }, { date: '2025-05-12', text: 'Fleet renewal premium', amount: M(96000), dir: 'in' }, { date: '2025-04-30', text: 'Reminder sent — INV-10198' }], balance: M(36400), terms: 'Net 30', creditLimit: M(500000), overdue: true },
   { id: 'p4', name: 'PT Imports', type: 'supplier', moneyIn: M(0), moneyOut: M(96400), openInvoices: 3, risk: 'high', contracts: 1, contact: 'Patrick Tuyishime', email: 'accounts@ptimports.rw', phone: '+250 788 770 880', since: '2023',
-    activity: [{ date: '2025-05-15', text: 'Payment $260 over PO — flagged', amount: M(8760), dir: 'out' }, { date: '2025-05-18', text: 'Promised settlement by Friday' }, { date: '2025-05-10', text: 'Overdue invoice INV-10221 chased' }] },
+    activity: [{ date: '2025-05-15', text: 'Payment $260 over PO — flagged', amount: M(8760), dir: 'out' }, { date: '2025-05-18', text: 'Promised settlement by Friday' }, { date: '2025-05-10', text: 'Overdue invoice INV-10221 chased' }], balance: M(48600), terms: 'Net 30', creditLimit: M(60000), overdue: true },
   { id: 'p5', name: 'MediCare Network', type: 'partner', moneyIn: M(58000), moneyOut: M(312000), openInvoices: 5, risk: 'medium', contracts: 4, contact: 'Dr. Alice Keza', email: 'billing@medicare.rw', phone: '+250 788 220 330', since: '2020',
-    activity: [{ date: '2025-05-08', text: 'Corporate health premium', amount: M(58000), dir: 'in' }, { date: '2025-05-09', text: 'Claim settlement to provider', amount: M(8200), dir: 'out' }, { date: '2025-05-05', text: 'Tariff schedule reviewed' }] },
+    activity: [{ date: '2025-05-08', text: 'Corporate health premium', amount: M(58000), dir: 'in' }, { date: '2025-05-09', text: 'Claim settlement to provider', amount: M(8200), dir: 'out' }, { date: '2025-05-05', text: 'Tariff schedule reviewed' }], balance: M(28900), terms: 'Net 45', creditLimit: M(700000), overdue: true },
   { id: 'p6', name: 'Umoja SACCO', type: 'customer', moneyIn: M(124000), moneyOut: M(0), openInvoices: 1, risk: 'low', contracts: 2, contact: 'Grace Uwase', email: 'finance@umoja.rw', phone: '+250 788 990 100', since: '2021',
-    activity: [{ date: '2025-05-04', text: 'Group health premium', amount: M(64000), dir: 'in' }, { date: '2025-05-16', text: 'Installment received', amount: M(31000), dir: 'in' }, { date: '2025-04-22', text: 'Member list updated' }] },
+    activity: [{ date: '2025-05-04', text: 'Group health premium', amount: M(64000), dir: 'in' }, { date: '2025-05-16', text: 'Installment received', amount: M(31000), dir: 'in' }, { date: '2025-04-22', text: 'Member list updated' }], balance: M(53590), terms: 'Net 30', creditLimit: M(200000), overdue: true },
   { id: 'p7', name: 'Gikondo Industrial', type: 'customer', moneyIn: M(74000), moneyOut: M(0), openInvoices: 2, risk: 'low', contracts: 1, contact: 'Samuel Habiyo', email: 'ap@gikondo.rw', phone: '+250 788 445 556', since: '2024',
-    activity: [{ date: '2025-05-18', text: 'Public liability premium', amount: M(74000), dir: 'in' }, { date: '2025-05-01', text: 'Cover extended to new site' }] },
+    activity: [{ date: '2025-05-18', text: 'Public liability premium', amount: M(74000), dir: 'in' }, { date: '2025-05-01', text: 'Cover extended to new site' }], balance: M(12400), terms: 'Net 30', creditLimit: M(150000), overdue: false },
   { id: 'p8', name: 'Cloud Services Inc', type: 'supplier', moneyIn: M(0), moneyOut: M(26880), openInvoices: 1, risk: 'low', contracts: 1, contact: 'Support Desk', email: 'billing@cloudservices.com', phone: '+1 415 555 0110', since: '2022',
-    activity: [{ date: '2025-05-06', text: 'Quarterly subscription', amount: M(2240), dir: 'out' }, { date: '2025-05-18', text: 'Renewal due in 22 days' }] },
+    activity: [{ date: '2025-05-06', text: 'Quarterly subscription', amount: M(2240), dir: 'out' }, { date: '2025-05-18', text: 'Renewal due in 22 days' }], balance: M(-2240), terms: 'Net 15', creditLimit: M(30000), overdue: false },
 ];
 
 export interface Renewal {

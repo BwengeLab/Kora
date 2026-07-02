@@ -12,6 +12,8 @@ export const organizationOwnerBlueprint: RoleBlueprint = {
     { id: 'home', labelKey: 'nav.home', path: '/', requires: [] },
     { id: 'approvals', labelKey: 'nav.approvals', path: '/approvals', requires: [{ permission: PERMISSIONS.APPROVAL_CREATE }] },
     { id: 'ledger', labelKey: 'nav.cashflow', path: '/ledger', requires: [{ permission: PERMISSIONS.EVENTS_READ }] },
+    { id: 'gl', labelKey: 'nav.gl', path: '/general-ledger', requires: [{ permission: PERMISSIONS.EVENTS_READ }] },
+    { id: 'statements', labelKey: 'nav.statements', path: '/statements', requires: [{ permission: PERMISSIONS.REPORTS_READ }] },
     { id: 'reconciliation', labelKey: 'nav.reconciliation', path: '/reconciliation', requires: [{ permission: PERMISSIONS.RECONCILIATION_REVIEW }] },
     { id: 'relationships', labelKey: 'nav.relationships', path: '/relationships', requires: [{ permission: PERMISSIONS.RELATIONSHIPS_MANAGE }] },
     { id: 'agents', labelKey: 'nav.agents', path: '/agents', requires: [] },

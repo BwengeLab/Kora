@@ -1,14 +1,21 @@
 import * as Dialog from '@radix-ui/react-dialog';
-import { ArrowDownLeft, ArrowUpRight, Check, FileText, Link2, X } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Check, FileText, Flag, Link2, MessageSquare, X } from 'lucide-react';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
 import { CATEGORY_META, type CashMovement } from '../../seed/cashLedger';
 import { openDoc } from '../../state/docViewerStore';
 import { toast } from '../../state/toastStore';
 
+// Who is looking at the ledger decides what they can DO with a movement:
+//  • operate   — Finance Operator: reconcile it (match bank ↔ record).
+//  • post      — Finance Lead: post the entry to the ledger (commit it).
+//  • oversight — Owner: view, understand, ask finance or flag.
+//  • read      — Auditor: view only, no actions.
+export type LedgerMode = 'operate' | 'post' | 'oversight' | 'read';
+
 // The detail drawer for a single cash movement — the "why", the linked record,
-// reconciliation status, and evidence. Opening a movement is how the owner
-// understands every cash event.
-export function MovementDrawer({ movement, onClose }: { movement: CashMovement | null; onClose: () => void }) {
+// reconciliation status, and evidence. Opening a movement is how anyone
+// understands a cash event; the action footer is role-aware.
+export function MovementDrawer({ movement, onClose, mode = 'oversight' }: { movement: CashMovement | null; onClose: () => void; mode?: LedgerMode }) {
   const open = movement !== null;
   const m = movement;
   const isIn = m?.direction === 'in';
@@ -108,16 +115,44 @@ export function MovementDrawer({ movement, onClose }: { movement: CashMovement |
                 )}
               </div>
 
-              {/* Actions */}
-              <footer className="flex items-center gap-2 border-t border-white/55 p-4">
-                {!m.reconciled ? (
-                  <button type="button" onClick={() => toast({ tone: 'success', title: 'Marked reconciled', body: `${m.reference} matched and reconciled.` })} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">
-                    <Check className="size-4" /> Reconcile
+              {/* Actions — role-aware */}
+              {mode === 'read' ? (
+                <footer className="border-t border-white/55 p-4">
+                  <span className={cn('inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl text-[13px] font-bold', m.reconciled ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning')}>
+                    <Check className="size-4" /> {m.reconciled ? 'Reconciled' : 'Unreconciled'}
+                  </span>
+                </footer>
+              ) : mode === 'operate' ? (
+                <footer className="flex items-center gap-2 border-t border-white/55 p-4">
+                  {!m.reconciled ? (
+                    <button type="button" onClick={() => toast({ tone: 'success', title: 'Marked reconciled', body: `${m.reference} matched and reconciled.` })} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">
+                      <Check className="size-4" /> Reconcile
+                    </button>
+                  ) : (
+                    <span className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-success-soft text-[13px] font-bold text-success"><Check className="size-4" /> Reconciled</span>
+                  )}
+                </footer>
+              ) : mode === 'post' ? (
+                // Finance Lead — posts the entry to the ledger (commits it), or holds it.
+                <footer className="flex items-center gap-2 border-t border-white/55 p-4">
+                  <button type="button" onClick={() => toast({ tone: 'warning', title: 'Held for query', body: `${m.reference} held — sent back to the operator with a query.` })} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-white/70 px-4 text-[13px] font-bold text-ink ring-1 ring-white/70 hover:bg-white">
+                    <MessageSquare className="size-4" /> Hold
                   </button>
-                ) : (
-                  <span className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-success-soft text-[13px] font-bold text-success"><Check className="size-4" /> Reconciled</span>
-                )}
-              </footer>
+                  <button type="button" onClick={() => toast({ tone: 'success', title: 'Posted to ledger', body: `${m.reference} committed to the general ledger and audited.` })} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">
+                    <Check className="size-4" /> Post to ledger
+                  </button>
+                </footer>
+              ) : (
+                // oversight (Owner / Finance Lead) — understand & delegate, don't reconcile
+                <footer className="flex items-center gap-2 border-t border-white/55 p-4">
+                  <button type="button" onClick={() => toast({ tone: 'warning', title: 'Flagged for review', body: `${m.reference} flagged for finance to check.` })} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-white/70 px-4 text-[13px] font-bold text-danger ring-1 ring-white/70 hover:bg-white">
+                    <Flag className="size-4" /> Flag
+                  </button>
+                  <button type="button" onClick={() => toast({ tone: 'info', title: 'Asked finance', body: `Requested an explanation for ${m.reference} from the finance team.` })} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">
+                    <MessageSquare className="size-4" /> Ask finance
+                  </button>
+                </footer>
+              )}
             </>
           ) : null}
         </Dialog.Content>

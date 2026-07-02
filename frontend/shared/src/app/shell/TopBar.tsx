@@ -1,11 +1,13 @@
 import * as Popover from '@radix-ui/react-popover';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import {
   Bell,
-  Building2,
   Calculator,
+  Check,
   CheckCircle2,
   ChevronDown,
   GitBranch,
+  Layers,
   Mail,
   Search,
   Settings as SettingsIcon,
@@ -16,7 +18,9 @@ import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { useSession } from '../../auth/hooks';
 import { GlassSurface, cn } from '../../design-system';
+import { seedEntities, type EntityScope } from '../../seed/entities';
 import { useCopilotStore } from '../../state/copilotStore';
+import { useEntityStore } from '../../state/entityStore';
 import { useUnreadCount } from '../../state/mailStore';
 import { useToolsStore } from '../../state/toolsStore';
 import { useWorkflowStore } from '../../state/workflowStore';
@@ -64,15 +68,7 @@ export function TopBar() {
         <SettingsIcon className="size-[18px]" />
       </CircleLink>
 
-      {session ? (
-        <GlassSurface tone="strong" className="flex h-12 items-center gap-2.5 pl-3 pr-3.5">
-          <span className="grid size-7 place-items-center rounded-lg bg-brand-soft text-brand-ink">
-            <Building2 className="size-[14px]" />
-          </span>
-          <span className="text-sm font-semibold text-ink">{session.tenant.name}</span>
-          <ChevronDown className="size-3.5 text-ink-muted" />
-        </GlassSurface>
-      ) : null}
+      {session ? <EntitySwitcher tenantName={session.tenant.name} /> : null}
     </header>
   );
 }
@@ -142,6 +138,53 @@ function NotificationsBell() {
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
+  );
+}
+
+// Entity switcher — the multi-entity context for the whole app. Small businesses
+// stay on "All entities" and never think about it; groups switch between
+// subsidiaries and the consolidated view.
+function EntitySwitcher({ tenantName }: { tenantName: string }) {
+  const scope = useEntityStore((s) => s.scope);
+  const setScope = useEntityStore((s) => s.setScope);
+  const active = scope === 'all' ? null : seedEntities.find((e) => e.id === scope) ?? null;
+
+  const choose = (s: EntityScope) => setScope(s);
+
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button type="button" className="flex h-12 items-center gap-2.5 rounded-2xl border border-glass-border-strong bg-glass-strong pl-3 pr-3.5 backdrop-blur-glass transition-colors hover:bg-white">
+          <span className="grid size-7 place-items-center rounded-lg bg-brand-soft text-brand-ink">{active ? <span className="text-[14px] leading-none">{active.flag}</span> : <Layers className="size-[14px]" />}</span>
+          <span className="flex flex-col items-start leading-tight">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">{tenantName}</span>
+            <span className="text-[13px] font-bold text-ink">{active ? active.short : 'All entities'}</span>
+          </span>
+          <ChevronDown className="size-3.5 text-ink-muted" />
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content align="end" sideOffset={10} className="z-50 w-[300px] rounded-3xl border border-glass-border-strong bg-glass-strong p-2 shadow-glass-lg backdrop-blur-glass-lg">
+          <p className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-ink-muted">Entity context</p>
+          <DropdownMenu.Item onSelect={() => choose('all')} className="flex cursor-pointer items-center gap-3 rounded-2xl p-2.5 outline-none hover:bg-white/70">
+            <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand-ink"><Layers className="size-4" /></span>
+            <div className="min-w-0 flex-1"><p className="text-[13px] font-bold text-ink">All entities</p><p className="text-[11px] text-ink-muted">Consolidated group view</p></div>
+            {scope === 'all' ? <Check className="size-4 text-brand" /> : null}
+          </DropdownMenu.Item>
+          <div className="my-1 mx-2 border-t border-white/55" />
+          {seedEntities.map((e) => (
+            <DropdownMenu.Item key={e.id} onSelect={() => choose(e.id)} className="flex cursor-pointer items-center gap-3 rounded-2xl p-2.5 outline-none hover:bg-white/70">
+              <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-white/70 text-[16px] leading-none ring-1 ring-white/60">{e.flag}</span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5"><p className="truncate text-[13px] font-bold text-ink">{e.name}</p>{e.base ? <span className="rounded-full bg-success-soft px-1.5 py-0.5 text-[8.5px] font-bold uppercase text-success">base</span> : null}</div>
+                <p className="text-[11px] capitalize text-ink-muted">{e.country} · {e.kind} · {e.currency}</p>
+              </div>
+              {scope === e.id ? <Check className="size-4 text-brand" /> : null}
+            </DropdownMenu.Item>
+          ))}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   );
 }
 

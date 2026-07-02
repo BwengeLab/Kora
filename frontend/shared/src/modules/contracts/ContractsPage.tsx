@@ -1,8 +1,9 @@
-import { CalendarClock, Check, FileText, RefreshCw, Search, Sparkles, X } from 'lucide-react';
+import { CalendarClock, FileText, Flag, RefreshCw, Search, Sparkles, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { DateRangePill, PageHeader } from '../../app/shell';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
+import type { Money } from '../../lib/money';
 import { CONTRACT_STATUS_META, CONTRACT_TYPE_META, seedContracts, type Contract, type ContractStatus, type ContractType } from '../../seed/contracts';
 import { openDoc } from '../../state/docViewerStore';
 import { toast } from '../../state/toastStore';
@@ -10,12 +11,34 @@ import { toast } from '../../state/toastStore';
 const TODAY = new Date('2025-05-18');
 const daysToExpiry = (end: string) => Math.round((new Date(end).getTime() - TODAY.getTime()) / 86400000);
 
-// Contracts register — policies, leases, vendor and partner agreements. The
-// Finance Lead manages renewals; the Auditor reads obligations. Every contract
-// links to its signed document.
-export function ContractsPage({ readOnly = false }: { readOnly?: boolean }) {
+// How the viewer relates to a contract:
+//  • manage    — Finance Lead: renew, set reminders (does the work).
+//  • oversight — Owner: see obligations & renewals; flag a renewal to finance.
+//  • read      — Auditor: view only.
+export type ContractVariant = 'manage' | 'oversight' | 'read';
+
+const SUBTITLE: Record<ContractVariant, string> = {
+  manage: 'Policies, leases and vendor agreements. Track renewals before they lapse.',
+  oversight: 'What the business is committed to — value, terms and renewals. Finance manages the detail; you oversee the obligations.',
+  read: 'Every obligation the business is committed to — read-only, with signed evidence.',
+};
+
+// Full standalone page (Finance Lead / Auditor routes).
+export function ContractsPage({ variant = 'manage' }: { variant?: ContractVariant }) {
+  return (
+    <div className="flex h-full flex-col">
+      <PageHeader title="Contracts" subtitle={SUBTITLE[variant]} right={<DateRangePill label="As of May 18, 2025" />} />
+      <ContractsView variant={variant} />
+    </div>
+  );
+}
+
+// The contracts register body — reused both as a standalone page and embedded as
+// the "Contracts" tab of the owner's Relationships page. `initialQuery` lets a
+// caller deep-link to one party's contracts.
+export function ContractsView({ variant = 'manage', initialQuery = '' }: { variant?: ContractVariant; initialQuery?: string }) {
   const [contracts, setContracts] = useState<Contract[]>(seedContracts);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery);
   const [type, setType] = useState<ContractType | 'all'>('all');
   const [status, setStatus] = useState<ContractStatus | 'all'>('all');
   const [selected, setSelected] = useState<Contract | null>(null);
@@ -36,73 +59,64 @@ export function ContractsPage({ readOnly = false }: { readOnly?: boolean }) {
   };
 
   const renewalDue = contracts.filter((c) => c.status === 'renewal-due' || c.status === 'expiring').length;
-  const annualValue = { amountMinor: contracts.filter((c) => c.status !== 'expired' && c.status !== 'draft').reduce((a, c) => a + c.value.amountMinor, 0n), currency: 'USD' };
+  const annualValue: Money = { amountMinor: contracts.filter((c) => c.status !== 'expired' && c.status !== 'draft').reduce((a, c) => a + c.value.amountMinor, 0n), currency: 'USD' };
 
   return (
-    <div className="flex h-full flex-col">
-      <PageHeader
-        title="Contracts"
-        subtitle={readOnly ? 'Every obligation the business is committed to — read-only, with signed evidence.' : 'Policies, leases and vendor agreements. Track renewals before they lapse.'}
-        right={<DateRangePill label="As of May 18, 2025" />}
-      />
-      <div className="@container flex min-h-0 flex-1 flex-col gap-4 px-8 pb-6">
-        <div className="grid grid-cols-2 gap-3 @3xl:grid-cols-4">
-          <MetricCard label="Active contracts" value={String(contracts.filter((c) => c.status === 'active').length)} tone="text-success" />
-          <MetricCard label="Renewal / expiring" value={String(renewalDue)} tone="text-warning" active={status === 'renewal-due'} onClick={() => setStatus(status === 'renewal-due' ? 'all' : 'renewal-due')} />
-          <MetricCard label="Annual value" money={annualValue} tone="text-ink" />
-          <MetricCard label="Drafts" value={String(contracts.filter((c) => c.status === 'draft').length)} tone="text-info" />
-        </div>
+    <div className="@container flex min-h-0 flex-1 flex-col gap-4 px-8 pb-6">
+      <div className="grid grid-cols-2 gap-3 @3xl:grid-cols-4">
+        <MetricCard label="Active contracts" value={String(contracts.filter((c) => c.status === 'active').length)} tone="text-success" />
+        <MetricCard label="Renewal / expiring" value={String(renewalDue)} tone="text-warning" active={status === 'renewal-due'} onClick={() => setStatus(status === 'renewal-due' ? 'all' : 'renewal-due')} />
+        <MetricCard label="Annual value" money={annualValue} tone="text-ink" />
+        <MetricCard label="Drafts" value={String(contracts.filter((c) => c.status === 'draft').length)} tone="text-info" />
+      </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 @5xl:grid-cols-[1fr_300px]">
-          <GlassSurface tone="strong" className="flex min-h-0 flex-col">
-            <div className="flex flex-wrap items-center gap-2 border-b border-white/55 p-4">
-              <div className="flex h-10 min-w-[200px] flex-1 items-center gap-2.5 rounded-xl bg-white/70 px-3.5 ring-1 ring-white/70">
-                <Search className="size-4 text-ink-muted" />
-                <input value={query} onChange={(e) => setQuery(e.target.value)} type="search" placeholder="Search title, party, reference…" className="w-full bg-transparent text-[13px] text-ink placeholder:text-ink-muted focus:outline-none" />
-              </div>
-              <select value={type} onChange={(e) => setType(e.target.value as ContractType | 'all')} className="h-10 rounded-xl bg-white/70 px-3 text-[12.5px] font-semibold text-ink-soft ring-1 ring-white/70 focus:outline-none">
-                <option value="all">All types</option>
-                {Object.entries(CONTRACT_TYPE_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-              </select>
-              <select value={status} onChange={(e) => setStatus(e.target.value as ContractStatus | 'all')} className="h-10 rounded-xl bg-white/70 px-3 text-[12.5px] font-semibold text-ink-soft ring-1 ring-white/70 focus:outline-none">
-                <option value="all">All statuses</option>
-                {Object.entries(CONTRACT_STATUS_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-              </select>
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 @5xl:grid-cols-[1fr_300px]">
+        <GlassSurface tone="strong" className="flex min-h-0 flex-col">
+          <div className="flex flex-wrap items-center gap-2 border-b border-white/55 p-4">
+            <div className="flex h-10 min-w-[200px] flex-1 items-center gap-2.5 rounded-xl bg-white/70 px-3.5 ring-1 ring-white/70">
+              <Search className="size-4 text-ink-muted" />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} type="search" placeholder="Search title, party, reference…" className="w-full bg-transparent text-[13px] text-ink placeholder:text-ink-muted focus:outline-none" />
             </div>
-
-            <ul className="scrollbar-thin min-h-0 flex-1 overflow-y-auto">
-              {filtered.map((c) => {
-                const days = daysToExpiry(c.endDate);
-                return (
-                  <li key={c.id}>
-                    <button type="button" onClick={() => setSelected(c)} className="flex w-full items-center gap-3 border-b border-white/40 px-4 py-3 text-left transition-colors hover:bg-white/55">
-                      <PartyAvatar name={c.counterparty} size="md" />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <p className="truncate text-[13px] font-semibold text-ink">{c.title}</p>
-                          <span className={cn('shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase', CONTRACT_TYPE_META[c.type].tone)}>{CONTRACT_TYPE_META[c.type].label}</span>
-                        </div>
-                        <p className="truncate text-[11px] text-ink-muted">{c.counterparty} · {c.reference} · {days < 0 ? 'expired' : `${days}d to expiry`}</p>
-                      </div>
-                      <MoneyCell amount={c.value} size="sm" className="!text-[12.5px] font-semibold text-ink-soft" />
-                      <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase', CONTRACT_STATUS_META[c.status].tone)}>{CONTRACT_STATUS_META[c.status].label}</span>
-                    </button>
-                  </li>
-                );
-              })}
-              {filtered.length === 0 ? <li className="grid place-items-center py-16 text-[13px] text-ink-muted">No contracts match.</li> : null}
-            </ul>
-          </GlassSurface>
-
-          {/* Helper rail */}
-          <div className="flex flex-col gap-4">
-            <RenewalRadar contracts={contracts} onPick={(c) => setSelected(c)} />
-            <ProRataTool />
+            <select value={type} onChange={(e) => setType(e.target.value as ContractType | 'all')} className="h-10 rounded-xl bg-white/70 px-3 text-[12.5px] font-semibold text-ink-soft ring-1 ring-white/70 focus:outline-none">
+              <option value="all">All types</option>
+              {Object.entries(CONTRACT_TYPE_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+            <select value={status} onChange={(e) => setStatus(e.target.value as ContractStatus | 'all')} className="h-10 rounded-xl bg-white/70 px-3 text-[12.5px] font-semibold text-ink-soft ring-1 ring-white/70 focus:outline-none">
+              <option value="all">All statuses</option>
+              {Object.entries(CONTRACT_STATUS_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
           </div>
+
+          <ul className="scrollbar-thin min-h-0 flex-1 overflow-y-auto">
+            {filtered.map((c) => {
+              const days = daysToExpiry(c.endDate);
+              return (
+                <li key={c.id}>
+                  <button type="button" onClick={() => setSelected(c)} className="flex w-full items-center gap-3 border-b border-white/40 px-4 py-3 text-left transition-colors hover:bg-white/55">
+                    <PartyAvatar name={c.counterparty} size="md" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate text-[13px] font-semibold text-ink">{c.title}</p>
+                        <span className={cn('shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase', CONTRACT_TYPE_META[c.type].tone)}>{CONTRACT_TYPE_META[c.type].label}</span>
+                      </div>
+                      <p className="truncate text-[11px] text-ink-muted">{c.counterparty} · {c.reference} · {days < 0 ? 'expired' : `${days}d to expiry`}</p>
+                    </div>
+                    <MoneyCell amount={c.value} size="sm" className="!text-[12.5px] font-semibold text-ink-soft" />
+                    <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase', CONTRACT_STATUS_META[c.status].tone)}>{CONTRACT_STATUS_META[c.status].label}</span>
+                  </button>
+                </li>
+              );
+            })}
+            {filtered.length === 0 ? <li className="grid place-items-center py-16 text-[13px] text-ink-muted">No contracts match.</li> : null}
+          </ul>
+        </GlassSurface>
+
+        <div className="flex flex-col gap-4">
+          <RenewalRadar contracts={contracts} onPick={(c) => setSelected(c)} />
+          <ProRataTool />
         </div>
       </div>
 
-      {/* Detail */}
       <Dialog.Root open={selected !== null} onOpenChange={(o) => !o && setSelected(null)}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-[90] bg-ink/20 backdrop-blur-sm" />
@@ -112,25 +126,16 @@ export function ContractsPage({ readOnly = false }: { readOnly?: boolean }) {
                 <header className="flex items-start justify-between gap-3 border-b border-white/55 px-5 py-4">
                   <div className="flex items-center gap-3">
                     <PartyAvatar name={selected.counterparty} size="lg" />
-                    <div className="min-w-0">
-                      <Dialog.Title className="font-display text-[15px] font-bold text-ink">{selected.title}</Dialog.Title>
-                      <p className="text-[11.5px] text-ink-muted">{selected.counterparty}</p>
-                    </div>
+                    <div className="min-w-0"><Dialog.Title className="font-display text-[15px] font-bold text-ink">{selected.title}</Dialog.Title><p className="text-[11.5px] text-ink-muted">{selected.counterparty}</p></div>
                   </div>
                   <Dialog.Close className="grid size-8 place-items-center rounded-lg text-ink-muted hover:bg-white/70 hover:text-ink"><X className="size-4" /></Dialog.Close>
                 </header>
                 <div className="scrollbar-thin flex-1 space-y-4 overflow-y-auto p-5">
                   <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">Annual value</span>
-                      <MoneyCell amount={selected.value} size="xl" className="!text-3xl font-bold text-ink" />
-                    </div>
+                    <div><span className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">Annual value</span><MoneyCell amount={selected.value} size="xl" className="!text-3xl font-bold text-ink" /></div>
                     <span className={cn('rounded-full px-2.5 py-1 text-[11px] font-bold uppercase', CONTRACT_STATUS_META[selected.status].tone)}>{CONTRACT_STATUS_META[selected.status].label}</span>
                   </div>
-                  <GlassSurface noBlur tone="subtle" className="bg-white/60 p-4">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">Key terms</p>
-                    <p className="mt-1 text-[13.5px] text-ink">{selected.terms}</p>
-                  </GlassSurface>
+                  <GlassSurface noBlur tone="subtle" className="bg-white/60 p-4"><p className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">Key terms</p><p className="mt-1 text-[13.5px] text-ink">{selected.terms}</p></GlassSurface>
                   <dl className="grid grid-cols-2 gap-3">
                     <Meta label="Type" value={CONTRACT_TYPE_META[selected.type].label} />
                     <Meta label="Reference" value={selected.reference} mono />
@@ -145,12 +150,16 @@ export function ContractsPage({ readOnly = false }: { readOnly?: boolean }) {
                     <span className="rounded-lg bg-white/80 px-2 py-0.5 text-[10.5px] font-bold text-brand ring-1 ring-white/70">View</span>
                   </button>
                 </div>
-                {!readOnly ? (
+                {variant === 'read' ? null : (
                   <footer className="flex items-center gap-2 border-t border-white/55 p-4">
                     <button type="button" onClick={() => toast({ tone: 'info', title: 'Reminder set', body: `You'll be alerted 30 days before ${selected.reference} expires.` })} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-white/70 px-4 text-[13px] font-bold text-ink ring-1 ring-white/70 hover:bg-white"><CalendarClock className="size-4" /> Remind me</button>
-                    <button type="button" onClick={() => renew(selected.id)} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110"><RefreshCw className="size-4" /> Renew contract</button>
+                    {variant === 'manage' ? (
+                      <button type="button" onClick={() => renew(selected.id)} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110"><RefreshCw className="size-4" /> Renew contract</button>
+                    ) : (
+                      <button type="button" onClick={() => { toast({ tone: 'info', title: 'Flagged for renewal', body: `${selected.title} sent to finance to action the renewal.` }); setSelected(null); }} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110"><Flag className="size-4" /> Flag for renewal</button>
+                    )}
                   </footer>
-                ) : null}
+                )}
               </>
             ) : null}
           </Dialog.Content>
@@ -160,7 +169,7 @@ export function ContractsPage({ readOnly = false }: { readOnly?: boolean }) {
   );
 }
 
-function MetricCard({ label, value, money, tone, active, onClick }: { label: string; value?: string; money?: import('../../lib/money').Money; tone: string; active?: boolean; onClick?: () => void }) {
+function MetricCard({ label, value, money, tone, active, onClick }: { label: string; value?: string; money?: Money; tone: string; active?: boolean; onClick?: () => void }) {
   const Comp = onClick ? 'button' : 'div';
   return (
     <GlassSurface tone="strong" className={cn('p-3.5', active && 'ring-2 ring-brand/40')}>
@@ -190,7 +199,6 @@ function RenewalRadar({ contracts, onPick }: { contracts: Contract[]; onPick: (c
   );
 }
 
-// Per-page tool: pro-rata calculator for partial-term renewals & cancellations.
 function ProRataTool() {
   const [annual, setAnnual] = useState('');
   const [days, setDays] = useState('90');

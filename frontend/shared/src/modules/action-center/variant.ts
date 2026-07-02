@@ -11,6 +11,8 @@ export interface VariantConfig {
   subtitle: string;
   /** which items this role sees */
   includes: (a: ApprovalItem) => boolean;
+  /** track-only: the preparer watches status; they cannot approve/reject. */
+  track?: boolean;
 }
 
 export const VARIANTS: Record<ActionVariant, VariantConfig> = {
@@ -20,6 +22,7 @@ export const VARIANTS: Record<ActionVariant, VariantConfig> = {
     title: 'My Tasks',
     subtitle: 'What you prepared and routed for approval — track its status here. You prepare & propose; an approver signs.',
     includes: (a) => a.preparedBy.role === 'Finance Operator',
+    track: true,
   },
   finance_lead: {
     title: 'Action Center',

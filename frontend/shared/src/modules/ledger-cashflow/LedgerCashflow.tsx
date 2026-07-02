@@ -5,8 +5,10 @@ import { AreaChart, GlassSurface, KpiCard, MoneyCell, cn } from '../../design-sy
 import type { Money } from '../../lib/money';
 import { CATEGORY_META, OPENING_BALANCE, seedCashMovements, type CashCategory } from '../../seed/cashLedger';
 import { seedLedgerCashflow, seedLedgerKpis, seedMarginBySegment, seedPnl, type LedgerKpi } from '../../seed/ownerLedger';
+import { useEntityStore } from '../../state/entityStore';
 import { toast } from '../../state/toastStore';
 import { CashMovementsTab } from './CashMovementsTab';
+import type { LedgerMode } from './MovementDrawer';
 
 const KPI_ICON: Record<LedgerKpi['id'], React.ReactNode> = {
   cash: <Banknote />,
@@ -24,15 +26,27 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'forecast', label: 'Forecast' },
 ];
 
-// Org Owner "Cash Flow / Ledger" — a working ledger, not a dashboard. The body
-// is every cash movement (with its purpose), filterable and drillable.
-export function LedgerCashflow() {
+const LEDGER_SUBTITLE: Record<LedgerMode, string> = {
+  operate: 'Every cash movement — record and reconcile each one against the bank, none missed.',
+  post: 'Every cash movement — review and post each entry to the ledger. You commit; the operator reconciles.',
+  oversight: 'Every cash movement in the business — what came in, what went out, and why.',
+  read: 'Every cash movement in the business — read-only, with full purpose and evidence.',
+};
+
+// "Cash Flow / Ledger" — a working ledger, not a dashboard. The body is every
+// cash movement (with its purpose), filterable and drillable. The action you can
+// take on a movement is role-aware (operate / post / oversight / read).
+export function LedgerCashflow({ mode = 'oversight' }: { mode?: LedgerMode }) {
+  // The Finance Operator works at the transaction level — cash movements and the
+  // derived cashflow statement. Profit & loss and the forecast are management
+  // analysis (Lead / Owner), so they're hidden from the operator.
+  const tabs = mode === 'operate' ? TABS.filter((t) => t.id === 'movements' || t.id === 'statement') : TABS;
   const [tab, setTab] = useState<Tab>('movements');
   return (
     <div className="flex h-full flex-col">
       <PageHeader
         title="Cash Flow"
-        subtitle={<>Every cash movement in the business — what came in, what went out, and why.</>}
+        subtitle={LEDGER_SUBTITLE[mode]}
         right={
           <div className="flex items-center gap-2.5">
             <button type="button" onClick={() => toast({ tone: 'info', title: 'Exporting', body: 'Cash ledger (Excel) is being prepared.' })} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-glass-strong px-4 text-[13px] font-semibold text-ink-soft ring-1 ring-white/70 backdrop-blur-glass hover:bg-white hover:text-ink">
@@ -56,7 +70,7 @@ export function LedgerCashflow() {
 
         {/* Tabs */}
         <div className="flex gap-1 border-b border-white/55">
-          {TABS.map((t) => (
+          {tabs.map((t) => (
             <button key={t.id} type="button" onClick={() => setTab(t.id)} className={cn('relative px-3.5 pb-2.5 text-[13.5px] font-semibold transition-colors', tab === t.id ? 'text-ink' : 'text-ink-muted hover:text-ink-soft')}>
               {t.label}
               {tab === t.id ? <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-brand" /> : null}
@@ -65,7 +79,7 @@ export function LedgerCashflow() {
         </div>
 
         {/* Tab content */}
-        {tab === 'movements' ? <CashMovementsTab /> : null}
+        {tab === 'movements' ? <CashMovementsTab mode={mode} /> : null}
         {tab === 'statement' ? <StatementTab /> : null}
         {tab === 'pnl' ? <PnlTab /> : null}
         {tab === 'forecast' ? <ForecastTab /> : null}
@@ -76,16 +90,18 @@ export function LedgerCashflow() {
 
 // ── Cashflow statement (computed from the movements) ────────────────────────
 function StatementTab() {
+  const scope = useEntityStore((s) => s.scope);
   const rows = useMemo(() => {
+    const movements = scope === 'all' ? seedCashMovements : seedCashMovements.filter((m) => m.entity === scope);
     const map = new Map<CashCategory, { in: bigint; out: bigint }>();
-    for (const m of seedCashMovements) {
+    for (const m of movements) {
       const e = map.get(m.category) ?? { in: 0n, out: 0n };
       if (m.direction === 'in') e.in += m.amount.amountMinor;
       else e.out += m.amount.amountMinor;
       map.set(m.category, e);
     }
     return [...map.entries()].map(([cat, v]) => ({ cat, inflow: v.in, outflow: v.out, net: v.in - v.out }));
-  }, []);
+  }, [scope]);
 
   const financingCats: CashCategory[] = ['loan'];
   const operating = rows.filter((r) => !financingCats.includes(r.cat));

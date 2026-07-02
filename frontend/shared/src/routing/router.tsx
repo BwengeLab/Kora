@@ -7,6 +7,7 @@ import {
   type AnyRoute,
 } from '@tanstack/react-router';
 import { AppShell } from '../app/shell';
+import { AppErrorBoundary, NotFound, RouteError } from '../app/shell/Fallbacks';
 import { PERMISSIONS } from '../auth/catalog';
 import * as P from '../pages/placeholders';
 import { requirePermission } from './guards';
@@ -31,6 +32,9 @@ const indexRoute = route('/', P.HomePage);
 const reconciliationRoute = route('/reconciliation', P.ReconciliationPage, requirePermission(PERMISSIONS.RECONCILIATION_REVIEW));
 const approvalsRoute = route('/approvals', P.ApprovalsPage, requirePermission(PERMISSIONS.APPROVAL_CREATE));
 const ledgerRoute = route('/ledger', P.LedgerPage, requirePermission(PERMISSIONS.EVENTS_READ));
+const glRoute = route('/general-ledger', P.GeneralLedgerPage, requirePermission(PERMISSIONS.EVENTS_READ));
+const statementsRoute = route('/statements', P.StatementsPage, requirePermission(PERMISSIONS.REPORTS_READ));
+const payablesRoute = route('/payables', P.PayablesPage, requirePermission(PERMISSIONS.EVENTS_READ));
 const collectionsRoute = route('/collections', P.CollectionsPage, requirePermission(PERMISSIONS.COLLECTIONS_SEND));
 const reportsRoute = route('/reports', P.ReportsPage, requirePermission(PERMISSIONS.REPORTS_READ));
 const roiRoute = route('/roi', P.RoiPage, requirePermission(PERMISSIONS.ROI_READ));
@@ -85,6 +89,9 @@ const routeTree = rootRoute.addChildren([
   reconciliationRoute,
   approvalsRoute,
   ledgerRoute,
+  glRoute,
+  statementsRoute,
+  payablesRoute,
   collectionsRoute,
   reportsRoute,
   roiRoute,
@@ -122,7 +129,11 @@ const routeTree = rootRoute.addChildren([
   portalRoute.addChildren([portalIndexRoute, portalCreditPassportRoute, portalAccessRoute]),
 ] as AnyRoute[]);
 
-export const router = createRouter({ routeTree });
+export const router = createRouter({
+  routeTree,
+  defaultErrorComponent: ({ error, reset }) => <RouteError error={error} reset={reset} />,
+  defaultNotFoundComponent: () => <NotFound />,
+});
 
 declare module '@tanstack/react-router' {
   interface Register {
@@ -131,5 +142,9 @@ declare module '@tanstack/react-router' {
 }
 
 export function AppRouter() {
-  return <RouterProvider router={router} />;
+  return (
+    <AppErrorBoundary>
+      <RouterProvider router={router} />
+    </AppErrorBoundary>
+  );
 }
