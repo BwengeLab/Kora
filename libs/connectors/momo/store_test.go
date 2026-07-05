@@ -59,3 +59,25 @@ func TestStoreCanSeedFromCallback(t *testing.T) {
 		t.Fatalf("history = %+v err = %v", history, err)
 	}
 }
+
+func TestStoreListByState(t *testing.T) {
+	store := NewStore()
+	_, _ = store.Create(Request{
+		OrganizationID: "org_1",
+		ReferenceID:    "ref-1",
+		Amount:         "1000",
+		Currency:       "RWF",
+		State:          RequestPending,
+	})
+	_, _ = store.Create(Request{
+		OrganizationID: "org_1",
+		ReferenceID:    "ref-2",
+		Amount:         "2000",
+		Currency:       "RWF",
+		State:          RequestSuccessful,
+	})
+	requests := store.List(ListFilter{OrganizationID: "org_1", States: []RequestState{RequestPending}})
+	if len(requests) != 1 || requests[0].ReferenceID != "ref-1" {
+		t.Fatalf("requests = %+v", requests)
+	}
+}

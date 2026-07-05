@@ -1,8 +1,8 @@
 import { ShieldAlert } from 'lucide-react';
 import { GlassSurface, cn } from '../../design-system';
-import { seedAccessAlerts } from '../../seed/adminHome';
+import type { AccessAlert } from '../../seed/adminHome';
 
-export function AccessAlertsCard() {
+export function AccessAlertsCard({ alerts }: { alerts: AccessAlert[] }) {
   return (
     <GlassSurface tone="strong" className="flex h-full flex-col gap-3 p-6">
       <header className="flex items-center gap-2">
@@ -12,19 +12,13 @@ export function AccessAlertsCard() {
         <h3 className="font-display text-base font-bold text-ink">Access &amp; security alerts</h3>
       </header>
       <ul className="flex flex-col gap-2">
-        {seedAccessAlerts.map((a) => (
-          <li
-            key={a.id}
-            className={cn(
-              'rounded-2xl p-3 ring-1',
-              a.severity === 'high' ? 'bg-danger-soft/50 ring-danger/20' : 'bg-warning-soft/40 ring-warning/20',
-            )}
-          >
+        {alerts.map((alert) => (
+          <li key={alert.id} className={cn('rounded-2xl p-3 ring-1', alert.severity === 'high' ? 'bg-danger-soft/50 ring-danger/20' : 'bg-warning-soft/40 ring-warning/20')}>
             <div className="flex items-center gap-2">
-              <span className={cn('size-2 rounded-full', a.severity === 'high' ? 'bg-danger' : 'bg-warning')} />
-              <p className="text-[13px] font-bold text-ink">{a.title}</p>
+              <span className={cn('size-2 rounded-full', alert.severity === 'high' ? 'bg-danger' : 'bg-warning')} />
+              <p className="text-[13px] font-bold text-ink">{alert.title}</p>
             </div>
-            <p className="mt-0.5 pl-4 text-[11.5px] text-ink-soft">{a.detail}</p>
+            <p className="mt-0.5 pl-4 text-[11.5px] text-ink-soft">{alert.detail}</p>
           </li>
         ))}
       </ul>

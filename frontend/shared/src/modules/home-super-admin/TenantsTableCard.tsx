@@ -8,7 +8,7 @@ const STATUS_TONE: Record<TenantStatus, string> = {
   suspended: 'bg-danger-soft text-danger',
 };
 
-export function TenantsTableCard() {
+export function TenantsTableCard({ tenants = seedPlatformTenants }: { tenants?: typeof seedPlatformTenants }) {
   return (
     <GlassSurface tone="strong" className="flex h-full min-h-0 flex-col gap-3 p-6">
       <header className="flex items-center justify-between gap-3">
@@ -16,7 +16,7 @@ export function TenantsTableCard() {
         <button type="button" className="text-xs font-semibold text-brand hover:text-brand-ink">View all 142</button>
       </header>
       <ul className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-0.5">
-        {seedPlatformTenants.map((t) => (
+        {tenants.map((t) => (
           <li key={t.id}>
             <button type="button" className="group flex w-full items-center gap-3 rounded-2xl bg-white/55 p-3 text-left ring-1 ring-white/60 hover:bg-white">
               <PartyAvatar name={t.name} size="md" />

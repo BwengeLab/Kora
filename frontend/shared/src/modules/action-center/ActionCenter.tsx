@@ -1,5 +1,8 @@
+import { useMutation } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { DateRangePill, PageHeader } from '../../app/shell';
+import { getApiBaseUrl } from '../../api/client';
+import { workflowApprovalAction } from '../../api/workflow';
 import { useSession } from '../../auth/hooks';
 import { toast } from '../../state/toastStore';
 import { useWorkflowStore } from '../../state/workflowStore';
@@ -14,20 +17,32 @@ import { VARIANTS, type ActionVariant } from './variant';
 export function ActionCenter({ variant = 'finance_lead' }: { variant?: ActionVariant }) {
   const cfg = VARIANTS[variant];
   const allApprovals = useWorkflowStore((s) => s.approvals);
-  const approveAction = useWorkflowStore((s) => s.approve);
-  const rejectAction = useWorkflowStore((s) => s.rejectApproval);
+  const hydrate = useWorkflowStore((s) => s.hydrate);
   const session = useSession();
+  const apiBaseUrl = getApiBaseUrl();
   const actor = { name: session?.user.displayName ?? 'Approver', role: session?.roles[0]?.name ?? 'Finance Lead' };
+  const mutation = useMutation({
+    mutationFn: ({ approvalID, action }: { approvalID: string; action: 'approve' | 'reject' | 'withdraw' | 'nudge' | 'resubmit' | 'request-info' | 'reassign' | 'escalate' }) => workflowApprovalAction(apiBaseUrl, session!.token, approvalID, action),
+    onSuccess: (response) => {
+      hydrate(response.snapshot);
+    },
+  });
 
   const items = useMemo(() => allApprovals.filter(cfg.includes), [allApprovals, cfg]);
 
   const [selectedId, setSelectedId] = useState<string>(items[0]?.id ?? '');
   const [tab, setTab] = useState<TabId>('awaiting');
 
-  const handleApprove = (id: string) => {
+  const handleApprove = async (id: string) => {
     const item = allApprovals.find((a) => a.id === id);
     const name = item?.title ?? 'Item';
-    const result = approveAction(id, actor);
+    let result: string | null = null;
+    try {
+      result = (await mutation.mutateAsync({ approvalID: id, action: 'approve' })).result;
+    } catch (error) {
+      toast({ tone: 'danger', title: 'Approval failed', body: error instanceof Error ? error.message : 'Could not approve item.' });
+      return;
+    }
     switch (result) {
       case 'approved':
         toast({ tone: 'success', title: 'Approved & posted', body: `${name} executed and written to the audit log.` });
@@ -49,10 +64,44 @@ export function ActionCenter({ variant = 'finance_lead' }: { variant?: ActionVar
     }
   };
 
-  const handleReject = (id: string) => {
+  const handleReject = async (id: string) => {
     const item = allApprovals.find((a) => a.id === id);
-    rejectAction(id, actor);
-    toast({ tone: 'danger', title: 'Rejected', body: `${item?.title ?? 'Item'} sent back with your reason.` });
+    try {
+      await mutation.mutateAsync({ approvalID: id, action: 'reject' });
+      toast({ tone: 'danger', title: 'Rejected', body: `${item?.title ?? 'Item'} sent back with your reason.` });
+    } catch (error) {
+      toast({ tone: 'danger', title: 'Reject failed', body: error instanceof Error ? error.message : 'Could not reject item.' });
+    }
+  };
+
+  const handleAuxAction = async (id: string, action: 'withdraw' | 'nudge' | 'resubmit' | 'request-info' | 'reassign' | 'escalate') => {
+    try {
+      const response = await mutation.mutateAsync({ approvalID: id, action });
+      switch (action) {
+        case 'withdraw':
+          toast({ tone: 'warning', title: 'Withdrawn', body: `${items.find((entry) => entry.id === id)?.title ?? 'Item'} pulled back to your drafts to revise.` });
+          break;
+        case 'nudge':
+          toast({ tone: 'info', title: 'Reminder sent', body: 'Nudged the approver to review your submission.' });
+          break;
+        case 'resubmit':
+          toast({ tone: 'info', title: 'Reopened', body: `${items.find((entry) => entry.id === id)?.title ?? 'Item'} reopened to fix and resubmit.` });
+          break;
+        case 'request-info':
+          toast({ tone: 'info', title: 'Info requested', body: 'Asked the preparer for more context and evidence.' });
+          break;
+        case 'reassign':
+          toast({ tone: 'info', title: 'Reassigned', body: 'Approval ownership was reassigned and logged.' });
+          break;
+        case 'escalate':
+          toast({ tone: 'warning', title: 'Escalated to Owner', body: 'This item now requires top-level sign-off.' });
+          break;
+        default:
+          toast({ tone: 'info', title: 'Updated', body: response.result });
+      }
+    } catch (error) {
+      toast({ tone: 'danger', title: 'Action failed', body: error instanceof Error ? error.message : 'Could not update approval.' });
+    }
   };
 
   return (
@@ -70,6 +119,7 @@ export function ActionCenter({ variant = 'finance_lead' }: { variant?: ActionVar
             onSelect={setSelectedId}
             onApprove={handleApprove}
             onReject={handleReject}
+            onAction={handleAuxAction}
           />
         </div>
       </div>

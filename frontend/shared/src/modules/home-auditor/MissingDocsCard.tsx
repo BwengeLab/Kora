@@ -2,7 +2,7 @@ import { FileX2 } from 'lucide-react';
 import { GlassSurface, MoneyCell } from '../../design-system';
 import { seedMissingDocs } from '../../seed/auditorHome';
 
-export function MissingDocsCard() {
+export function MissingDocsCard({ items = seedMissingDocs }: { items?: typeof seedMissingDocs }) {
   return (
     <GlassSurface tone="strong" className="flex h-full flex-col gap-3 p-6">
       <header className="flex items-center gap-2">
@@ -12,7 +12,7 @@ export function MissingDocsCard() {
         <h3 className="font-display text-base font-bold text-ink">Missing documents</h3>
       </header>
       <ul className="flex flex-col">
-        {seedMissingDocs.map((d, i) => (
+        {items.map((d, i) => (
           <li key={d.id} className={i > 0 ? 'border-t border-white/55' : ''}>
             <button type="button" className="flex w-full items-center gap-3 py-2.5 text-left">
               <div className="min-w-0 flex-1">

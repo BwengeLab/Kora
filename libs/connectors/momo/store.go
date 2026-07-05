@@ -22,6 +22,7 @@ const (
 type Request struct {
 	ID              string       `json:"id"`
 	OrganizationID  string       `json:"organization_id"`
+	ConnectionID    string       `json:"connection_id"`
 	ReferenceID     string       `json:"reference_id"`
 	ExternalID      string       `json:"external_id"`
 	Amount          string       `json:"amount"`
@@ -56,6 +57,11 @@ type Store struct {
 	requests map[string]Request
 	byRef    map[string]string
 	eventLog map[string][]RequestEvent
+}
+
+type ListFilter struct {
+	OrganizationID string
+	States         []RequestState
 }
 
 func NewStore() *Store {
@@ -174,6 +180,41 @@ func (s *Store) History(organizationID string, referenceID string) ([]RequestEve
 	}
 	stream := s.eventLog[requestID]
 	return slices.Clone(stream), nil
+}
+
+func (s *Store) List(filter ListFilter) []Request {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	stateSet := map[RequestState]bool{}
+	for _, state := range filter.States {
+		stateSet[state] = true
+	}
+	requests := make([]Request, 0, len(s.requests))
+	for _, request := range s.requests {
+		if filter.OrganizationID != "" && request.OrganizationID != filter.OrganizationID {
+			continue
+		}
+		if len(stateSet) > 0 && !stateSet[request.State] {
+			continue
+		}
+		requests = append(requests, cloneRequest(request))
+	}
+	slices.SortFunc(requests, func(a, b Request) int {
+		if a.RequestedAt.Before(b.RequestedAt) {
+			return -1
+		}
+		if a.RequestedAt.After(b.RequestedAt) {
+			return 1
+		}
+		if a.ReferenceID < b.ReferenceID {
+			return -1
+		}
+		if a.ReferenceID > b.ReferenceID {
+			return 1
+		}
+		return 0
+	})
+	return requests
 }
 
 func cloneRequest(request Request) Request {

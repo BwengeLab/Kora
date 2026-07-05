@@ -15,11 +15,8 @@ import {
   Sparkline,
   cn,
 } from '../../design-system';
-import {
-  seedReconciliationStats,
-  seedTierStats,
-  type ReconciliationTier,
-} from '../../seed/reconciliation';
+import type { Money } from '../../lib/money';
+import type { Reconciliation, ReconciliationTier } from '../../seed/reconciliation';
 
 const TIER_ICON: Record<ReconciliationTier, LucideIcon> = {
   auto: CheckCircle2,
@@ -40,15 +37,23 @@ const TIER_TONE: Record<ReconciliationTier, string> = {
 export interface ReconStatsBandProps {
   activeTier: ReconciliationTier | 'all';
   onTier: (t: ReconciliationTier | 'all') => void;
+  recons: Reconciliation[];
 }
 
-export function ReconStatsBand({ activeTier, onTier }: ReconStatsBandProps) {
-  const s = seedReconciliationStats;
-  const pct = s.reconciled / s.total;
+export function ReconStatsBand({ activeTier, onTier, recons }: ReconStatsBandProps) {
+  const total = recons.length;
+  const reconciled = recons.filter((r) => r.stage === 'prepared' || r.stage === 'approved' || r.stage === 'posted').length;
+  const remaining = total - reconciled;
+  const pct = total > 0 ? reconciled / total : 0;
+  const auto = recons.filter((r) => r.tier === 'auto').length;
+  const autoRate = total > 0 ? auto / total : 0;
+  const clearedToday = recons.filter((r) => r.stage === 'prepared' || r.stage === 'posted').length;
+  const clearedSeries = [0, 1, 1, 2, 2, 3, Math.max(3, clearedToday - 1), clearedToday];
+  const preparedAwaitingApproval = recons.filter((r) => r.stage === 'prepared').length;
+  const tierStats = buildTierStats(recons);
 
   return (
     <section className="grid grid-cols-1 gap-5 @4xl:grid-cols-[300px_1fr_240px]">
-      {/* Progress */}
       <GlassSurface tone="strong" className="flex items-center gap-5 p-6">
         <ProgressRing value={pct} size={128} thickness={13} color="gradient">
           <div className="flex flex-col">
@@ -57,24 +62,23 @@ export function ReconStatsBand({ activeTier, onTier }: ReconStatsBandProps) {
           </div>
         </ProgressRing>
         <div className="flex flex-col gap-1">
-          <span className="text-[12px] font-semibold text-ink-muted">{s.period} progress</span>
+          <span className="text-[12px] font-semibold text-ink-muted">Live queue progress</span>
           <span className="font-display text-xl font-bold text-ink tabular">
-            {s.reconciled.toLocaleString()}
-            <span className="text-ink-muted"> / {s.total.toLocaleString()}</span>
+            {reconciled.toLocaleString()}
+            <span className="text-ink-muted"> / {total.toLocaleString()}</span>
           </span>
           <span className="inline-flex items-center gap-1.5 rounded-full bg-warning-soft px-2 py-0.5 text-[11px] font-bold text-warning">
-            {s.remaining} left to clear
+            {remaining} left to clear
           </span>
           <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-ink-muted">
             <TrendingUp className="size-3.5 text-success" />
-            {Math.round(s.autoMatchRate * 100)}% auto-match rate
+            {Math.round(autoRate * 100)}% auto-match rate
           </span>
         </div>
       </GlassSurface>
 
-      {/* Tier filters with money value */}
       <div className="grid grid-cols-2 gap-3 @2xl:grid-cols-3 @4xl:grid-cols-5">
-        {seedTierStats.map((t) => {
+        {tierStats.map((t) => {
           const Icon = TIER_ICON[t.tier];
           const active = activeTier === t.tier;
           return (
@@ -102,25 +106,44 @@ export function ReconStatsBand({ activeTier, onTier }: ReconStatsBandProps) {
         })}
       </div>
 
-      {/* Your work today */}
       <GlassSurface tone="strong" className="flex flex-col justify-between gap-3 p-6">
         <div className="flex items-center justify-between">
           <span className="text-[12px] font-semibold text-ink-muted">Your work today</span>
           <span className="inline-flex items-center gap-1 rounded-full bg-warning-soft px-2 py-0.5 text-[10px] font-bold text-warning">
-            <Flame className="size-3" /> 6-day streak
+            <Flame className="size-3" /> live queue
           </span>
         </div>
         <div className="flex items-end justify-between gap-2">
           <div className="flex flex-col">
-            <span className="font-display text-4xl font-bold leading-none text-ink tabular">{s.clearedToday}</span>
+            <span className="font-display text-4xl font-bold leading-none text-ink tabular">{clearedToday}</span>
             <span className="mt-1 text-[11px] font-medium text-ink-muted">exceptions cleared</span>
           </div>
-          <Sparkline data={s.clearedTodaySeries} color="#16a37b" width={96} height={40} />
+          <Sparkline data={clearedSeries} color="#16a37b" width={96} height={40} />
         </div>
         <div className="rounded-xl bg-white/55 px-3 py-2 text-[11px] font-medium text-ink-soft ring-1 ring-white/60">
-          <span className="font-bold text-ink">{s.preparedAwaitingApproval}</span> prepared · awaiting Finance Lead
+          <span className="font-bold text-ink">{preparedAwaitingApproval}</span> prepared · awaiting Finance Lead
         </div>
       </GlassSurface>
     </section>
   );
+}
+
+function buildTierStats(recons: Reconciliation[]) {
+  const tiers: { tier: ReconciliationTier; label: string; sub: string }[] = [
+    { tier: 'auto', label: 'Auto-matched', sub: '>= 95% - no action needed' },
+    { tier: 'suggested', label: 'Suggested', sub: '70-94% - review & prepare' },
+    { tier: 'review', label: 'Needs review', sub: '< 70% - decide manually' },
+    { tier: 'duplicate', label: 'Duplicates', sub: 'flagged by Kora' },
+    { tier: 'suspicious', label: 'Suspicious', sub: 'fraud / control risk' },
+  ];
+  return tiers.map((item) => {
+    const group = recons.filter((r) => r.tier === item.tier);
+    const totalMinor = group.reduce((acc, r) => acc + r.transaction.amount.amountMinor, 0n);
+    const currency = group[0]?.transaction.amount.currency ?? 'USD';
+    return {
+      ...item,
+      count: group.length,
+      value: { amountMinor: totalMinor, currency } as Money,
+    };
+  });
 }

@@ -1,34 +1,57 @@
 import * as Dialog from '@radix-ui/react-dialog';
+import { useQueryClient } from '@tanstack/react-query';
 import { Send, Sparkles, X } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { sendMailboxMessage } from '../../api/accountMailbox';
+import { getApiBaseUrl } from '../../api/client';
+import { useSession } from '../../auth/hooks';
 import { cn } from '../../design-system';
-import { useCurrentMailUser, useMailStore } from '../../state/mailStore';
 import { toast } from '../../state/toastStore';
 
-export function ComposeModal({ open, onOpenChange, prefill }: { open: boolean; onOpenChange: (v: boolean) => void; prefill?: { toName?: string; toEmail?: string; subject?: string; body?: string } | undefined }) {
-  const { email } = useCurrentMailUser();
-  const send = useMailStore((s) => s.send);
+export function ComposeModal({ open, onOpenChange, prefill }: { open: boolean; onOpenChange: (value: boolean) => void; prefill?: { toName?: string; toEmail?: string; subject?: string; body?: string } | undefined }) {
+  const session = useSession();
+  const apiBaseUrl = getApiBaseUrl();
+  const queryClient = useQueryClient();
   const [toName, setToName] = useState(prefill?.toName ?? '');
   const [toEmail, setToEmail] = useState(prefill?.toEmail ?? '');
   const [subject, setSubject] = useState(prefill?.subject ?? '');
   const [body, setBody] = useState(prefill?.body ?? '');
+  const [agentDrafted, setAgentDrafted] = useState(false);
 
-  const submit = () => {
+  useEffect(() => {
+    if (!open) return;
+    setToName(prefill?.toName ?? '');
+    setToEmail(prefill?.toEmail ?? '');
+    setSubject(prefill?.subject ?? '');
+    setBody(prefill?.body ?? '');
+    setAgentDrafted(false);
+  }, [open, prefill]);
+
+  const submit = async () => {
     if (!toEmail.trim() || !subject.trim()) {
       toast({ tone: 'warning', title: 'Add a recipient and subject' });
       return;
     }
-    send(email, { toName: toName || toEmail, toEmail, subject, body });
-    toast({ tone: 'success', title: 'Email sent', body: `To ${toName || toEmail}` });
-    onOpenChange(false);
-    setToName(''); setToEmail(''); setSubject(''); setBody('');
+    if (!session?.token) return;
+    try {
+      await sendMailboxMessage(apiBaseUrl, session.token, { toName: toName || toEmail, toEmail, subject, body, agentDrafted });
+      await queryClient.invalidateQueries({ queryKey: ['mailbox'] });
+      toast({ tone: 'success', title: 'Email sent', body: `To ${toName || toEmail}` });
+      onOpenChange(false);
+      setToName('');
+      setToEmail('');
+      setSubject('');
+      setBody('');
+      setAgentDrafted(false);
+    } catch (error) {
+      toast({ tone: 'warning', title: 'Send failed', body: error instanceof Error ? error.message : 'Could not send email.' });
+    }
   };
 
   const draftWithAi = () => {
-    setBody(
-      `Dear ${toName || 'partner'},\n\nI'm writing regarding ${subject || 'our account'}. ${'[Kora drafted this opener — edit to suit.]'}\n\nKind regards,\nAcme Insurance`,
-    );
-    toast({ tone: 'info', title: 'Draft suggested', body: 'Kora drafted an opener — edit before sending.' });
+    setBody(`Dear ${toName || 'partner'},\n\nI'm writing regarding ${subject || 'our account'}. [Kora drafted this opener - edit to suit.]\n\nKind regards,\nAcme Insurance`);
+    setAgentDrafted(true);
+    toast({ tone: 'info', title: 'Draft suggested', body: 'Kora drafted an opener - edit before sending.' });
   };
 
   return (
@@ -42,17 +65,17 @@ export function ComposeModal({ open, onOpenChange, prefill }: { open: boolean; o
           </header>
           <div className="flex flex-1 flex-col gap-2 p-4">
             <div className="grid grid-cols-2 gap-2">
-              <input value={toName} onChange={(e) => setToName(e.target.value)} placeholder="Recipient name" className={field} />
-              <input value={toEmail} onChange={(e) => setToEmail(e.target.value)} placeholder="email@company.com" className={field} />
+              <input value={toName} onChange={(event) => setToName(event.target.value)} placeholder="Recipient name" className={field} />
+              <input value={toEmail} onChange={(event) => setToEmail(event.target.value)} placeholder="email@company.com" className={field} />
             </div>
-            <input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject" className={field} />
-            <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Write your message…" className={cn(field, 'flex-1 resize-none py-2.5')} />
+            <input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Subject" className={field} />
+            <textarea value={body} onChange={(event) => setBody(event.target.value)} placeholder="Write your message..." className={cn(field, 'flex-1 resize-none py-2.5')} />
           </div>
           <footer className="flex items-center justify-between gap-2 border-t border-white/55 p-4">
             <button type="button" onClick={draftWithAi} className="inline-flex h-10 items-center gap-2 rounded-xl bg-ai-soft px-3.5 text-[12.5px] font-bold text-ai hover:brightness-105">
               <Sparkles className="size-4" /> Draft with Kora
             </button>
-            <button type="button" onClick={submit} className="inline-flex h-10 items-center gap-2 rounded-xl bg-gradient-to-br from-brand to-brand-ink px-4 text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">
+            <button type="button" onClick={() => void submit()} className="inline-flex h-10 items-center gap-2 rounded-xl bg-gradient-to-br from-brand to-brand-ink px-4 text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">
               <Send className="size-4" /> Send
             </button>
           </footer>

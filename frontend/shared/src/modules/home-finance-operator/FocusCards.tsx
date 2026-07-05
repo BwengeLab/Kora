@@ -14,8 +14,7 @@ interface FocusDef {
   primary?: boolean;
 }
 
-export function FocusCards() {
-  const f = seedOperatorFocus;
+export function FocusCards({ focus = seedOperatorFocus }: { focus?: typeof seedOperatorFocus }) {
   const recons = useWorkflowStore((s) => s.reconciliations);
   const dismissed = useWorkflowStore((s) => s.dismissedReconIds);
 
@@ -28,8 +27,8 @@ export function FocusCards() {
 
   const cards: FocusDef[] = [
     { to: '/reconciliation', label: 'My exceptions', value: String(exceptionsToClear), sub: 'to clear today', icon: GitBranch, tone: 'from-brand to-brand-ink text-white', primary: true },
-    { to: '/transactions', label: 'Unmatched', value: String(f.unmatchedCount), sub: 'transactions', icon: Link2Off, tone: 'bg-warning-soft text-warning' },
-    { to: '/data-intake', label: 'Data-quality flags', value: String(f.dataQualityFlags), sub: 'files need review', icon: FileWarning, tone: 'bg-danger-soft text-danger' },
+    { to: '/transactions', label: 'Unmatched', value: String(focus.unmatchedCount), sub: 'transactions', icon: Link2Off, tone: 'bg-warning-soft text-warning' },
+    { to: '/data-intake', label: 'Data-quality flags', value: String(focus.dataQualityFlags), sub: 'files need review', icon: FileWarning, tone: 'bg-danger-soft text-danger' },
     { to: '/agents', label: 'Agent suggestions', value: String(agentSuggestions), sub: 'awaiting your review', icon: Sparkles, tone: 'bg-ai-soft text-ai' },
   ];
 

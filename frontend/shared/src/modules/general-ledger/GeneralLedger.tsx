@@ -2,6 +2,8 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { BookOpen, Check, CheckCircle2, Layers, Plus, Scale, Trash2, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { DateRangePill, PageHeader } from '../../app/shell';
+import { getApiBaseUrl } from '../../api/client';
+import { createJournalEntry } from '../../api/financeOperations';
 import { GlassSurface, MoneyCell, cn } from '../../design-system';
 import type { Money } from '../../lib/money';
 import { ACCOUNT_TYPE_META, accountByCode, seedChartOfAccounts, type AccountType } from '../../seed/chartOfAccounts';
@@ -9,7 +11,10 @@ import { entityName, seedCostCenters } from '../../seed/entities';
 import type { JournalEntry, JournalLine, JournalSource } from '../../seed/journals';
 import { displayBalance, linesBalanced, trialBalance, useGLStore } from '../../state/glStore';
 import { useEntityStore } from '../../state/entityStore';
+import { usePayablesStore } from '../../state/payablesStore';
+import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
+import { useTransactionsStore } from '../../state/transactionsStore';
 
 const M = (amountMinor: bigint): Money => ({ amountMinor, currency: 'USD' });
 const SOURCE_TONE: Record<JournalSource, string> = {
@@ -202,7 +207,11 @@ interface DraftLine { account: string; debit: string; credit: string; costCenter
 const blankLine = (): DraftLine => ({ account: '1010', debit: '', credit: '', costCenter: '' });
 
 function JournalCreator({ scope, onClose }: { scope: ReturnType<typeof useEntityStore.getState>['scope']; onClose: () => void }) {
+  const hydrateGL = useGLStore((s) => s.hydrate);
   const postJournal = useGLStore((s) => s.postJournal);
+  const hydratePayables = usePayablesStore((s) => s.hydrate);
+  const hydrateTransactions = useTransactionsStore((s) => s.hydrate);
+  const token = useSessionStore((s) => s.session?.token ?? '');
   const [memo, setMemo] = useState('');
   const [ref, setRef] = useState('');
   const [source, setSource] = useState<JournalSource>('manual');
@@ -219,8 +228,34 @@ function JournalCreator({ scope, onClose }: { scope: ReturnType<typeof useEntity
 
   const setLine = (i: number, patch: Partial<DraftLine>) => setLines((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
 
-  const post = () => {
+  const post = async () => {
     const entity = scope === 'all' ? 'ent-rw' : scope;
+    if (token) {
+      try {
+        const snapshot = await createJournalEntry(getApiBaseUrl(), token, {
+          date: new Date().toISOString().slice(0, 10),
+          ref: ref || `JE-${Date.now().toString().slice(-5)}`,
+          memo,
+          source,
+          entity,
+          lines: jLines.map((line) => ({
+            account: line.account,
+            debit: line.debit.toString(),
+            credit: line.credit.toString(),
+            ...(line.costCenter ? { costCenter: line.costCenter } : {}),
+          })),
+        });
+        hydrateGL(snapshot.journals);
+        hydratePayables(snapshot.bills);
+        hydrateTransactions(snapshot.transactions);
+        toast({ tone: 'success', title: 'Journal posted', body: `${memo} posted to the ledger - debits = credits.` });
+        onClose();
+        return;
+      } catch (error) {
+        toast({ tone: 'danger', title: 'Journal failed', body: error instanceof Error ? error.message : 'Unable to post journal.' });
+        return;
+      }
+    }
     const ok = postJournal({ date: new Date().toISOString().slice(0, 10), ref: ref || `JE-${Date.now().toString().slice(-5)}`, memo, source, entity, lines: jLines });
     if (ok) { toast({ tone: 'success', title: 'Journal posted', body: `${memo} posted to the ledger — debits = credits.` }); onClose(); }
     else toast({ tone: 'danger', title: 'Not balanced', body: 'Debits must equal credits before posting.' });

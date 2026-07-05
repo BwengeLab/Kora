@@ -133,6 +133,8 @@ Implementation evidence: `docs/21-PHASE-15-ADVANCED-AGENTS-RISK.md`.
 - [x] Raw credentials are rejected; integrations use secret references.
 - [x] Integration API, proto, persistence schema, and SQL acceptance fixture.
 - [x] MoMo sandbox auth, balance, account-holder validation, request-to-pay, callback ingestion, and bulk transaction import.
+- [x] MoMo append-only lifecycle tracking with journal-backed and SQL-backed runtime options plus automatic status sync.
+- [x] Stored connector connection registration and Kora-facing MoMo workflow CLI for backend smoke flows.
 - [ ] Add live provider adapters after sandbox/API access is available.
 - [ ] Validate connector mappings with real MoMo, EBM/RRA, bank, and accounting exports.
 

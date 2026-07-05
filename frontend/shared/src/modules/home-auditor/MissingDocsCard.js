@@ -1,0 +1,7 @@
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { FileX2 } from 'lucide-react';
+import { GlassSurface, MoneyCell } from '../../design-system';
+import { seedMissingDocs } from '../../seed/auditorHome';
+export function MissingDocsCard({ items = seedMissingDocs }) {
+    return (_jsxs(GlassSurface, { tone: "strong", className: "flex h-full flex-col gap-3 p-6", children: [_jsxs("header", { className: "flex items-center gap-2", children: [_jsx("span", { className: "grid size-7 place-items-center rounded-xl bg-info-soft text-info", children: _jsx(FileX2, { className: "size-4" }) }), _jsx("h3", { className: "font-display text-base font-bold text-ink", children: "Missing documents" })] }), _jsx("ul", { className: "flex flex-col", children: items.map((d, i) => (_jsx("li", { className: i > 0 ? 'border-t border-white/55' : '', children: _jsxs("button", { type: "button", className: "flex w-full items-center gap-3 py-2.5 text-left", children: [_jsxs("div", { className: "min-w-0 flex-1", children: [_jsx("p", { className: "truncate text-[13px] font-bold text-ink", children: d.party }), _jsxs("p", { className: "truncate text-[11px] text-ink-muted", children: [d.reference, " \u00B7 ", d.ageText, " old"] })] }), _jsx("span", { className: "rounded-lg bg-info-soft px-2 py-0.5 text-[10.5px] font-bold text-info", children: d.missing }), _jsx(MoneyCell, { amount: d.amount, size: "sm", className: "w-24 shrink-0 text-right font-bold !text-[12.5px]" })] }) }, d.id))) })] }));
+}

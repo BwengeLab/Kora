@@ -1,9 +1,9 @@
+import type { OwnerCashFlow } from '../../api/ownerHome';
 import { ChevronDown, Info, Maximize2, MoreHorizontal } from 'lucide-react';
 import { AreaChart, GlassSurface, MoneyCell } from '../../design-system';
-import { seedCashFlow } from '../../seed/orgOwnerHome';
 
-export function CashFlowCard() {
-  const { netPosition, inflow, outflow, net, series, xLabels } = seedCashFlow;
+export function CashFlowCard({ cashFlow }: { cashFlow: OwnerCashFlow }) {
+  const { netPosition, inflow, outflow, net, series, xLabels } = cashFlow;
   return (
     <GlassSurface tone="strong" className="flex h-full flex-col gap-5 p-6">
       <header className="flex items-center justify-between gap-3">
@@ -23,7 +23,6 @@ export function CashFlowCard() {
         </div>
       </header>
 
-      {/* flex-1 so the chart row grows to fill the card's (equal) height */}
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(200px,240px)_1fr] grid-rows-1 gap-4">
         <div className="flex flex-col gap-4">
           <div>

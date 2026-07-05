@@ -1,5 +1,10 @@
+import { useQuery } from '@tanstack/react-query';
 import { DateRangePill, PageHeader } from '../../app/shell';
-import { seedKpis } from '../../seed/orgOwnerHome';
+import { getApiBaseUrl } from '../../api/client';
+import { fetchOwnerDashboard } from '../../api/dashboard';
+import { fetchOwnerHomeSummary } from '../../api/ownerHome';
+import { seedCashFlow, seedCreditPassport, seedDocuments, seedInsights, seedKpis, seedRelationships } from '../../seed/orgOwnerHome';
+import { useSessionStore } from '../../state/sessionStore';
 import { AIAgentsActivityCard } from './AIAgentsActivityCard';
 import { AIInsightsCard } from './AIInsightsCard';
 import { ActionCenterCard } from './ActionCenterCard';
@@ -10,59 +15,60 @@ import { KpiStripCard } from './KpiStripCard';
 import { ReconciliationSnapshotCard } from './ReconciliationSnapshotCard';
 import { RecentDocumentsCard } from './RecentDocumentsCard';
 
-// Org Owner "Business Command Center" Home — composes the module library per
-// role-ux/02-organization-owner.md §"Home". Layout mirrors the reference image:
-//   • Greeting + date-range pill across the top
-//   • 4 KPIs (xl: in one row)
-//   • Middle row: Cash Flow (6) · AI Insights (3) · Action Center (3)
-//   • Lower row: Reconciliation Snapshot (4) · External Relationships (4) · Credit Passport (4) · AI Agents (4)
-//   • Recent Documents full-width
-// Container queries / responsive collapse the lower rows on narrower windows.
-
 export function HomeOrgOwner() {
+  const apiBaseUrl = getApiBaseUrl();
+  const token = useSessionStore((s) => s.session?.token ?? '');
+  const { data } = useQuery({
+    queryKey: ['owner-home-summary', token],
+    queryFn: ({ signal }) => fetchOwnerHomeSummary(apiBaseUrl, token, signal),
+    enabled: Boolean(token),
+  });
+  const { data: dashboardData } = useQuery({
+    queryKey: ['owner-dashboard', token],
+    queryFn: ({ signal }) => fetchOwnerDashboard(apiBaseUrl, token, signal),
+    enabled: Boolean(token),
+  });
+  const kpis = data?.kpis ?? seedKpis;
+  const cashFlow = data?.cashFlow ?? seedCashFlow;
+  const insights = dashboardData?.insights ?? seedInsights;
+  const relationships = dashboardData?.relationships ?? seedRelationships;
+  const creditPassport = dashboardData?.creditPassport ?? seedCreditPassport;
+  const documents = dashboardData?.documents ?? seedDocuments;
+
   return (
     <div className="flex flex-col">
       <PageHeader
         subtitle={<>Here&apos;s your business overview for today.</>}
-        right={<DateRangePill label="May 12 – May 18, 2025" />}
+        right={<DateRangePill label="May 12 - May 18, 2025" />}
       />
-      {/*
-        @container: the grids below respond to THIS element's width (the content
-        area), not the window. So toggling the sidebar reflows smoothly instead
-        of cramping fixed columns / hiding content.
-      */}
       <div className="@container flex flex-col gap-6 px-8">
-        {/* KPI strip */}
         <section className="grid grid-cols-1 gap-5 @2xl:grid-cols-2 @5xl:grid-cols-4">
-          {seedKpis.map((k) => (
-            <KpiStripCard key={k.id} kpi={k} />
+          {kpis.map((kpi) => (
+            <KpiStripCard key={kpi.id} kpi={kpi} />
           ))}
         </section>
 
-        {/* Cash Flow + AI Insights + Action Center — equal heights via items-stretch */}
         <section className="grid grid-cols-1 items-stretch gap-5 @5xl:grid-cols-12">
           <div className="@5xl:col-span-6">
-            <CashFlowCard />
+            <CashFlowCard cashFlow={cashFlow} />
           </div>
           <div className="@5xl:col-span-3">
-            <AIInsightsCard />
+            <AIInsightsCard insights={insights} />
           </div>
           <div className="@5xl:col-span-3">
             <ActionCenterCard />
           </div>
         </section>
 
-        {/* Reconciliation · Relationships · Credit Passport · AI Agents */}
         <section className="grid grid-cols-1 items-stretch gap-5 @2xl:grid-cols-2 @5xl:grid-cols-4">
           <ReconciliationSnapshotCard />
-          <ExternalRelationshipsCard />
-          <CreditPassportCard />
+          <ExternalRelationshipsCard relationships={relationships} />
+          <CreditPassportCard summary={creditPassport} />
           <AIAgentsActivityCard />
         </section>
 
-        {/* Recent documents */}
         <section>
-          <RecentDocumentsCard />
+          <RecentDocumentsCard documents={documents} />
         </section>
       </div>
     </div>

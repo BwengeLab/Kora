@@ -4,8 +4,8 @@ import { seedRiskStats } from '../../seed/auditorHome';
 
 interface Def { label: string; sub: string; value: number; icon: LucideIcon; tone: string }
 
-export function RiskStatCards() {
-  const s = seedRiskStats;
+export function RiskStatCards({ riskStats = seedRiskStats }: { riskStats?: typeof seedRiskStats }) {
+  const s = riskStats;
   const cards: Def[] = [
     { label: 'Risk flags', sub: 'open · all severities', value: s.riskFlags, icon: Flag, tone: 'bg-warning-soft text-warning' },
     { label: 'SoD violations', sub: 'segregation of duties', value: s.sodViolations, icon: ShieldAlert, tone: 'bg-danger-soft text-danger' },

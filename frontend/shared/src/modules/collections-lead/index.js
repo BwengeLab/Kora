@@ -1,0 +1,1 @@
+export { CollectionsManagement } from './CollectionsManagement';

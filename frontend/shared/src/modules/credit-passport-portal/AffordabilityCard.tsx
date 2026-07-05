@@ -1,9 +1,17 @@
 import { Check, HandCoins } from 'lucide-react';
 import { GlassSurface, MoneyCell } from '../../design-system';
-import { seedAffordability } from '../../seed/portalHome';
 
-export function AffordabilityCard() {
-  const a = seedAffordability;
+export function AffordabilityCard({
+  affordability,
+}: {
+  affordability: {
+    maxFacility: Parameters<typeof MoneyCell>[0]['amount'];
+    monthlyCapacity: Parameters<typeof MoneyCell>[0]['amount'];
+    termMonths: number;
+    assumptions: string[];
+  };
+}) {
+  const a = affordability;
   return (
     <GlassSurface tone="strong" className="flex h-full flex-col gap-4 p-6">
       <header className="flex items-center gap-2">

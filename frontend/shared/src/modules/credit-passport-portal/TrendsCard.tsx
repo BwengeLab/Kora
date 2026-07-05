@@ -1,8 +1,7 @@
 import { AreaChart, GlassSurface } from '../../design-system';
-import { seedPassportTrends } from '../../seed/portalHome';
 
-export function TrendsCard() {
-  const t = seedPassportTrends;
+export function TrendsCard({ trends }: { trends: { labels: string[]; revenue: number[]; cashflow: number[] } }) {
+  const t = trends;
   return (
     <GlassSurface tone="strong" className="flex h-full flex-col gap-4 p-6">
       <header className="flex items-center justify-between">

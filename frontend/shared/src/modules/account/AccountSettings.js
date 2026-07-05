@@ -1,0 +1,75 @@
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Bell, Globe, LogOut, Shield, User } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { PageHeader } from '../../app/shell';
+import { fetchAccountSettings, saveAccountSettings, signOutOtherSessions } from '../../api/accountMailbox';
+import { getApiBaseUrl } from '../../api/client';
+import { useSession } from '../../auth/hooks';
+import { GlassSurface, PartyAvatar, cn } from '../../design-system';
+import { toast } from '../../state/toastStore';
+export function AccountSettings() {
+    const session = useSession();
+    const apiBaseUrl = getApiBaseUrl();
+    const queryClient = useQueryClient();
+    const { data } = useQuery({
+        queryKey: ['account-settings', session?.user.email],
+        queryFn: ({ signal }) => fetchAccountSettings(apiBaseUrl, session.token, signal),
+        enabled: Boolean(session?.token),
+        staleTime: 30_000,
+    });
+    const [settings, setSettings] = useState({
+        displayName: session?.user.displayName ?? 'You',
+        jobTitle: session?.roles[0]?.name ?? 'User',
+        phone: '+250 788 555 121',
+        language: 'en',
+        theme: 'system',
+        dateFormat: 'DMY',
+        notifyApprovals: true,
+        notifyMentions: true,
+        notifyDigest: true,
+        notifyAgent: false,
+        twoFactor: true,
+    });
+    useEffect(() => {
+        if (data)
+            setSettings(data);
+    }, [data]);
+    const persist = async (key, value) => {
+        if (!session?.token)
+            return;
+        const next = { ...settings, [key]: value };
+        setSettings(next);
+        try {
+            await saveAccountSettings(apiBaseUrl, session.token, next);
+            await queryClient.invalidateQueries({ queryKey: ['account-settings'] });
+        }
+        catch (error) {
+            toast({ tone: 'warning', title: 'Save failed', body: error instanceof Error ? error.message : 'Could not update account settings.' });
+        }
+    };
+    const revokeSessions = async () => {
+        if (!session?.token)
+            return;
+        try {
+            await signOutOtherSessions(apiBaseUrl, session.token);
+            toast({ tone: 'info', title: 'Signed out elsewhere', body: 'All other sessions were ended.' });
+        }
+        catch (error) {
+            toast({ tone: 'warning', title: 'Session revoke failed', body: error instanceof Error ? error.message : 'Could not revoke other sessions.' });
+        }
+    };
+    return (_jsxs("div", { className: "flex h-full flex-col", children: [_jsx(PageHeader, { title: "Account & Preferences", subtitle: "Your personal profile and settings - only you see and control these." }), _jsx("div", { className: "scrollbar-thin min-h-0 flex-1 overflow-y-auto px-8 pb-8", children: _jsxs("div", { className: "mx-auto flex max-w-3xl flex-col gap-5", children: [_jsxs(GlassSurface, { tone: "strong", className: "flex items-center gap-4 p-5", children: [_jsx(PartyAvatar, { name: settings.displayName, size: "lg" }), _jsxs("div", { className: "min-w-0 flex-1", children: [_jsx("p", { className: "font-display text-lg font-bold text-ink", children: settings.displayName }), _jsxs("p", { className: "text-[12.5px] text-ink-muted", children: [settings.jobTitle, " \u00B7 ", session?.user.email ?? 'guest@kora.local'] })] }), _jsx("span", { className: "rounded-full bg-success-soft px-2.5 py-1 text-[11px] font-bold text-success", children: "Signed in" })] }), _jsx(Section, { icon: _jsx(User, { className: "size-4" }), title: "Profile", children: _jsxs("div", { className: "grid grid-cols-2 gap-4", children: [_jsx(TextField, { label: "Full name", value: settings.displayName, onChange: (value) => void persist('displayName', value) }), _jsx(TextField, { label: "Job title", value: settings.jobTitle, onChange: (value) => void persist('jobTitle', value) }), _jsx(TextField, { label: "Phone", value: settings.phone, onChange: (value) => void persist('phone', value) }), _jsx(TextField, { label: "Email", value: session?.user.email ?? 'guest@kora.local', readOnly: true })] }) }), _jsx(Section, { icon: _jsx(Globe, { className: "size-4" }), title: "Preferences", children: _jsxs("div", { className: "grid grid-cols-3 gap-4", children: [_jsx(SelectField, { label: "Language", value: settings.language, options: [['en', 'English'], ['fr', 'Français'], ['rw', 'Kinyarwanda']], onChange: (value) => void persist('language', value) }), _jsx(SelectField, { label: "Theme", value: settings.theme, options: [['system', 'System'], ['light', 'Light']], onChange: (value) => void persist('theme', value) }), _jsx(SelectField, { label: "Date format", value: settings.dateFormat, options: [['DMY', 'DD/MM/YYYY'], ['MDY', 'MM/DD/YYYY'], ['ISO', 'YYYY-MM-DD']], onChange: (value) => void persist('dateFormat', value) })] }) }), _jsx(Section, { icon: _jsx(Bell, { className: "size-4" }), title: "Notifications", children: _jsxs("div", { className: "flex flex-col gap-2", children: [_jsx(ToggleRow, { label: "Approvals awaiting me", desc: "Alert when an item needs my decision.", on: settings.notifyApprovals, onToggle: (value) => void persist('notifyApprovals', value) }), _jsx(ToggleRow, { label: "Mentions", desc: "When a teammate @mentions me.", on: settings.notifyMentions, onToggle: (value) => void persist('notifyMentions', value) }), _jsx(ToggleRow, { label: "Daily digest", desc: "A morning summary email.", on: settings.notifyDigest, onToggle: (value) => void persist('notifyDigest', value) }), _jsx(ToggleRow, { label: "Agent suggestions", desc: "When Kora flags something for me.", on: settings.notifyAgent, onToggle: (value) => void persist('notifyAgent', value) })] }) }), _jsxs(Section, { icon: _jsx(Shield, { className: "size-4" }), title: "Security", children: [_jsx(ToggleRow, { label: "Two-factor authentication", desc: "Require a second factor at sign-in.", on: settings.twoFactor, onToggle: (value) => void persist('twoFactor', value) }), _jsxs("div", { className: "mt-3 flex items-center justify-between rounded-2xl bg-white/55 p-3.5 ring-1 ring-white/60", children: [_jsxs("div", { children: [_jsx("p", { className: "text-[13px] font-semibold text-ink", children: "This session" }), _jsxs("p", { className: "text-[11.5px] text-ink-muted", children: [session?.tenant.name ?? 'Acme', " \u00B7 Kigali \u00B7 started today"] })] }), _jsxs("button", { type: "button", onClick: () => void revokeSessions(), className: "inline-flex items-center gap-1.5 rounded-xl bg-white/80 px-3 py-1.5 text-[12px] font-bold text-danger ring-1 ring-white/70 hover:bg-white", children: [_jsx(LogOut, { className: "size-3.5" }), " Sign out other sessions"] })] })] })] }) })] }));
+}
+function Section({ icon, title, children }) {
+    return (_jsxs(GlassSurface, { tone: "strong", className: "p-5", children: [_jsxs("header", { className: "mb-4 flex items-center gap-2", children: [_jsx("span", { className: "grid size-7 place-items-center rounded-lg bg-brand-soft text-brand-ink", children: icon }), _jsx("h3", { className: "font-display text-[15px] font-bold text-ink", children: title })] }), children] }));
+}
+function TextField({ label, value, onChange, readOnly }) {
+    return (_jsxs("label", { className: "flex flex-col gap-1", children: [_jsx("span", { className: "text-[11px] font-bold uppercase tracking-wider text-ink-muted", children: label }), _jsx("input", { value: value, readOnly: readOnly, onChange: (event) => onChange?.(event.target.value), className: cn('h-11 rounded-xl px-3.5 text-[13.5px] font-semibold text-ink ring-1 ring-white/70 focus:outline-none focus:ring-2 focus:ring-brand/30', readOnly ? 'bg-white/40 text-ink-muted' : 'bg-white/70') })] }));
+}
+function SelectField({ label, value, options, onChange }) {
+    return (_jsxs("label", { className: "flex flex-col gap-1", children: [_jsx("span", { className: "text-[11px] font-bold uppercase tracking-wider text-ink-muted", children: label }), _jsx("select", { value: value, onChange: (event) => onChange(event.target.value), className: "h-11 rounded-xl bg-white/70 px-3 text-[13.5px] font-semibold text-ink ring-1 ring-white/70 focus:outline-none focus:ring-2 focus:ring-brand/30", children: options.map(([optionValue, optionLabel]) => _jsx("option", { value: optionValue, children: optionLabel }, optionValue)) })] }));
+}
+function ToggleRow({ label, desc, on, onToggle }) {
+    return (_jsxs("button", { type: "button", onClick: () => onToggle(!on), className: "flex w-full items-center justify-between gap-3 rounded-2xl bg-white/55 p-3.5 text-left ring-1 ring-white/60 hover:bg-white/70", children: [_jsxs("div", { children: [_jsx("p", { className: "text-[13px] font-semibold text-ink", children: label }), _jsx("p", { className: "text-[11.5px] text-ink-muted", children: desc })] }), _jsx("span", { className: cn('relative h-6 w-11 shrink-0 rounded-full transition-colors', on ? 'bg-brand' : 'bg-ink/15'), children: _jsx("span", { className: cn('absolute top-0.5 size-5 rounded-full bg-white shadow transition-all', on ? 'left-[22px]' : 'left-0.5') }) })] }));
+}

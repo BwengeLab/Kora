@@ -1,16 +1,33 @@
 import { Download, Share2 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { PageHeader } from '../../app/shell';
+import { getApiBaseUrl } from '../../api/client';
+import { fetchPortalCreditPassport } from '../../api/portal';
+import { seedAffordability, seedEvidencePack, seedGrant, seedPassport, seedPassportTrends, seedSubScores } from '../../seed/portalHome';
+import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
-import { seedGrant, seedPassport } from '../../seed/portalHome';
 import { AffordabilityCard } from './AffordabilityCard';
 import { EvidenceScopeCard } from './EvidenceScopeCard';
 import { ScoreCard } from './ScoreCard';
 import { TrendsCard } from './TrendsCard';
 
-// External Collaborator "Shared Portal" — a lender's Credit Passport view.
+// External Collaborator "Shared Portal" â€” a lender's Credit Passport view.
 // Few permissions, premium experience: score, trends, affordability, evidence.
 export function CreditPassportPortal() {
-  const p = seedPassport;
+  const apiBaseUrl = getApiBaseUrl();
+  const token = useSessionStore((s) => s.session?.token ?? '');
+  const { data } = useQuery({
+    queryKey: ['portal-credit-passport', token],
+    queryFn: ({ signal }) => fetchPortalCreditPassport(apiBaseUrl, token, signal),
+    enabled: Boolean(token),
+  });
+  const p = data?.passport ?? seedPassport;
+  const grant = data?.grant ?? seedGrant;
+  const subScores = data?.subScores ?? seedSubScores;
+  const trends = data?.trends ?? seedPassportTrends;
+  const affordability = data?.affordability ?? seedAffordability;
+  const evidencePack = data?.evidencePack ?? seedEvidencePack;
+
   return (
     <div className="flex flex-col">
       <PageHeader
@@ -20,7 +37,7 @@ export function CreditPassportPortal() {
             <span className="inline-flex items-center gap-1 rounded-full bg-white/70 px-2 py-0.5 text-[11px] font-bold text-ink-soft ring-1 ring-white/70">
               <Share2 className="size-3" /> Shared with you
             </span>
-            by {p.sharedBy} · expires in {seedGrant.expiresInDays} days
+            by {p.sharedBy} · expires in {grant.expiresInDays} days
           </span>
         }
         right={
@@ -34,17 +51,14 @@ export function CreditPassportPortal() {
         }
       />
       <div className="@container flex flex-col gap-6 px-8 pb-8">
-        {/* Score + sub-scores (hero) */}
-        <ScoreCard />
+        <ScoreCard passport={p} subScores={subScores} />
 
-        {/* Trends + affordability */}
         <section className="grid grid-cols-1 items-stretch gap-5 @5xl:grid-cols-2">
-          <TrendsCard />
-          <AffordabilityCard />
+          <TrendsCard trends={trends} />
+          <AffordabilityCard affordability={affordability} />
         </section>
 
-        {/* Evidence + scope */}
-        <EvidenceScopeCard />
+        <EvidenceScopeCard evidencePack={evidencePack} grant={grant} />
       </div>
     </div>
   );

@@ -2,3 +2,6 @@ packages:
   - shared
   - web
   - desktop
+allowBuilds:
+  '@bufbuild/buf': set this to true or false
+  esbuild: set this to true or false

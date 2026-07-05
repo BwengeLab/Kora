@@ -1,0 +1,3 @@
+2026/07/03 18:54:14 gateway listening on :18086
+2026/07/03 18:54:14 listen tcp :18086: bind: Only one usage of each socket address (protocol/network address/port) is normally permitted.
+exit status 1

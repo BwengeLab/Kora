@@ -1,12 +1,16 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { ArrowDownLeft, ArrowUpRight, CalendarClock, FileText, Mail, Phone, ScrollText, Search, Sparkles, Users, X } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { DateRangePill, PageHeader } from '../../app/shell';
+import { getApiBaseUrl } from '../../api/client';
+import { fetchRelationshipsOverview } from '../../api/relationships';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
 import type { Money } from '../../lib/money';
 import { ContractsView } from '../contracts';
 import { seedParties, seedRenewals, type Party, type PartyType, type RiskLevel } from '../../seed/ownerExtra';
 import { openDoc } from '../../state/docViewerStore';
+import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
 
 const TYPE_TONE: Record<PartyType, string> = { customer: 'bg-success-soft text-success', supplier: 'bg-warning-soft text-warning', partner: 'bg-brand-soft text-brand-ink' };
@@ -20,6 +24,15 @@ type Lens = 'parties' | 'contracts';
 // A segmented control switches lenses; a party drill-in deep-links to that
 // party's contracts so the relationship and its agreements stay connected.
 export function RelationshipsPage({ readOnly = false }: { readOnly?: boolean }) {
+  const apiBaseUrl = getApiBaseUrl();
+  const token = useSessionStore((s) => s.session?.token ?? '');
+  const { data } = useQuery({
+    queryKey: ['relationships-overview', token],
+    queryFn: ({ signal }) => fetchRelationshipsOverview(apiBaseUrl, token, signal),
+    enabled: Boolean(token),
+  });
+  const parties = data?.parties ?? seedParties;
+  const renewals = data?.renewals ?? seedRenewals;
   const [lens, setLens] = useState<Lens>('parties');
   const [contractQuery, setContractQuery] = useState('');
   const [query, setQuery] = useState('');
@@ -29,19 +42,19 @@ export function RelationshipsPage({ readOnly = false }: { readOnly?: boolean }) 
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return seedParties
+    return parties
       .filter((p) => (type === 'all' ? true : p.type === type))
       .filter((p) => (risk === 'all' ? true : p.risk === risk))
       .filter((p) => (q === '' ? true : [p.name, p.contact, p.email].some((s) => s.toLowerCase().includes(q))))
       .sort((a, b) => Number(b.moneyIn.amountMinor + b.moneyOut.amountMinor - (a.moneyIn.amountMinor + a.moneyOut.amountMinor)));
-  }, [query, type, risk]);
+  }, [parties, query, type, risk]);
 
   const counts = useMemo(() => ({
-    customer: seedParties.filter((p) => p.type === 'customer').length,
-    supplier: seedParties.filter((p) => p.type === 'supplier').length,
-    partner: seedParties.filter((p) => p.type === 'partner').length,
-    high: seedParties.filter((p) => p.risk === 'high').length,
-  }), []);
+    customer: parties.filter((p) => p.type === 'customer').length,
+    supplier: parties.filter((p) => p.type === 'supplier').length,
+    partner: parties.filter((p) => p.type === 'partner').length,
+    high: parties.filter((p) => p.risk === 'high').length,
+  }), [parties]);
 
   const viewContracts = (partyName: string) => { setContractQuery(partyName); setLens('contracts'); setSelected(null); };
 
@@ -112,7 +125,7 @@ export function RelationshipsPage({ readOnly = false }: { readOnly?: boolean }) 
           <div className="flex flex-col gap-4">
             <GlassSurface tone="strong" className="flex flex-col gap-2.5 p-4">
               <header className="flex items-center justify-between gap-1.5"><span className="inline-flex items-center gap-1.5"><CalendarClock className="size-3.5 text-warning" /><h4 className="text-[12px] font-bold text-ink">Upcoming renewals</h4></span><button type="button" onClick={() => viewContracts('')} className="text-[10.5px] font-bold text-brand hover:text-brand-ink">All contracts →</button></header>
-              {seedRenewals.map((r) => (
+              {renewals.map((r) => (
                 <button key={r.id} type="button" onClick={() => viewContracts(r.party)} className="rounded-xl bg-white/55 p-2.5 text-left text-[11.5px] ring-1 ring-white/60 transition-colors hover:bg-white">
                   <p className="font-bold text-ink">{r.contract}</p>
                   <p className="text-ink-muted">{r.party} · {r.dueText}</p>

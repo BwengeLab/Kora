@@ -1,0 +1,52 @@
+import { Fragment as _Fragment, jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { Link } from '@tanstack/react-router';
+import { useQuery } from '@tanstack/react-query';
+import { ArrowRight, Bot, CheckCircle2, FileSignature, GaugeCircle, Handshake, Inbox, Loader2, Play, ShieldCheck, Sparkles, ThumbsDown, ThumbsUp, TrendingUp, Truck, Upload, Wallet, Zap, } from 'lucide-react';
+import { DateRangePill, PageHeader } from '../../app/shell';
+import { getApiBaseUrl } from '../../api/client';
+import { fetchAgentsOverview } from '../../api/agents';
+import { GlassSurface, cn } from '../../design-system';
+import { seedAgentStats, seedAgents } from '../../seed/agents';
+import { useSessionStore } from '../../state/sessionStore';
+import { timeAgo, useAgentActivityStore } from '../../state/agentActivityStore';
+import { toast } from '../../state/toastStore';
+const ICON = {
+    intake: Upload, recon: GaugeCircle, cfo: Wallet, relationship: Handshake, contract: FileSignature,
+    collections: Inbox, credit: TrendingUp, supplier: Truck, sales: Sparkles, audit: ShieldCheck,
+};
+const TONE = {
+    info: { dot: 'bg-info', ring: 'bg-info-soft text-info' },
+    success: { dot: 'bg-success', ring: 'bg-success-soft text-success' },
+    warning: { dot: 'bg-warning', ring: 'bg-warning-soft text-warning' },
+    danger: { dot: 'bg-danger', ring: 'bg-danger-soft text-danger' },
+    ai: { dot: 'bg-ai', ring: 'bg-ai-soft text-ai' },
+};
+// "AI Agents" — your AI workforce, observable. Run an agent (or all) and watch it
+// do real work: it mutates the live books/queues and logs to the activity feed,
+// so you can see the change propagate. Agents propose; humans decide.
+export function AiAgentsPage() {
+    const apiBaseUrl = getApiBaseUrl();
+    const token = useSessionStore((s) => s.session?.token ?? '');
+    const { data } = useQuery({
+        queryKey: ['agents-overview', token],
+        queryFn: ({ signal }) => fetchAgentsOverview(apiBaseUrl, token, signal),
+        enabled: Boolean(token),
+    });
+    const activity = useAgentActivityStore((s) => s.activity);
+    const runningId = useAgentActivityStore((s) => s.runningId);
+    const processed = useAgentActivityStore((s) => s.processed);
+    const lastRun = useAgentActivityStore((s) => s.lastRun);
+    const run = useAgentActivityStore((s) => s.run);
+    const runAll = useAgentActivityStore((s) => s.runAll);
+    const extraProcessed = Object.values(processed).reduce((a, n) => a + n, 0);
+    const s = data?.stats ?? seedAgentStats;
+    const agents = data?.agents ?? seedAgents;
+    return (_jsxs("div", { className: "flex h-full flex-col", children: [_jsx(PageHeader, { title: "AI Agents", subtitle: _jsx(_Fragment, { children: "Your AI workforce \u2014 run an agent and watch it work. Agents act on the live books and queues; you see every change." }), right: _jsxs("div", { className: "flex items-center gap-2.5", children: [_jsxs("button", { type: "button", disabled: !!runningId, onClick: runAll, className: cn('inline-flex h-11 items-center gap-2 rounded-2xl px-4 text-[13px] font-bold shadow-glass-soft', runningId ? 'cursor-not-allowed bg-ink/15 text-ink-muted' : 'bg-gradient-to-br from-ai to-brand text-white hover:brightness-110'), children: [runningId ? _jsx(Loader2, { className: "size-4 animate-spin" }) : _jsx(Zap, { className: "size-4" }), " Run all agents"] }), _jsx(DateRangePill, { label: "May 2025" })] }) }), _jsxs("div", { className: "@container flex min-h-0 flex-1 flex-col gap-5 px-8 pb-6", children: [_jsxs("section", { className: "grid grid-cols-2 gap-4 @5xl:grid-cols-4", children: [_jsx(Stat, { icon: _jsx(Bot, { className: "size-[18px]" }), tone: "bg-ai-soft text-ai", value: runningId ? 'Running…' : `${s.agentsActive}/10`, label: "Agents active" }), _jsx(Stat, { icon: _jsx(CheckCircle2, { className: "size-[18px]" }), tone: "bg-success-soft text-success", value: (s.processedToday + extraProcessed).toLocaleString(), label: "Processed today" }), _jsx(Stat, { icon: _jsx(Sparkles, { className: "size-[18px]" }), tone: "bg-brand-soft text-brand-ink", value: activity.length.toString(), label: "Actions this session" }), _jsx(Stat, { icon: _jsx(GaugeCircle, { className: "size-[18px]" }), tone: "bg-info-soft text-info", value: `${s.avgAccuracyPct}%`, label: "Avg accuracy" })] }), _jsxs("section", { className: "grid min-h-0 flex-1 grid-cols-1 items-start gap-5 @5xl:grid-cols-12", children: [_jsx("div", { className: "grid grid-cols-1 gap-4 @2xl:grid-cols-2 @5xl:col-span-8", children: agents.map((a) => (_jsx(AgentTile, { agent: a, running: runningId === a.id, processedExtra: processed[a.id] ?? 0, ranAt: lastRun[a.id], disabled: !!runningId, onRun: () => run(a.id) }, a.id))) }), _jsx("div", { className: "@5xl:col-span-4", children: _jsxs(GlassSurface, { tone: "strong", className: "flex max-h-[70vh] min-h-[320px] flex-col p-5", children: [_jsxs("header", { className: "mb-3 flex items-center gap-2", children: [_jsx("span", { className: "grid size-7 place-items-center rounded-lg bg-ai-soft text-ai", children: _jsx(Sparkles, { className: "size-4" }) }), _jsx("h3", { className: "font-display text-[15px] font-bold text-ink", children: "Agent activity" }), runningId ? _jsx(Loader2, { className: "ml-auto size-4 animate-spin text-ai" }) : null] }), _jsxs("ul", { className: "scrollbar-thin -mx-1 flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto px-1", children: [activity.map((e) => (_jsxs("li", { className: "flex gap-3", children: [_jsx("span", { className: cn('mt-1 size-2 shrink-0 rounded-full', TONE[e.tone].dot) }), _jsxs("div", { className: "min-w-0 flex-1 rounded-2xl bg-white/55 p-3 ring-1 ring-white/60", children: [_jsx("p", { className: "text-[12.5px] font-bold text-ink", children: e.action }), _jsx("p", { className: "mt-0.5 text-[11.5px] text-ink-soft", children: e.detail }), _jsxs("div", { className: "mt-1.5 flex items-center justify-between", children: [_jsxs("span", { className: "text-[10.5px] font-semibold text-ink-muted", children: [e.agentName, " Agent \u00B7 ", timeAgo(e.at)] }), e.link ? _jsxs(Link, { to: e.link.to, className: "inline-flex items-center gap-0.5 text-[10.5px] font-bold text-brand hover:text-brand-ink", children: [e.link.label, " ", _jsx(ArrowRight, { className: "size-3" })] }) : null] })] })] }, e.id))), activity.length === 0 ? (_jsx("li", { className: "grid flex-1 place-items-center py-10 text-center", children: _jsxs("div", { className: "flex flex-col items-center gap-2 text-ink-muted", children: [_jsx(Play, { className: "size-7" }), _jsxs("p", { className: "text-[12.5px]", children: ["Run an agent to watch it work.", _jsx("br", {}), "Changes show up here and across the app."] })] }) })) : null] })] }) })] })] })] }));
+}
+function AgentTile({ agent: a, running, processedExtra, ranAt, disabled, onRun }) {
+    const Icon = ICON[a.icon];
+    return (_jsxs(GlassSurface, { tone: "strong", className: cn('flex flex-col gap-3 p-5 transition-shadow', running && 'ring-2 ring-ai/40'), children: [_jsxs("header", { className: "flex items-center gap-3", children: [_jsx("span", { className: "grid size-10 place-items-center rounded-2xl bg-gradient-to-br from-ai-soft to-brand-soft text-ai", children: running ? _jsx(Loader2, { className: "size-5 animate-spin" }) : _jsx(Icon, { className: "size-5" }) }), _jsxs("div", { className: "min-w-0 flex-1", children: [_jsxs("p", { className: "truncate font-display text-[14px] font-bold text-ink", children: [a.name, " Agent"] }), _jsx("p", { className: "truncate text-[11px] text-ink-muted", children: a.role })] }), _jsxs("span", { className: cn('inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase', running ? 'bg-ai-soft text-ai' : ranAt ? 'bg-success-soft text-success' : 'bg-white/70 text-ink-muted'), children: [_jsx("span", { className: cn('size-1.5 rounded-full', running ? 'bg-ai animate-pulse' : ranAt ? 'bg-success' : 'bg-ink/30') }), " ", running ? 'Running' : ranAt ? 'Done' : 'Ready'] })] }), _jsxs("div", { className: "rounded-2xl bg-white/55 p-3 ring-1 ring-white/60", children: [_jsxs("p", { className: "inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-ink-muted", children: [_jsx(Sparkles, { className: "size-3 text-ai" }), " Latest finding"] }), _jsx("p", { className: "mt-0.5 text-[12.5px] text-ink", children: a.insight })] }), _jsxs("footer", { className: "flex items-center justify-between gap-2", children: [_jsxs("div", { className: "flex items-center gap-2.5 text-[11px] font-medium text-ink-muted", children: [_jsxs("span", { children: [_jsx("span", { className: "font-bold text-ink tabular", children: (a.processedToday + processedExtra).toLocaleString() }), " today"] }), _jsxs("span", { children: ["\u00B7 ", ranAt ? timeAgo(ranAt) : a.lastRun] })] }), _jsxs("div", { className: "flex items-center gap-1", children: [_jsx("button", { type: "button", "aria-label": "Helpful", onClick: () => toast({ tone: 'success', title: 'Feedback noted', body: `${a.name} Agent — marked helpful.` }), className: "grid size-7 place-items-center rounded-lg text-ink-muted hover:bg-success-soft hover:text-success", children: _jsx(ThumbsUp, { className: "size-3.5" }) }), _jsx("button", { type: "button", "aria-label": "Not helpful", onClick: () => toast({ tone: 'info', title: 'Feedback noted', body: `${a.name} Agent — we'll improve.` }), className: "grid size-7 place-items-center rounded-lg text-ink-muted hover:bg-danger-soft hover:text-danger", children: _jsx(ThumbsDown, { className: "size-3.5" }) }), _jsxs("button", { type: "button", disabled: disabled, onClick: onRun, className: cn('inline-flex h-8 items-center gap-1.5 rounded-xl px-3 text-[12px] font-bold transition-colors', disabled ? 'cursor-not-allowed bg-ink/10 text-ink-muted' : 'bg-gradient-to-br from-brand to-brand-ink text-white shadow-glass-soft hover:brightness-110'), children: [running ? _jsx(Loader2, { className: "size-3.5 animate-spin" }) : _jsx(Play, { className: "size-3.5" }), " Run"] })] })] })] }));
+}
+function Stat({ icon, tone, value, label }) {
+    return (_jsxs(GlassSurface, { tone: "strong", className: "flex flex-col gap-1.5 p-5", children: [_jsx("span", { className: cn('grid size-10 place-items-center rounded-2xl', tone), children: icon }), _jsx("span", { className: "font-display text-3xl font-bold leading-none text-ink tabular", children: value }), _jsx("span", { className: "text-[12.5px] font-semibold text-ink-soft", children: label })] }));
+}

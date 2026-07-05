@@ -1,10 +1,12 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { Layers, Plus, ShieldCheck, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { getApiBaseUrl } from '../../api/client';
+import { createSettingsUser, deleteSettingsUser, fetchSettingsUsers, updateSettingsUser } from '../../api/settingsAccess';
 import { GlassSurface, PartyAvatar, cn } from '../../design-system';
 import { entityName, seedCostCenters, seedEntities, type EntityScope } from '../../seed/entities';
-import { ASSIGNABLE_ROLES, type OrgUser, type UserStatus } from '../../seed/orgUsers';
-import { useOrgUsersStore } from '../../state/orgUsersStore';
+import { ASSIGNABLE_ROLES, seedOrgUsers, type OrgUser, type UserStatus } from '../../seed/orgUsers';
+import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
 import { SettingsCard, StatPill } from './primitives';
 
@@ -19,33 +21,67 @@ const ROLE_TONE: Record<string, string> = {
 };
 const DEPARTMENTS = ['All', ...seedCostCenters.map((c) => c.name)];
 
-const blankUser = (): OrgUser => ({ id: `u-${Date.now()}`, name: '', email: '', role: 'Finance Operator', department: 'Finance & Admin', scope: 'ent-rw', status: 'invited', lastActive: '—' });
+const blankUser = (): OrgUser => ({ id: `u-${Date.now()}`, name: '', email: '', role: 'Finance Operator', department: 'Finance & Admin', scope: 'ent-rw', status: 'invited', lastActive: '-' });
 
-// Org Admin "Users & Roles" — many users per role, each scoped to the entities
-// and department they may touch. The mechanism that keeps a branch clerk to
-// their branch while leads/owners see across.
 export function UsersRoles() {
-  const users = useOrgUsersStore((s) => s.users);
-  const invite = useOrgUsersStore((s) => s.invite);
-  const updateUser = useOrgUsersStore((s) => s.updateUser);
-  const removeUser = useOrgUsersStore((s) => s.removeUser);
+  const token = useSessionStore((s) => s.session?.token ?? '');
+  const apiBaseUrl = getApiBaseUrl();
+  const [users, setUsers] = useState<OrgUser[]>(seedOrgUsers);
   const [editing, setEditing] = useState<OrgUser | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [roleFilter, setRoleFilter] = useState<string | 'all'>('all');
 
+  useEffect(() => {
+    if (!token) return;
+    const controller = new AbortController();
+    fetchSettingsUsers(apiBaseUrl, token, controller.signal)
+      .then(setUsers)
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          toast({ tone: 'warning', title: 'Users unavailable', body: error instanceof Error ? error.message : 'Could not load users.' });
+        }
+      });
+    return () => controller.abort();
+  }, [apiBaseUrl, token]);
+
   const counts = useMemo(() => {
     const byRole = new Map<string, number>();
-    for (const u of users) byRole.set(u.role, (byRole.get(u.role) ?? 0) + 1);
-    return { byRole, active: users.filter((u) => u.status === 'active').length, invited: users.filter((u) => u.status === 'invited').length };
+    for (const user of users) byRole.set(user.role, (byRole.get(user.role) ?? 0) + 1);
+    return { byRole, active: users.filter((user) => user.status === 'active').length, invited: users.filter((user) => user.status === 'invited').length };
   }, [users]);
 
-  const shown = roleFilter === 'all' ? users : users.filter((u) => u.role === roleFilter);
+  const shown = roleFilter === 'all' ? users : users.filter((user) => user.role === roleFilter);
 
-  const save = (u: OrgUser) => {
-    if (!u.name.trim() || !u.email.trim()) { toast({ tone: 'warning', title: 'Name and email required' }); return; }
-    if (isNew) invite(u); else updateUser(u.id, u);
-    setEditing(null);
-    toast({ tone: 'success', title: isNew ? 'Invite sent' : 'User updated', body: `${u.name} · ${u.role} · ${entityName(u.scope)}` });
+  const save = async (user: OrgUser) => {
+    if (!user.name.trim() || !user.email.trim()) {
+      toast({ tone: 'warning', title: 'Name and email required' });
+      return;
+    }
+    try {
+      const items = token
+        ? isNew
+          ? await createSettingsUser(apiBaseUrl, token, user)
+          : await updateSettingsUser(apiBaseUrl, token, user)
+        : isNew
+          ? [user, ...users]
+          : users.map((item) => (item.id === user.id ? user : item));
+      setUsers(items);
+      setEditing(null);
+      toast({ tone: 'success', title: isNew ? 'Invite sent' : 'User updated', body: `${user.name} · ${user.role} · ${entityName(user.scope)}` });
+    } catch (error) {
+      toast({ tone: 'warning', title: 'Save failed', body: error instanceof Error ? error.message : 'Could not save user.' });
+    }
+  };
+
+  const remove = async (id: string) => {
+    try {
+      const items = token ? await deleteSettingsUser(apiBaseUrl, token, id) : users.filter((user) => user.id !== id);
+      setUsers(items);
+      setEditing(null);
+      toast({ tone: 'warning', title: 'Removed', body: 'User access revoked.' });
+    } catch (error) {
+      toast({ tone: 'warning', title: 'Remove failed', body: error instanceof Error ? error.message : 'Could not remove user.' });
+    }
   };
 
   return (
@@ -60,8 +96,8 @@ export function UsersRoles() {
       <SettingsCard title="Roles" desc="Each role is a least-privilege bundle. Click a role to filter its members.">
         <div className="flex flex-wrap gap-2">
           <RoleChip label="All roles" count={users.length} active={roleFilter === 'all'} onClick={() => setRoleFilter('all')} tone="bg-white/70 text-ink-soft" />
-          {ASSIGNABLE_ROLES.map((r) => (
-            <RoleChip key={r} label={r} count={counts.byRole.get(r) ?? 0} active={roleFilter === r} onClick={() => setRoleFilter(roleFilter === r ? 'all' : r)} tone={ROLE_TONE[r] ?? 'bg-white/70 text-ink-soft'} />
+          {ASSIGNABLE_ROLES.map((role) => (
+            <RoleChip key={role} label={role} count={counts.byRole.get(role) ?? 0} active={roleFilter === role} onClick={() => setRoleFilter(roleFilter === role ? 'all' : role)} tone={ROLE_TONE[role] ?? 'bg-white/70 text-ink-soft'} />
           ))}
         </div>
       </SettingsCard>
@@ -76,32 +112,32 @@ export function UsersRoles() {
             <span>Person</span><span>Role</span><span>Scope</span><span>Status</span><span />
           </div>
           <ul>
-            {shown.map((u) => (
-              <li key={u.id}>
-                <button type="button" onClick={() => { setEditing(u); setIsNew(false); }} className="grid w-full grid-cols-[1.6fr_1.1fr_1.2fr_1fr_auto] items-center gap-3 border-t border-white/45 bg-white/30 px-4 py-3 text-left transition-colors hover:bg-white/60">
-                  <div className="flex min-w-0 items-center gap-2.5"><PartyAvatar name={u.name || u.email} size="sm" /><div className="min-w-0"><p className="truncate text-[13px] font-semibold text-ink">{u.name || '—'}</p><p className="truncate text-[11px] text-ink-muted">{u.email}</p></div></div>
-                  <span><span className={cn('rounded-full px-2 py-0.5 text-[10.5px] font-bold', ROLE_TONE[u.role] ?? 'bg-white/70 text-ink-soft')}>{u.role}</span></span>
-                  <span className="inline-flex items-center gap-1.5 text-[12px] text-ink-soft">{u.scope === 'all' ? <Layers className="size-3.5 text-brand" /> : <span>{seedEntities.find((e) => e.id === u.scope)?.flag}</span>}{u.scope === 'all' ? 'All entities' : entityName(u.scope)}<span className="text-ink-muted">· {u.department}</span></span>
-                  <span><span className={cn('rounded-full px-2 py-0.5 text-[10px] font-bold uppercase', STATUS_TONE[u.status])}>{u.status}</span></span>
-                  <span className="text-[11px] text-ink-muted tabular">{u.lastActive}</span>
+            {shown.map((user) => (
+              <li key={user.id}>
+                <button type="button" onClick={() => { setEditing(user); setIsNew(false); }} className="grid w-full grid-cols-[1.6fr_1.1fr_1.2fr_1fr_auto] items-center gap-3 border-t border-white/45 bg-white/30 px-4 py-3 text-left transition-colors hover:bg-white/60">
+                  <div className="flex min-w-0 items-center gap-2.5"><PartyAvatar name={user.name || user.email} size="sm" /><div className="min-w-0"><p className="truncate text-[13px] font-semibold text-ink">{user.name || '—'}</p><p className="truncate text-[11px] text-ink-muted">{user.email}</p></div></div>
+                  <span><span className={cn('rounded-full px-2 py-0.5 text-[10.5px] font-bold', ROLE_TONE[user.role] ?? 'bg-white/70 text-ink-soft')}>{user.role}</span></span>
+                  <span className="inline-flex items-center gap-1.5 text-[12px] text-ink-soft">{user.scope === 'all' ? <Layers className="size-3.5 text-brand" /> : <span>{seedEntities.find((entity) => entity.id === user.scope)?.flag}</span>}{user.scope === 'all' ? 'All entities' : entityName(user.scope)}<span className="text-ink-muted">· {user.department}</span></span>
+                  <span><span className={cn('rounded-full px-2 py-0.5 text-[10px] font-bold uppercase', STATUS_TONE[user.status])}>{user.status}</span></span>
+                  <span className="text-[11px] text-ink-muted tabular">{user.lastActive}</span>
                 </button>
               </li>
             ))}
           </ul>
         </div>
-        <p className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-medium text-ink-muted"><ShieldCheck className="size-3.5" /> Scope is enforced everywhere — a user only ever sees data for the entities and department assigned here.</p>
+        <p className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-medium text-ink-muted"><ShieldCheck className="size-3.5" /> Scope is enforced everywhere - a user only ever sees data for the entities and department assigned here.</p>
       </SettingsCard>
 
-      {editing ? <UserEditor user={editing} isNew={isNew} onCancel={() => setEditing(null)} onSave={save} onRemove={(id) => { removeUser(id); setEditing(null); toast({ tone: 'warning', title: 'Removed', body: 'User access revoked.' }); }} /> : null}
+      {editing ? <UserEditor user={editing} isNew={isNew} onCancel={() => setEditing(null)} onSave={save} onRemove={remove} /> : null}
     </div>
   );
 }
 
-function UserEditor({ user, isNew, onCancel, onSave, onRemove }: { user: OrgUser; isNew: boolean; onCancel: () => void; onSave: (u: OrgUser) => void; onRemove: (id: string) => void }) {
-  const [d, setD] = useState<OrgUser>(user);
-  const set = <K extends keyof OrgUser>(k: K, v: OrgUser[K]) => setD((p) => ({ ...p, [k]: v }));
+function UserEditor({ user, isNew, onCancel, onSave, onRemove }: { user: OrgUser; isNew: boolean; onCancel: () => void; onSave: (u: OrgUser) => void | Promise<void>; onRemove: (id: string) => void | Promise<void> }) {
+  const [draft, setDraft] = useState<OrgUser>(user);
+  const set = <K extends keyof OrgUser>(key: K, value: OrgUser[K]) => setDraft((prev) => ({ ...prev, [key]: value }));
   return (
-    <Dialog.Root open onOpenChange={(o) => !o && onCancel()}>
+    <Dialog.Root open onOpenChange={(value) => !value && onCancel()}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-[90] bg-ink/20 backdrop-blur-sm" />
         <Dialog.Content aria-describedby={undefined} className="fixed right-0 top-0 z-[95] flex h-dvh w-[min(440px,94vw)] flex-col border-l border-glass-border-strong bg-glass-strong shadow-glass-lg backdrop-blur-glass-lg focus:outline-none">
@@ -110,19 +146,19 @@ function UserEditor({ user, isNew, onCancel, onSave, onRemove }: { user: OrgUser
             <Dialog.Close className="grid size-8 place-items-center rounded-lg text-ink-muted hover:bg-white/70 hover:text-ink"><X className="size-4" /></Dialog.Close>
           </header>
           <div className="scrollbar-thin flex-1 space-y-4 overflow-y-auto p-5">
-            <Field label="Full name"><input value={d.name} onChange={(e) => set('name', e.target.value)} className={inputCls} placeholder="Jane Doe" /></Field>
-            <Field label="Work email"><input value={d.email} onChange={(e) => set('email', e.target.value)} className={inputCls} placeholder="jane@acme.local" /></Field>
-            <Field label="Role"><select value={d.role} onChange={(e) => set('role', e.target.value)} className={inputCls}>{ASSIGNABLE_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}</select></Field>
+            <Field label="Full name"><input value={draft.name} onChange={(event) => set('name', event.target.value)} className={inputCls} placeholder="Jane Doe" /></Field>
+            <Field label="Work email"><input value={draft.email} onChange={(event) => set('email', event.target.value)} className={inputCls} placeholder="jane@acme.local" /></Field>
+            <Field label="Role"><select value={draft.role} onChange={(event) => set('role', event.target.value)} className={inputCls}>{ASSIGNABLE_ROLES.map((role) => <option key={role} value={role}>{role}</option>)}</select></Field>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Entity scope"><select value={d.scope} onChange={(e) => set('scope', e.target.value as EntityScope)} className={inputCls}><option value="all">All entities</option>{seedEntities.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}</select></Field>
-              <Field label="Department"><select value={d.department} onChange={(e) => set('department', e.target.value)} className={inputCls}>{DEPARTMENTS.map((dep) => <option key={dep} value={dep}>{dep}</option>)}</select></Field>
+              <Field label="Entity scope"><select value={draft.scope} onChange={(event) => set('scope', event.target.value as EntityScope)} className={inputCls}><option value="all">All entities</option>{seedEntities.map((entity) => <option key={entity.id} value={entity.id}>{entity.name}</option>)}</select></Field>
+              <Field label="Department"><select value={draft.department} onChange={(event) => set('department', event.target.value)} className={inputCls}>{DEPARTMENTS.map((dep) => <option key={dep} value={dep}>{dep}</option>)}</select></Field>
             </div>
-            <Field label="Status"><select value={d.status} onChange={(e) => set('status', e.target.value as UserStatus)} className={inputCls}><option value="active">Active</option><option value="invited">Invited</option><option value="suspended">Suspended</option></select></Field>
-            <div className="rounded-2xl bg-info-soft/40 p-3 text-[12px] text-ink ring-1 ring-info/15"><span className="font-bold">Access preview: </span>{d.name || 'This user'} will see <span className="font-semibold">{d.scope === 'all' ? 'all entities' : entityName(d.scope)}</span>, {d.department === 'All' ? 'all departments' : d.department}, as <span className="font-semibold">{d.role}</span>.</div>
+            <Field label="Status"><select value={draft.status} onChange={(event) => set('status', event.target.value as UserStatus)} className={inputCls}><option value="active">Active</option><option value="invited">Invited</option><option value="suspended">Suspended</option></select></Field>
+            <div className="rounded-2xl bg-info-soft/40 p-3 text-[12px] text-ink ring-1 ring-info/15"><span className="font-bold">Access preview: </span>{draft.name || 'This user'} will see <span className="font-semibold">{draft.scope === 'all' ? 'all entities' : entityName(draft.scope)}</span>, {draft.department === 'All' ? 'all departments' : draft.department}, as <span className="font-semibold">{draft.role}</span>.</div>
           </div>
           <footer className="flex items-center gap-2 border-t border-white/55 p-4">
-            {!isNew ? <button type="button" onClick={() => onRemove(d.id)} className="inline-flex h-11 items-center justify-center rounded-2xl bg-white/70 px-4 text-[13px] font-bold text-danger ring-1 ring-white/70 hover:bg-danger-soft">Remove</button> : null}
-            <button type="button" onClick={() => onSave(d)} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">{isNew ? 'Send invite' : 'Save changes'}</button>
+            {!isNew ? <button type="button" onClick={() => { void onRemove(draft.id); }} className="inline-flex h-11 items-center justify-center rounded-2xl bg-white/70 px-4 text-[13px] font-bold text-danger ring-1 ring-white/70 hover:bg-danger-soft">Remove</button> : null}
+            <button type="button" onClick={() => { void onSave(draft); }} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">{isNew ? 'Send invite' : 'Save changes'}</button>
           </footer>
         </Dialog.Content>
       </Dialog.Portal>

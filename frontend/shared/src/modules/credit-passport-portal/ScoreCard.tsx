@@ -1,6 +1,6 @@
 import { RefreshCw } from 'lucide-react';
 import { GaugeChart, GlassSurface, cn } from '../../design-system';
-import { seedPassport, seedSubScores, type Rating } from '../../seed/portalHome';
+import type { Rating, SubScore } from '../../seed/portalHome';
 
 const RATING_TONE: Record<Rating, string> = {
   Strong: 'text-success',
@@ -9,8 +9,14 @@ const RATING_TONE: Record<Rating, string> = {
   Low: 'text-danger',
 };
 
-export function ScoreCard() {
-  const p = seedPassport;
+export function ScoreCard({
+  passport,
+  subScores,
+}: {
+  passport: { score: number; label: string; band: string; updated: string };
+  subScores: SubScore[];
+}) {
+  const p = passport;
   return (
     <GlassSurface tone="strong" className="flex h-full flex-col gap-4 p-6 @2xl:flex-row @2xl:items-center">
       {/* Gauge */}
@@ -26,7 +32,7 @@ export function ScoreCard() {
 
       {/* Sub-scores */}
       <div className="flex flex-1 flex-col gap-3">
-        {seedSubScores.map((s) => (
+        {subScores.map((s) => (
           <button key={s.id} type="button" className="group flex flex-col gap-1.5 rounded-2xl bg-white/55 p-3.5 text-left ring-1 ring-white/60 hover:bg-white">
             <div className="flex items-center justify-between">
               <span className="text-[13px] font-bold text-ink">{s.label}</span>

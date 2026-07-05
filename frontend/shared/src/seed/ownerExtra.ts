@@ -136,6 +136,7 @@ export interface Overdue {
   email: string;
   lastContact: string;
   reminderCount: number;
+  actionStatus?: string;
 }
 
 export const seedCollectionsStats = {

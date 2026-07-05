@@ -9,6 +9,7 @@ export interface ApiConfig {
 }
 
 let transportRef: Transport | null = null;
+let apiBaseUrlRef = '';
 
 export function initApi(config: ApiConfig): Transport {
   const opts: Parameters<typeof createConnectTransport>[0] = {
@@ -17,6 +18,7 @@ export function initApi(config: ApiConfig): Transport {
   };
   if (config.fetch) opts.fetch = config.fetch;
   transportRef = createConnectTransport(opts);
+  apiBaseUrlRef = config.baseUrl;
   return transportRef;
 }
 
@@ -33,4 +35,11 @@ export function getTransport(): Transport {
 //   const ledger = makeClient(LedgerService);
 export function makeClient<T extends ServiceType>(service: T): PromiseClient<T> {
   return createPromiseClient(service, getTransport());
+}
+
+export function getApiBaseUrl(): string {
+  if (!apiBaseUrlRef) {
+    throw new Error('API base URL not initialized. Call initApi(config) at app bootstrap.');
+  }
+  return apiBaseUrlRef;
 }

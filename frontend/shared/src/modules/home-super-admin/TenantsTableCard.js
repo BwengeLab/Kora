@@ -1,0 +1,12 @@
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { ChevronRight } from 'lucide-react';
+import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
+import { seedPlatformTenants } from '../../seed/platformHome';
+const STATUS_TONE = {
+    active: 'bg-success-soft text-success',
+    trial: 'bg-warning-soft text-warning',
+    suspended: 'bg-danger-soft text-danger',
+};
+export function TenantsTableCard({ tenants = seedPlatformTenants }) {
+    return (_jsxs(GlassSurface, { tone: "strong", className: "flex h-full min-h-0 flex-col gap-3 p-6", children: [_jsxs("header", { className: "flex items-center justify-between gap-3", children: [_jsx("h3", { className: "font-display text-base font-bold text-ink", children: "Tenants" }), _jsx("button", { type: "button", className: "text-xs font-semibold text-brand hover:text-brand-ink", children: "View all 142" })] }), _jsx("ul", { className: "scrollbar-thin flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-0.5", children: tenants.map((t) => (_jsx("li", { children: _jsxs("button", { type: "button", className: "group flex w-full items-center gap-3 rounded-2xl bg-white/55 p-3 text-left ring-1 ring-white/60 hover:bg-white", children: [_jsx(PartyAvatar, { name: t.name, size: "md" }), _jsxs("div", { className: "min-w-0 flex-1", children: [_jsxs("div", { className: "flex items-center gap-2", children: [_jsx("p", { className: "truncate text-[13px] font-bold text-ink", children: t.name }), _jsx("span", { className: cn('shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase', STATUS_TONE[t.status]), children: t.status })] }), _jsxs("p", { className: "truncate text-[11px] text-ink-muted", children: [t.plan, " \u00B7 ", t.vertical] })] }), _jsxs("div", { className: "hidden w-24 flex-col gap-1 @2xl:flex", children: [_jsxs("span", { className: "text-[10px] font-medium text-ink-muted", children: ["Health ", t.healthScore] }), _jsx("div", { className: "h-1.5 overflow-hidden rounded-full bg-ink/8", children: _jsx("div", { className: cn('h-full rounded-full', t.healthScore >= 85 ? 'bg-success' : t.healthScore >= 60 ? 'bg-warning' : 'bg-danger'), style: { width: `${t.healthScore}%` } }) })] }), _jsx(MoneyCell, { amount: t.mrr, size: "sm", className: "w-20 shrink-0 text-right font-bold !text-[12.5px]" }), _jsx(ChevronRight, { className: "size-4 shrink-0 text-ink-muted group-hover:text-ink" })] }) }, t.id))) })] }));
+}

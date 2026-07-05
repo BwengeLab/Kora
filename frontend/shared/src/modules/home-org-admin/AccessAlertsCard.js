@@ -1,0 +1,6 @@
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { ShieldAlert } from 'lucide-react';
+import { GlassSurface, cn } from '../../design-system';
+export function AccessAlertsCard({ alerts }) {
+    return (_jsxs(GlassSurface, { tone: "strong", className: "flex h-full flex-col gap-3 p-6", children: [_jsxs("header", { className: "flex items-center gap-2", children: [_jsx("span", { className: "grid size-7 place-items-center rounded-xl bg-danger-soft text-danger", children: _jsx(ShieldAlert, { className: "size-4" }) }), _jsx("h3", { className: "font-display text-base font-bold text-ink", children: "Access & security alerts" })] }), _jsx("ul", { className: "flex flex-col gap-2", children: alerts.map((alert) => (_jsxs("li", { className: cn('rounded-2xl p-3 ring-1', alert.severity === 'high' ? 'bg-danger-soft/50 ring-danger/20' : 'bg-warning-soft/40 ring-warning/20'), children: [_jsxs("div", { className: "flex items-center gap-2", children: [_jsx("span", { className: cn('size-2 rounded-full', alert.severity === 'high' ? 'bg-danger' : 'bg-warning') }), _jsx("p", { className: "text-[13px] font-bold text-ink", children: alert.title })] }), _jsx("p", { className: "mt-0.5 pl-4 text-[11.5px] text-ink-soft", children: alert.detail })] }, alert.id))) })] }));
+}

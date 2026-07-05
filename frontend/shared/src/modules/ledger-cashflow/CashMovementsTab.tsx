@@ -5,8 +5,6 @@ import type { Money } from '../../lib/money';
 import {
   ACCOUNTS,
   CATEGORY_META,
-  OPENING_BALANCE,
-  seedCashMovements,
   type Account,
   type CashCategory,
   type CashMovement,
@@ -18,22 +16,36 @@ import { MovementDrawer, type LedgerMode } from './MovementDrawer';
 
 type DirFilter = 'all' | Direction;
 
-// Running balance computed over the entity-scoped set (date order) — so the
-// balance column reflects that entity's book, or the consolidated group.
-function useRunningBalances(base: CashMovement[]) {
+function useRunningBalances(base: CashMovement[], openingBalance: Money) {
   return useMemo(() => {
     const asc = [...base].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
     const map = new Map<string, bigint>();
-    let bal = OPENING_BALANCE.amountMinor;
-    for (const m of asc) {
-      bal += m.direction === 'in' ? m.amount.amountMinor : -m.amount.amountMinor;
-      map.set(m.id, bal);
+    let balance = openingBalance.amountMinor;
+    for (const movement of asc) {
+      balance += movement.direction === 'in' ? movement.amount.amountMinor : -movement.amount.amountMinor;
+      map.set(movement.id, balance);
     }
     return map;
-  }, [base]);
+  }, [base, openingBalance]);
 }
 
-export function CashMovementsTab({ mode = 'oversight' }: { mode?: LedgerMode }) {
+export function CashMovementsTab({
+  mode = 'oversight',
+  movements,
+  openingBalance,
+  onReconcile,
+  onHold,
+  onPost,
+  onFlag,
+}: {
+  mode?: LedgerMode;
+  movements: CashMovement[];
+  openingBalance: Money;
+  onReconcile?: (movement: CashMovement) => void | Promise<void>;
+  onHold?: (movement: CashMovement) => void | Promise<void>;
+  onPost?: (movement: CashMovement) => void | Promise<void>;
+  onFlag?: (movement: CashMovement) => void | Promise<void>;
+}) {
   const scope = useEntityStore((s) => s.scope);
   const [query, setQuery] = useState('');
   const [dir, setDir] = useState<DirFilter>('all');
@@ -42,57 +54,50 @@ export function CashMovementsTab({ mode = 'oversight' }: { mode?: LedgerMode }) 
   const [onlyUnreconciled, setOnlyUnreconciled] = useState(false);
   const [selected, setSelected] = useState<CashMovement | null>(null);
 
-  // Entity context scopes the whole ledger first; the toolbar filters apply on top.
-  const base = useMemo(() => (scope === 'all' ? seedCashMovements : seedCashMovements.filter((m) => m.entity === scope)), [scope]);
-  const balances = useRunningBalances(base);
+  const base = useMemo(() => (scope === 'all' ? movements : movements.filter((item) => item.entity === scope)), [movements, scope]);
+  const balances = useRunningBalances(base, openingBalance);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const normalized = query.trim().toLowerCase();
     return base
-      .filter((m) => (dir === 'all' ? true : m.direction === dir))
-      .filter((m) => (category === 'all' ? true : m.category === category))
-      .filter((m) => (account === 'all' ? true : m.account === account))
-      .filter((m) => (onlyUnreconciled ? !m.reconciled : true))
-      .filter((m) =>
-        q === '' ? true : [m.description, m.counterparty, m.purpose, m.reference].some((s) => s.toLowerCase().includes(q)),
-      )
+      .filter((item) => (dir === 'all' ? true : item.direction === dir))
+      .filter((item) => (category === 'all' ? true : item.category === category))
+      .filter((item) => (account === 'all' ? true : item.account === account))
+      .filter((item) => (onlyUnreconciled ? !item.reconciled : true))
+      .filter((item) => normalized === '' ? true : [item.description, item.counterparty, item.purpose, item.reference].some((value) => value.toLowerCase().includes(normalized)))
       .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
   }, [base, query, dir, category, account, onlyUnreconciled]);
 
-  const totalIn: Money = { amountMinor: filtered.filter((m) => m.direction === 'in').reduce((a, m) => a + m.amount.amountMinor, 0n), currency: 'USD' };
-  const totalOut: Money = { amountMinor: filtered.filter((m) => m.direction === 'out').reduce((a, m) => a + m.amount.amountMinor, 0n), currency: 'USD' };
+  const totalIn: Money = { amountMinor: filtered.filter((item) => item.direction === 'in').reduce((sum, item) => sum + item.amount.amountMinor, 0n), currency: 'USD' };
+  const totalOut: Money = { amountMinor: filtered.filter((item) => item.direction === 'out').reduce((sum, item) => sum + item.amount.amountMinor, 0n), currency: 'USD' };
   const net: Money = { amountMinor: totalIn.amountMinor - totalOut.amountMinor, currency: 'USD' };
-  const unreconciledCount = base.filter((m) => !m.reconciled).length;
+  const unreconciledCount = base.filter((item) => !item.reconciled).length;
 
   return (
     <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 @5xl:grid-cols-[1fr_300px]">
-      {/* Workbench */}
       <GlassSurface tone="strong" className="flex min-h-0 flex-col">
-        {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-2 border-b border-white/55 p-4">
           <div className="flex h-10 min-w-[220px] flex-1 items-center gap-2.5 rounded-xl bg-white/70 px-3.5 ring-1 ring-white/70">
             <Search className="size-4 text-ink-muted" />
-            <input value={query} onChange={(e) => setQuery(e.target.value)} type="search" placeholder="Search description, party, purpose, ref…" className="w-full bg-transparent text-[13px] text-ink placeholder:text-ink-muted focus:outline-none" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} type="search" placeholder="Search description, party, purpose, ref..." className="w-full bg-transparent text-[13px] text-ink placeholder:text-ink-muted focus:outline-none" />
           </div>
-          {/* Direction segmented */}
           <div className="flex h-10 items-center gap-0.5 rounded-xl bg-white/55 p-0.5 ring-1 ring-white/60">
-            {(['all', 'in', 'out'] as DirFilter[]).map((d) => (
-              <button key={d} type="button" onClick={() => setDir(d)} className={cn('h-9 rounded-lg px-3 text-[12px] font-bold capitalize transition-colors', dir === d ? 'bg-white text-ink shadow-glass-soft' : 'text-ink-muted hover:text-ink')}>
-                {d === 'all' ? 'All' : d === 'in' ? 'Money in' : 'Money out'}
+            {(['all', 'in', 'out'] as DirFilter[]).map((value) => (
+              <button key={value} type="button" onClick={() => setDir(value)} className={cn('h-9 rounded-lg px-3 text-[12px] font-bold capitalize transition-colors', dir === value ? 'bg-white text-ink shadow-glass-soft' : 'text-ink-muted hover:text-ink')}>
+                {value === 'all' ? 'All' : value === 'in' ? 'Money in' : 'Money out'}
               </button>
             ))}
           </div>
-          <select value={category} onChange={(e) => setCategory(e.target.value as CashCategory | 'all')} className="h-10 rounded-xl bg-white/70 px-3 text-[12.5px] font-semibold text-ink-soft ring-1 ring-white/70 focus:outline-none">
+          <select value={category} onChange={(event) => setCategory(event.target.value as CashCategory | 'all')} className="h-10 rounded-xl bg-white/70 px-3 text-[12.5px] font-semibold text-ink-soft ring-1 ring-white/70 focus:outline-none">
             <option value="all">All categories</option>
-            {Object.entries(CATEGORY_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            {Object.entries(CATEGORY_META).map(([key, meta]) => <option key={key} value={key}>{meta.label}</option>)}
           </select>
-          <select value={account} onChange={(e) => setAccount(e.target.value as Account | 'all')} className="h-10 rounded-xl bg-white/70 px-3 text-[12.5px] font-semibold text-ink-soft ring-1 ring-white/70 focus:outline-none">
+          <select value={account} onChange={(event) => setAccount(event.target.value as Account | 'all')} className="h-10 rounded-xl bg-white/70 px-3 text-[12.5px] font-semibold text-ink-soft ring-1 ring-white/70 focus:outline-none">
             <option value="all">All accounts</option>
-            {ACCOUNTS.map((a) => <option key={a} value={a}>{a}</option>)}
+            {ACCOUNTS.map((value) => <option key={value} value={value}>{value}</option>)}
           </select>
         </div>
 
-        {/* Column header */}
         <div className="grid grid-cols-[1fr_104px_120px_120px_28px] gap-3 border-b border-white/45 px-4 py-2 text-[10.5px] font-bold uppercase tracking-wider text-ink-muted">
           <span>Movement</span>
           <span className="text-right">Amount</span>
@@ -101,15 +106,13 @@ export function CashMovementsTab({ mode = 'oversight' }: { mode?: LedgerMode }) 
           <span />
         </div>
 
-        {/* Rows */}
         <ul className="scrollbar-thin min-h-0 flex-1 overflow-y-auto">
-          {filtered.map((m) => (
-            <Row key={m.id} m={m} balance={{ amountMinor: balances.get(m.id) ?? 0n, currency: 'USD' }} onClick={() => setSelected(m)} />
+          {filtered.map((movement) => (
+            <Row key={movement.id} movement={movement} balance={{ amountMinor: balances.get(movement.id) ?? 0n, currency: 'USD' }} onClick={() => setSelected(movement)} />
           ))}
           {filtered.length === 0 ? <li className="grid place-items-center py-16 text-[13px] text-ink-muted">No movements match your filters.</li> : null}
         </ul>
 
-        {/* Totals footer */}
         <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-white/55 bg-white/45 px-4 py-3">
           <span className="text-[12px] font-semibold text-ink-muted"><span className="tabular text-ink">{filtered.length}</span> movements · <span className="font-bold text-ink">{entityName(scope)}</span>{scope === 'all' ? ' (consolidated)' : ''}</span>
           <div className="flex items-center gap-4 text-[12.5px]">
@@ -120,21 +123,28 @@ export function CashMovementsTab({ mode = 'oversight' }: { mode?: LedgerMode }) 
         </footer>
       </GlassSurface>
 
-      {/* Helper rail — scoped to the same entity base as the table */}
       <div className="flex flex-col gap-4">
         <CategoryBreakdown movements={base} />
-        <UnreconciledCard count={unreconciledCount} active={onlyUnreconciled} onToggle={() => setOnlyUnreconciled((v) => !v)} />
-        <AgentFlags hasSuspicious={base.some((m) => m.counterparty === 'OFFSHORE LTD')} onFilterSuspicious={() => { setQuery('OFFSHORE'); setOnlyUnreconciled(false); }} />
+        <UnreconciledCard count={unreconciledCount} active={onlyUnreconciled} onToggle={() => setOnlyUnreconciled((value) => !value)} />
+        <AgentFlags hasSuspicious={base.some((item) => item.counterparty === 'OFFSHORE LTD')} onFilterSuspicious={() => { setQuery('OFFSHORE'); setOnlyUnreconciled(false); }} />
       </div>
 
-      <MovementDrawer movement={selected} onClose={() => setSelected(null)} mode={mode} />
+      <MovementDrawer
+        movement={selected}
+        onClose={() => setSelected(null)}
+        mode={mode}
+        {...(onReconcile ? { onReconcile } : {})}
+        {...(onHold ? { onHold } : {})}
+        {...(onPost ? { onPost } : {})}
+        {...(onFlag ? { onFlag } : {})}
+      />
     </div>
   );
 }
 
-function Row({ m, balance, onClick }: { m: CashMovement; balance: Money; onClick: () => void }) {
-  const isIn = m.direction === 'in';
-  const cat = CATEGORY_META[m.category];
+function Row({ movement, balance, onClick }: { movement: CashMovement; balance: Money; onClick: () => void }) {
+  const isIn = movement.direction === 'in';
+  const meta = CATEGORY_META[movement.category];
   return (
     <li>
       <button type="button" onClick={onClick} className="grid w-full grid-cols-[1fr_104px_120px_120px_28px] items-center gap-3 border-b border-white/40 px-4 py-3 text-left transition-colors hover:bg-white/55">
@@ -144,19 +154,19 @@ function Row({ m, balance, onClick }: { m: CashMovement; balance: Money; onClick
           </span>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <p className="truncate text-[13px] font-semibold text-ink">{m.counterparty}</p>
-              <span className={cn('shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase', cat.tone)}>{cat.label}</span>
+              <p className="truncate text-[13px] font-semibold text-ink">{movement.counterparty}</p>
+              <span className={cn('shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase', meta.tone)}>{meta.label}</span>
             </div>
-            <p className="truncate text-[11px] text-ink-muted">{m.purpose} · {m.account} · {new Date(m.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
+            <p className="truncate text-[11px] text-ink-muted">{movement.purpose} · {movement.account} · {new Date(movement.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</p>
           </div>
         </div>
         <span className={cn('text-right text-[13px] font-bold tabular', isIn ? 'text-success' : 'text-danger')}>
-          {isIn ? '+' : '−'}<MoneyCell amount={m.amount} size="sm" className={cn('!text-[13px]', isIn ? 'text-success' : 'text-danger')} />
+          {isIn ? '+' : '-'}<MoneyCell amount={movement.amount} size="sm" className={cn('!text-[13px]', isIn ? 'text-success' : 'text-danger')} />
         </span>
         <MoneyCell amount={balance} size="sm" className="text-right font-semibold !text-[12.5px] text-ink-soft" />
         <span className="flex justify-end">
-          <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-bold uppercase', m.reconciled ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning')}>
-            {m.reconciled ? 'Reconciled' : 'Unreconciled'}
+          <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-bold uppercase', movement.reconciled ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning')}>
+            {movement.reconciled ? 'Reconciled' : 'Unreconciled'}
           </span>
         </span>
         <ChevronRight className="size-4 justify-self-end text-ink-muted" />
@@ -168,30 +178,31 @@ function Row({ m, balance, onClick }: { m: CashMovement; balance: Money; onClick
 function CategoryBreakdown({ movements }: { movements: CashMovement[] }) {
   const totals = useMemo(() => {
     const map = new Map<CashCategory, { in: bigint; out: bigint }>();
-    for (const m of movements) {
-      const e = map.get(m.category) ?? { in: 0n, out: 0n };
-      if (m.direction === 'in') e.in += m.amount.amountMinor;
-      else e.out += m.amount.amountMinor;
-      map.set(m.category, e);
+    for (const movement of movements) {
+      const entry = map.get(movement.category) ?? { in: 0n, out: 0n };
+      if (movement.direction === 'in') entry.in += movement.amount.amountMinor;
+      else entry.out += movement.amount.amountMinor;
+      map.set(movement.category, entry);
     }
-    const rows = [...map.entries()].map(([cat, v]) => ({ cat, net: v.in - v.out, gross: v.in + v.out }));
-    const max = Math.max(...rows.map((r) => Number(r.gross)), 1);
-    return rows.sort((a, b) => Number(b.gross - a.gross)).slice(0, 6).map((r) => ({ ...r, pct: (Number(r.gross) / max) * 100 }));
+    const rows = [...map.entries()].map(([category, value]) => ({ category, net: value.in - value.out, gross: value.in + value.out }));
+    const max = Math.max(...rows.map((row) => Number(row.gross)), 1);
+    return rows.sort((a, b) => Number(b.gross - a.gross)).slice(0, 6).map((row) => ({ ...row, pct: (Number(row.gross) / max) * 100 }));
   }, [movements]);
+
   return (
     <GlassSurface tone="strong" className="flex flex-col gap-2.5 p-4">
       <h4 className="text-[12px] font-bold text-ink">Flow by category</h4>
       {totals.length === 0 ? <p className="text-[11.5px] text-ink-muted">No movements in this view.</p> : null}
-      {totals.map((r) => (
-        <div key={r.cat}>
+      {totals.map((row) => (
+        <div key={row.category}>
           <div className="flex items-center justify-between text-[11.5px]">
-            <span className="font-medium text-ink-soft">{CATEGORY_META[r.cat].label}</span>
-            <span className={cn('font-bold tabular', r.net >= 0n ? 'text-success' : 'text-danger')}>
-              <MoneyCell amount={{ amountMinor: r.net, currency: 'USD' }} size="sm" className={cn('!text-[11.5px]', r.net >= 0n ? 'text-success' : 'text-danger')} showSign />
+            <span className="font-medium text-ink-soft">{CATEGORY_META[row.category].label}</span>
+            <span className={cn('font-bold tabular', row.net >= 0n ? 'text-success' : 'text-danger')}>
+              <MoneyCell amount={{ amountMinor: row.net, currency: 'USD' }} size="sm" className={cn('!text-[11.5px]', row.net >= 0n ? 'text-success' : 'text-danger')} showSign />
             </span>
           </div>
           <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-ink/8">
-            <div className={cn('h-full rounded-full', r.net >= 0n ? 'bg-success' : 'bg-danger')} style={{ width: `${r.pct}%` }} />
+            <div className={cn('h-full rounded-full', row.net >= 0n ? 'bg-success' : 'bg-danger')} style={{ width: `${row.pct}%` }} />
           </div>
         </div>
       ))}

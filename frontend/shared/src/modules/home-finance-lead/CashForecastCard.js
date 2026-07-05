@@ -1,0 +1,12 @@
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { Link } from '@tanstack/react-router';
+import { ArrowUpRight, Info } from 'lucide-react';
+import { AreaChart, GlassSurface, MoneyCell } from '../../design-system';
+import { seedCashForecast } from '../../seed/financeLeadHome';
+export function CashForecastCard({ forecast = seedCashForecast }) {
+    const c = forecast;
+    return (_jsxs(GlassSurface, { tone: "strong", className: "flex h-full flex-col gap-4 p-6", children: [_jsxs("header", { className: "flex items-center justify-between gap-3", children: [_jsxs("div", { className: "flex items-center gap-2", children: [_jsx("h3", { className: "font-display text-base font-bold text-ink", children: "Cash position & forecast" }), _jsx(Info, { className: "size-3.5 text-ink-muted" })] }), _jsx(Link, { to: "/ledger", className: "text-xs font-semibold text-brand hover:text-brand-ink", children: "Ledger" })] }), _jsxs("div", { className: "flex flex-wrap items-end gap-6", children: [_jsxs("div", { children: [_jsx("span", { className: "text-[11px] font-semibold uppercase tracking-wider text-ink-muted", children: "Today" }), _jsx(MoneyCell, { amount: c.current, size: "xl", className: "!text-[26px]" })] }), _jsxs("div", { children: [_jsx("span", { className: "text-[11px] font-semibold uppercase tracking-wider text-ink-muted", children: "Projected May 31" }), _jsxs("div", { className: "flex items-center gap-2", children: [_jsx(MoneyCell, { amount: c.projected, size: "lg", className: "!text-xl text-brand-ink" }), _jsxs("span", { className: "inline-flex items-center gap-0.5 rounded-full bg-success-soft px-1.5 py-0.5 text-[11px] font-bold text-success", children: [_jsx(ArrowUpRight, { className: "size-3" }), " 23%"] })] })] }), _jsxs("div", { className: "ml-auto flex items-center gap-3 text-[11px] font-semibold text-ink-muted", children: [_jsxs("span", { className: "inline-flex items-center gap-1.5", children: [_jsx("span", { className: "h-0.5 w-4 rounded bg-brand" }), " Actual"] }), _jsxs("span", { className: "inline-flex items-center gap-1.5", children: [_jsx("span", { className: "h-0.5 w-4 rounded border-t-2 border-dashed border-ai" }), " Forecast"] })] })] }), _jsx("div", { className: "min-h-[180px] flex-1", children: _jsx(AreaChart, { xLabels: [...c.labels], height: "100%", series: [
+                        { name: 'Actual', color: '#4361ee', data: [...c.actual] },
+                        { name: 'Forecast', color: '#8b5cf6', data: [...c.forecast], dashed: true },
+                    ] }) })] }));
+}

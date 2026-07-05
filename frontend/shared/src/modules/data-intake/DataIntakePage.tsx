@@ -1,10 +1,13 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, FileText, Inbox, Link2, Loader2, Mail, Plus, Scan, Smartphone, Sparkles, Upload } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PageHeader } from '../../app/shell';
+import { getApiBaseUrl } from '../../api/client';
+import { fetchIntakeDocs, matchIntakeDoc, postIntakeDoc, uploadIntakeDoc } from '../../api/intake';
 import { GlassSurface, cn } from '../../design-system';
-import { SOURCE_META, type IntakeDoc, type IntakeSource, type IntakeStage } from '../../seed/intake';
-import { useIntakeStore } from '../../state/intakeStore';
+import { SOURCE_META, seedIntake, type IntakeDoc, type IntakeSource, type IntakeStage } from '../../seed/intake';
 import { openDoc } from '../../state/docViewerStore';
+import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
 
 const STAGE_META: Record<IntakeStage, { label: string; tone: string }> = {
@@ -16,13 +19,32 @@ const STAGE_META: Record<IntakeStage, { label: string; tone: string }> = {
 
 const SOURCE_ICON: Record<IntakeSource, typeof Mail> = { 'bank-feed': Link2, email: Mail, scan: Smartphone, upload: Upload };
 
-// Data Intake — where every document enters Kora. Kora OCR-extracts the fields;
-// the operator confirms, matches to a transaction, or posts a new entry. The
-// front door of the evidence-first ledger.
 export function DataIntakePage() {
-  const docs = useIntakeStore((s) => s.docs);
-  const upload = useIntakeStore((s) => s.upload);
-  const [selectedId, setSelectedId] = useState<string | null>(docs.find((d) => d.stage === 'needs-review')?.id ?? docs[0]?.id ?? null);
+  const apiBaseUrl = getApiBaseUrl();
+  const token = useSessionStore((s) => s.session?.token ?? '');
+  const queryClient = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ['intake-docs', token],
+    queryFn: ({ signal }) => fetchIntakeDocs(apiBaseUrl, token, signal),
+    enabled: Boolean(token),
+  });
+  const docs = data ?? seedIntake;
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!docs.some((d) => d.id === selectedId)) {
+      setSelectedId(docs.find((d) => d.stage === 'needs-review')?.id ?? docs[0]?.id ?? null);
+    }
+  }, [docs, selectedId]);
+
+  const uploadMutation = useMutation({
+    mutationFn: (name: string) => uploadIntakeDoc(apiBaseUrl, token, name),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['intake-docs', token] });
+      toast({ tone: 'info', title: 'Uploaded', body: 'Kora is extracting the fields...' });
+    },
+    onError: (error: Error) => toast({ tone: 'danger', title: 'Upload failed', body: error.message }),
+  });
 
   const selected = docs.find((d) => d.id === selectedId) ?? null;
   const pending = docs.filter((d) => d.stage === 'needs-review' || d.stage === 'extracting').length;
@@ -33,13 +55,12 @@ export function DataIntakePage() {
         title="Data Intake"
         subtitle={<><span className="font-semibold text-ink">{pending}</span> documents waiting to be reviewed and posted. Bank feeds, email-in, scans and uploads land here.</>}
         right={
-          <button type="button" onClick={() => { upload('Dropped file.pdf'); toast({ tone: 'info', title: 'Uploaded', body: 'Kora is extracting the fields…' }); }} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink px-4 text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">
+          <button type="button" onClick={() => uploadMutation.mutate('Dropped file.pdf')} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink px-4 text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">
             <Plus className="size-4" /> Upload document
           </button>
         }
       />
       <div className="flex min-h-0 flex-1 gap-5 px-8 pb-6">
-        {/* Queue */}
         <GlassSurface tone="strong" className="flex w-[360px] shrink-0 flex-col">
           <div className="flex items-center gap-2 border-b border-white/55 px-4 py-3">
             <Inbox className="size-4 text-ink-soft" />
@@ -47,32 +68,31 @@ export function DataIntakePage() {
             <span className="ml-auto rounded-full bg-warning-soft px-2 py-0.5 text-[11px] font-bold text-warning">{pending} pending</span>
           </div>
           <ul className="scrollbar-thin min-h-0 flex-1 overflow-y-auto">
-            {docs.map((d) => {
-              const Icon = SOURCE_ICON[d.source];
+            {docs.map((doc) => {
+              const Icon = SOURCE_ICON[doc.source];
               return (
-                <li key={d.id}>
-                  <button type="button" onClick={() => setSelectedId(d.id)} className={cn('flex w-full items-start gap-3 border-b border-white/40 px-4 py-3 text-left transition-colors', selected?.id === d.id ? 'bg-white' : 'hover:bg-white/55')}>
+                <li key={doc.id}>
+                  <button type="button" onClick={() => setSelectedId(doc.id)} className={cn('flex w-full items-start gap-3 border-b border-white/40 px-4 py-3 text-left transition-colors', selected?.id === doc.id ? 'bg-white' : 'hover:bg-white/55')}>
                     <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-xl bg-white/70 text-ink-soft ring-1 ring-white/60"><Icon className="size-4" /></span>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-semibold text-ink">{d.name}</p>
-                      <p className="truncate text-[11px] text-ink-muted">{SOURCE_META[d.source].label} · {new Date(d.receivedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</p>
+                      <p className="truncate text-[13px] font-semibold text-ink">{doc.name}</p>
+                      <p className="truncate text-[11px] text-ink-muted">{SOURCE_META[doc.source].label} · {new Date(doc.receivedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</p>
                     </div>
-                    <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase', STAGE_META[d.stage].tone)}>{STAGE_META[d.stage].label}</span>
+                    <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase', STAGE_META[doc.stage].tone)}>{STAGE_META[doc.stage].label}</span>
                   </button>
                 </li>
               );
             })}
           </ul>
           <div className="grid grid-cols-3 gap-2 border-t border-white/55 p-3">
-            {([['bank-feed', Link2], ['email', Mail], ['scan', Scan]] as const).map(([s, Icon]) => (
-              <button key={s} type="button" onClick={() => toast({ tone: 'info', title: `${SOURCE_META[s].label} connected`, body: 'New documents will arrive automatically.' })} className="flex flex-col items-center gap-1 rounded-xl bg-white/55 py-2.5 text-[10.5px] font-bold text-ink-soft ring-1 ring-white/60 hover:bg-white hover:text-ink">
-                <Icon className="size-4" /> {SOURCE_META[s].label}
+            {([['bank-feed', Link2], ['email', Mail], ['scan', Scan]] as const).map(([source, Icon]) => (
+              <button key={source} type="button" onClick={() => toast({ tone: 'info', title: `${SOURCE_META[source].label} connected`, body: 'New documents will arrive automatically.' })} className="flex flex-col items-center gap-1 rounded-xl bg-white/55 py-2.5 text-[10.5px] font-bold text-ink-soft ring-1 ring-white/60 hover:bg-white hover:text-ink">
+                <Icon className="size-4" /> {SOURCE_META[source].label}
               </button>
             ))}
           </div>
         </GlassSurface>
 
-        {/* Detail */}
         <GlassSurface tone="strong" className="flex min-w-0 flex-1 flex-col">
           {selected ? <IntakeDetail doc={selected} /> : <div className="grid flex-1 place-items-center text-ink-muted">Select a document</div>}
         </GlassSurface>
@@ -82,8 +102,25 @@ export function DataIntakePage() {
 }
 
 function IntakeDetail({ doc }: { doc: IntakeDoc }) {
-  const match = useIntakeStore((s) => s.match);
-  const post = useIntakeStore((s) => s.post);
+  const apiBaseUrl = getApiBaseUrl();
+  const token = useSessionStore((s) => s.session?.token ?? '');
+  const queryClient = useQueryClient();
+  const matchMutation = useMutation({
+    mutationFn: () => matchIntakeDoc(apiBaseUrl, token, doc.id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['intake-docs', token] });
+      toast({ tone: 'success', title: 'Matched', body: `${doc.name} linked to ${doc.suggestedMatch?.ref ?? 'the selected record'}.` });
+    },
+    onError: (error: Error) => toast({ tone: 'danger', title: 'Match failed', body: error.message }),
+  });
+  const postMutation = useMutation({
+    mutationFn: () => postIntakeDoc(apiBaseUrl, token, doc.id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['intake-docs', token] });
+      toast({ tone: 'success', title: 'Recorded', body: `${doc.name} recorded to the books with evidence - ready for reconciliation.` });
+    },
+    onError: (error: Error) => toast({ tone: 'danger', title: 'Record failed', body: error.message }),
+  });
   const extracting = doc.stage === 'extracting';
   const done = doc.stage === 'posted';
 
@@ -102,18 +139,18 @@ function IntakeDetail({ doc }: { doc: IntakeDoc }) {
         {extracting ? (
           <div className="flex flex-col items-center gap-3 py-16 text-center">
             <Loader2 className="size-8 animate-spin text-ai" />
-            <p className="text-[14px] font-semibold text-ink">Kora is extracting fields…</p>
+            <p className="text-[14px] font-semibold text-ink">Kora is extracting fields...</p>
             <p className="text-[12px] text-ink-muted">OCR + field detection usually takes a few seconds.</p>
           </div>
         ) : (
           <>
             <div className="mb-4 inline-flex items-center gap-1.5 rounded-full bg-ai-soft px-2.5 py-1 text-[11px] font-bold text-ai"><Sparkles className="size-3.5" /> Extracted by Kora</div>
             <dl className="grid grid-cols-2 gap-3">
-              {doc.fields.map((fd) => (
-                <div key={fd.label} className="rounded-2xl bg-white/55 p-3 ring-1 ring-white/60">
-                  <dt className="text-[10.5px] font-bold uppercase tracking-wider text-ink-muted">{fd.label}</dt>
-                  <dd className="mt-0.5 text-[13.5px] font-semibold text-ink">{fd.value}</dd>
-                  <ConfidenceBar value={fd.confidence} />
+              {doc.fields.map((field) => (
+                <div key={field.label} className="rounded-2xl bg-white/55 p-3 ring-1 ring-white/60">
+                  <dt className="text-[10.5px] font-bold uppercase tracking-wider text-ink-muted">{field.label}</dt>
+                  <dd className="mt-0.5 text-[13.5px] font-semibold text-ink">{field.value}</dd>
+                  <ConfidenceBar value={field.confidence} />
                 </div>
               ))}
             </dl>
@@ -130,7 +167,7 @@ function IntakeDetail({ doc }: { doc: IntakeDoc }) {
                 </div>
               </div>
             ) : (
-              <p className="mt-5 rounded-2xl bg-warning-soft/50 p-3 text-[12.5px] font-medium text-warning ring-1 ring-warning/20">No confident match found — review the fields and post as a new transaction, or escalate.</p>
+              <p className="mt-5 rounded-2xl bg-warning-soft/50 p-3 text-[12.5px] font-medium text-warning ring-1 ring-warning/20">No confident match found - review the fields and post as a new transaction, or escalate.</p>
             )}
           </>
         )}
@@ -143,11 +180,11 @@ function IntakeDetail({ doc }: { doc: IntakeDoc }) {
           ) : (
             <>
               {doc.suggestedMatch ? (
-                <button type="button" onClick={() => { match(doc.id); toast({ tone: 'success', title: 'Matched', body: `${doc.name} linked to ${doc.suggestedMatch!.ref}.` }); }} className={cn('inline-flex h-11 items-center justify-center gap-2 rounded-2xl px-4 text-[13px] font-bold ring-1 ring-white/70', doc.stage === 'matched' ? 'bg-info-soft text-info' : 'bg-white/70 text-ink hover:bg-white')}>
+                <button type="button" onClick={() => matchMutation.mutate()} className={cn('inline-flex h-11 items-center justify-center gap-2 rounded-2xl px-4 text-[13px] font-bold ring-1 ring-white/70', doc.stage === 'matched' ? 'bg-info-soft text-info' : 'bg-white/70 text-ink hover:bg-white')}>
                   <Link2 className="size-4" /> {doc.stage === 'matched' ? 'Matched' : 'Confirm match'}
                 </button>
               ) : null}
-              <button type="button" onClick={() => { post(doc.id); toast({ tone: 'success', title: 'Recorded', body: `${doc.name} recorded to the books with evidence — ready for reconciliation.` }); }} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">
+              <button type="button" onClick={() => postMutation.mutate()} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">
                 <CheckCircle2 className="size-4" /> Record transaction
               </button>
             </>

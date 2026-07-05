@@ -1,11 +1,15 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { ArrowDownLeft, ArrowUpRight, Banknote, FileText, Mail, Search, SlidersHorizontal, X } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { DateRangePill, PageHeader } from '../../app/shell';
+import { getApiBaseUrl } from '../../api/client';
+import { fetchRelationshipsOverview } from '../../api/relationships';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
 import type { Money } from '../../lib/money';
 import { seedParties, type Party, type PartyType } from '../../seed/ownerExtra';
 import { openDoc } from '../../state/docViewerStore';
+import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
 
 const TYPE_TONE: Record<PartyType, string> = { customer: 'bg-success-soft text-success', supplier: 'bg-warning-soft text-warning', partner: 'bg-brand-soft text-brand-ink' };
@@ -18,6 +22,14 @@ const abs = (m: Money): Money => ({ amountMinor: m.amountMinor < 0n ? -m.amountM
 // terms, limits and statements. Parties-only — contracts have their own Lead
 // page. Distinct from the owner's strategic + contracts oversight.
 export function ReceivablesPayables() {
+  const apiBaseUrl = getApiBaseUrl();
+  const token = useSessionStore((s) => s.session?.token ?? '');
+  const { data } = useQuery({
+    queryKey: ['relationships-overview', token],
+    queryFn: ({ signal }) => fetchRelationshipsOverview(apiBaseUrl, token, signal),
+    enabled: Boolean(token),
+  });
+  const parties = data?.parties ?? seedParties;
   const [query, setQuery] = useState('');
   const [side, setSide] = useState<Side>('all');
   const [type, setType] = useState<PartyType | 'all'>('all');
@@ -25,16 +37,16 @@ export function ReceivablesPayables() {
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return seedParties
+    return parties
       .filter((p) => (side === 'all' ? true : side === 'receivable' ? isAR(p) : !isAR(p)))
       .filter((p) => (type === 'all' ? true : p.type === type))
       .filter((p) => (q === '' ? true : [p.name, p.contact].some((s) => s.toLowerCase().includes(q))))
       .sort((a, b) => Number(abs(b.balance).amountMinor - abs(a.balance).amountMinor));
-  }, [query, side, type]);
+  }, [parties, query, side, type]);
 
-  const totalAR: Money = { amountMinor: seedParties.filter(isAR).reduce((a, p) => a + p.balance.amountMinor, 0n), currency: 'USD' };
-  const totalAP: Money = { amountMinor: seedParties.filter((p) => !isAR(p)).reduce((a, p) => a - p.balance.amountMinor, 0n), currency: 'USD' };
-  const overdueCount = seedParties.filter((p) => p.overdue).length;
+  const totalAR: Money = { amountMinor: parties.filter(isAR).reduce((a, p) => a + p.balance.amountMinor, 0n), currency: 'USD' };
+  const totalAP: Money = { amountMinor: parties.filter((p) => !isAR(p)).reduce((a, p) => a - p.balance.amountMinor, 0n), currency: 'USD' };
+  const overdueCount = parties.filter((p) => p.overdue).length;
   const net: Money = { amountMinor: totalAR.amountMinor - totalAP.amountMinor, currency: 'USD' };
 
   return (

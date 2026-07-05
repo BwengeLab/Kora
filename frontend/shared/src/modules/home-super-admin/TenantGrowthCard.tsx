@@ -2,9 +2,15 @@ import { Activity, Gauge, Timer, Zap } from 'lucide-react';
 import { AreaChart, GlassSurface, MoneyCell } from '../../design-system';
 import { seedSystemHealth, seedTenantGrowth } from '../../seed/platformHome';
 
-export function TenantGrowthCard() {
-  const g = seedTenantGrowth;
-  const h = seedSystemHealth;
+export function TenantGrowthCard({
+  tenantGrowth = seedTenantGrowth,
+  systemHealth = seedSystemHealth,
+}: {
+  tenantGrowth?: typeof seedTenantGrowth;
+  systemHealth?: typeof seedSystemHealth;
+}) {
+  const g = tenantGrowth;
+  const h = systemHealth;
   return (
     <GlassSurface tone="strong" className="flex h-full flex-col gap-4 p-6">
       <header className="flex items-center justify-between">

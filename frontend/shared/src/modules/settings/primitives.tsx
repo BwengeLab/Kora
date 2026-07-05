@@ -19,20 +19,26 @@ export function SettingsCard({ title, desc, children, action }: { title: string;
   );
 }
 
-export function Field({ label, value, hint }: { label: string; value: string; hint?: string }) {
+export function Field({ label, value, hint, onChange }: { label: string; value: string; hint?: string; onChange?: (value: string) => void }) {
   return (
     <label className="flex flex-col gap-1">
       <span className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">{label}</span>
-      <input defaultValue={value} className="h-11 rounded-xl bg-white/70 px-3.5 text-[13.5px] font-semibold text-ink ring-1 ring-white/70 focus:outline-none focus:ring-2 focus:ring-brand/30" />
+      <input
+        value={value}
+        readOnly={!onChange}
+        onChange={(event) => onChange?.(event.target.value)}
+        className="h-11 rounded-xl bg-white/70 px-3.5 text-[13.5px] font-semibold text-ink ring-1 ring-white/70 focus:outline-none focus:ring-2 focus:ring-brand/30"
+      />
       {hint ? <span className="text-[11px] text-ink-muted">{hint}</span> : null}
     </label>
   );
 }
 
-export function Toggle({ label, desc, defaultOn = false, onChange }: { label: string; desc?: string; defaultOn?: boolean; onChange?: (v: boolean) => void }) {
-  const [on, setOn] = useState(defaultOn);
+export function Toggle({ label, desc, defaultOn = false, checked, onChange }: { label: string; desc?: string; defaultOn?: boolean; checked?: boolean; onChange?: (v: boolean) => void }) {
+  const [internal, setInternal] = useState(defaultOn);
+  const on = checked ?? internal;
   return (
-    <button type="button" onClick={() => { setOn((v) => !v); onChange?.(!on); }} className="flex w-full items-center justify-between gap-3 rounded-2xl bg-white/55 p-3.5 text-left ring-1 ring-white/60 hover:bg-white/70">
+    <button type="button" onClick={() => { if (checked === undefined) setInternal((v) => !v); onChange?.(!on); }} className="flex w-full items-center justify-between gap-3 rounded-2xl bg-white/55 p-3.5 text-left ring-1 ring-white/60 hover:bg-white/70">
       <div className="min-w-0">
         <p className="text-[13px] font-semibold text-ink">{label}</p>
         {desc ? <p className="text-[11.5px] text-ink-muted">{desc}</p> : null}

@@ -35,6 +35,7 @@ export const FEATURE_CATALOG: FeatureDef[] = [
 interface FeatureState {
   enabled: FeatureId[];
   isEnabled: (id: FeatureId) => boolean;
+  hydrate: (enabled: FeatureId[]) => void;
   unlock: (id: FeatureId) => void;
   lock: (id: FeatureId) => void;
 }
@@ -44,6 +45,7 @@ export const useFeatureStore = create<FeatureState>()(
     (set, get) => ({
       enabled: [],
       isEnabled: (id) => get().enabled.includes(id),
+      hydrate: (enabled) => set({ enabled }),
       unlock: (id) => set((s) => (s.enabled.includes(id) ? s : { enabled: [...s.enabled, id] })),
       lock: (id) => set((s) => ({ enabled: s.enabled.filter((x) => x !== id) })),
     }),

@@ -1,4 +1,8 @@
+import { useMutation } from '@tanstack/react-query';
 import { Check, Lock, Sparkles, Unlock } from 'lucide-react';
+import { getApiBaseUrl } from '../../api/client';
+import { toggleFeatureEntitlement } from '../../api/features';
+import { useSessionStore } from '../../state/sessionStore';
 import { GlassSurface, cn } from '../../design-system';
 import { FEATURE_CATALOG, useFeatureStore } from '../../state/featureStore';
 import { toast } from '../../state/toastStore';
@@ -7,8 +11,13 @@ import { toast } from '../../state/toastStore';
 // instantly activates it across the tenant (new workspace + custom role).
 export function FeatureMarketplaceCard() {
   const enabled = useFeatureStore((s) => s.enabled);
-  const unlock = useFeatureStore((s) => s.unlock);
-  const lock = useFeatureStore((s) => s.lock);
+  const hydrate = useFeatureStore((s) => s.hydrate);
+  const token = useSessionStore((s) => s.session?.token ?? '');
+  const apiBaseUrl = getApiBaseUrl();
+  const mutation = useMutation({
+    mutationFn: (featureID: (typeof FEATURE_CATALOG)[number]['id']) => toggleFeatureEntitlement(apiBaseUrl, token, featureID),
+    onSuccess: (response) => hydrate(response.enabled),
+  });
 
   return (
     <GlassSurface tone="strong" className="flex flex-col gap-3 p-6">
@@ -46,13 +55,16 @@ export function FeatureMarketplaceCard() {
 
               <button
                 type="button"
-                onClick={() => {
-                  if (on) {
-                    lock(f.id);
-                    toast({ tone: 'warning', title: `${f.name} disabled`, body: 'The feature is no longer available to your team.' });
-                  } else {
-                    unlock(f.id);
-                    toast({ tone: 'success', title: `${f.name} activated`, body: 'The Claims workspace and Claims Officer role are now available to your team.' });
+                onClick={async () => {
+                  try {
+                    await mutation.mutateAsync(f.id);
+                    if (on) {
+                      toast({ tone: 'warning', title: `${f.name} disabled`, body: 'The feature is no longer available to your team.' });
+                    } else {
+                      toast({ tone: 'success', title: `${f.name} activated`, body: 'The Claims workspace and Claims Officer role are now available to your team.' });
+                    }
+                  } catch (error) {
+                    toast({ tone: 'danger', title: 'Feature update failed', body: error instanceof Error ? error.message : 'Could not update this feature.' });
                   }
                 }}
                 className={cn(

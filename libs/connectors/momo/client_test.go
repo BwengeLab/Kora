@@ -77,6 +77,7 @@ func TestCreateAccessTokenUsesBasicAuth(t *testing.T) {
 }
 
 func TestRequestToPayAndStatus(t *testing.T) {
+	var callbackHeader string
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case tokenPath:
@@ -89,6 +90,7 @@ func TestRequestToPayAndStatus(t *testing.T) {
 			if request.Header.Get("X-Target-Environment") != "sandbox" {
 				t.Fatalf("target env = %s", request.Header.Get("X-Target-Environment"))
 			}
+			callbackHeader = request.Header.Get("X-Callback-Url")
 			writer.WriteHeader(http.StatusAccepted)
 		case requestToPayBasePath + "/req-1":
 			if request.Method != http.MethodGet {
@@ -121,9 +123,12 @@ func TestRequestToPayAndStatus(t *testing.T) {
 		PayerMessage: "Kora test",
 		PayeeNote:    "sandbox",
 		Payer:        Payer{PartyIDType: "MSISDN", PartyID: "250780000000"},
-	})
+	}, RequestToPayOptions{CallbackURL: "https://merchant.example.com/momo/callback"})
 	if err != nil {
 		t.Fatalf("RequestToPay() error = %v", err)
+	}
+	if callbackHeader != "https://merchant.example.com/momo/callback" {
+		t.Fatalf("callback header = %s", callbackHeader)
 	}
 	status, err := client.GetRequestToPay(context.Background(), "req-1")
 	if err != nil {

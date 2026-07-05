@@ -1,7 +1,11 @@
 import { Clock, Copy, Download, HandCoins, ShieldAlert, TrendingUp, Wallet, type LucideIcon } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { DateRangePill, PageHeader } from '../../app/shell';
+import { getApiBaseUrl } from '../../api/client';
+import { fetchRoiSummary } from '../../api/roi';
 import { AreaChart, GlassSurface, MoneyCell, cn } from '../../design-system';
 import { seedRoi, type RoiItem } from '../../seed/ownerExtra';
+import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
 
 const ICON: Record<RoiItem['icon'], LucideIcon> = {
@@ -23,7 +27,14 @@ const TONE: Record<RoiItem['icon'], string> = {
 
 // Org Owner "Value / ROI" — proves Kora's worth (doc §Value/ROI).
 export function ValueRoiPage() {
-  const r = seedRoi;
+  const apiBaseUrl = getApiBaseUrl();
+  const token = useSessionStore((s) => s.session?.token ?? '');
+  const { data } = useQuery({
+    queryKey: ['roi-summary', token],
+    queryFn: ({ signal }) => fetchRoiSummary(apiBaseUrl, token, signal),
+    enabled: Boolean(token),
+  });
+  const r = data ?? { ...seedRoi, hoursSaved: 128 };
   return (
     <div className="flex flex-col">
       <PageHeader
@@ -71,7 +82,7 @@ export function ValueRoiPage() {
                   {it.deltaPct > 0 ? <span className="rounded-full bg-success-soft px-1.5 py-0.5 text-[11px] font-bold text-success">+{it.deltaPct}%</span> : null}
                 </div>
                 {it.icon === 'hours' ? (
-                  <span className="font-display text-2xl font-bold text-ink tabular">128 hrs</span>
+                  <span className="font-display text-2xl font-bold text-ink tabular">{r.hoursSaved} hrs</span>
                 ) : (
                   <MoneyCell amount={it.value} size="xl" className="!text-2xl" />
                 )}

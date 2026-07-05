@@ -80,6 +80,10 @@ type RequestToPay struct {
 	Payer        Payer  `json:"payer"`
 }
 
+type RequestToPayOptions struct {
+	CallbackURL string
+}
+
 type Payer struct {
 	PartyIDType string `json:"partyIdType"`
 	PartyID     string `json:"partyId"`
@@ -225,7 +229,7 @@ func (c *Client) ValidateAccountHolder(ctx context.Context, partyIDType string, 
 	return response, nil
 }
 
-func (c *Client) RequestToPay(ctx context.Context, referenceID string, payment RequestToPay) error {
+func (c *Client) RequestToPay(ctx context.Context, referenceID string, payment RequestToPay, opts RequestToPayOptions) error {
 	if strings.TrimSpace(referenceID) == "" {
 		return errors.New("reference id is required")
 	}
@@ -240,6 +244,9 @@ func (c *Client) RequestToPay(ctx context.Context, referenceID string, payment R
 	req.Header.Set("Authorization", "Bearer "+token.AccessToken)
 	req.Header.Set("X-Reference-Id", referenceID)
 	req.Header.Set("X-Target-Environment", c.targetEnvironment)
+	if callbackURL := strings.TrimSpace(opts.CallbackURL); callbackURL != "" {
+		req.Header.Set("X-Callback-Url", callbackURL)
+	}
 	return c.doNoContent(req, http.StatusAccepted)
 }
 

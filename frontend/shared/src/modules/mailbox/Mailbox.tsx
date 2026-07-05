@@ -1,19 +1,12 @@
-import {
-  Archive,
-  Inbox,
-  Mail,
-  PenSquare,
-  Reply,
-  Search,
-  Send,
-  Sparkles,
-  Star,
-  type LucideIcon,
-} from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Archive, Inbox, Mail, PenSquare, Reply, Search, Send, Sparkles, Star, type LucideIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { PageHeader } from '../../app/shell';
+import { fetchMailbox, markMailboxMessageRead, toggleMailboxMessageStar } from '../../api/accountMailbox';
+import { getApiBaseUrl } from '../../api/client';
+import { useSession } from '../../auth/hooks';
 import { GlassSurface, PartyAvatar, cn } from '../../design-system';
-import { useCurrentMailUser, useMailStore, type MailFolder, type MailMessage } from '../../state/mailStore';
+import type { MailFolder, MailMessage } from '../../state/mailStore';
 import { ComposeModal } from './ComposeModal';
 import { ConnectMail } from './ConnectMail';
 
@@ -33,15 +26,20 @@ const LABEL_TONE: Record<NonNullable<MailMessage['label']>, string> = {
   general: 'bg-white/70 text-ink-soft',
 };
 
-// In-app mailbox — link your work email; agent-drafted and business mail lands
-// here so users communicate without leaving Kora.
 export function Mailbox() {
-  const { email } = useCurrentMailUser();
-  const connected = useMailStore((s) => s.byUser[email]?.connected ?? false);
-  const messages = useMailStore((s) => s.byUser[email]?.messages ?? EMPTY);
-  const account = useMailStore((s) => s.byUser[email]?.account ?? null);
-  const markRead = useMailStore((s) => s.markRead);
-  const toggleStar = useMailStore((s) => s.toggleStar);
+  const session = useSession();
+  const apiBaseUrl = getApiBaseUrl();
+  const queryClient = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ['mailbox', session?.user.email],
+    queryFn: ({ signal }) => fetchMailbox(apiBaseUrl, session!.token, signal),
+    enabled: Boolean(session?.token),
+    staleTime: 30_000,
+  });
+
+  const connected = data?.connected ?? false;
+  const messages = data?.messages ?? EMPTY;
+  const account = data?.account ?? null;
 
   const [folder, setFolder] = useState<MailFolder>('inbox');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -52,13 +50,25 @@ export function Mailbox() {
   const list = useMemo(() => {
     const q = query.trim().toLowerCase();
     return messages
-      .filter((m) => m.folder === folder)
-      .filter((m) => (q === '' ? true : [m.subject, m.fromName, m.toName, m.preview].some((s) => s.toLowerCase().includes(q))))
+      .filter((message) => message.folder === folder)
+      .filter((message) => (q === '' ? true : [message.subject, message.fromName, message.toName, message.preview].some((value) => value.toLowerCase().includes(q))))
       .sort((a, b) => b.date.localeCompare(a.date));
   }, [messages, folder, query]);
 
-  const selected = messages.find((m) => m.id === selectedId) ?? list[0] ?? null;
-  const unread = messages.filter((m) => m.folder === 'inbox' && !m.read).length;
+  const selected = messages.find((message) => message.id === selectedId) ?? list[0] ?? null;
+  const unread = messages.filter((message) => message.folder === 'inbox' && !message.read).length;
+
+  const markRead = async (messageId: string) => {
+    if (!session?.token) return;
+    await markMailboxMessageRead(apiBaseUrl, session.token, messageId);
+    await queryClient.invalidateQueries({ queryKey: ['mailbox'] });
+  };
+
+  const toggleStar = async (messageId: string) => {
+    if (!session?.token) return;
+    await toggleMailboxMessageStar(apiBaseUrl, session.token, messageId);
+    await queryClient.invalidateQueries({ queryKey: ['mailbox'] });
+  };
 
   if (!connected) return <ConnectMail />;
 
@@ -66,7 +76,7 @@ export function Mailbox() {
     <div className="flex h-full flex-col">
       <PageHeader
         title="Mail"
-        subtitle={<>Connected as <span className="font-semibold text-ink">{account}</span> — your work inbox, inside Kora.</>}
+        subtitle={<>Connected as <span className="font-semibold text-ink">{account}</span> - your work inbox, inside Kora.</>}
         right={
           <button type="button" onClick={() => { setReply(undefined); setCompose(true); }} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink px-4 text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">
             <PenSquare className="size-4" /> Compose
@@ -74,39 +84,37 @@ export function Mailbox() {
         }
       />
       <div className="flex min-h-0 flex-1 gap-5 px-8 pb-6">
-        {/* Folders */}
         <GlassSurface tone="strong" className="flex w-[200px] shrink-0 flex-col gap-1 p-3">
-          {FOLDERS.map((f) => {
-            const count = f.id === 'inbox' ? unread : messages.filter((m) => m.folder === f.id).length;
+          {FOLDERS.map((item) => {
+            const count = item.id === 'inbox' ? unread : messages.filter((message) => message.folder === item.id).length;
             return (
-              <button key={f.id} type="button" onClick={() => { setFolder(f.id); setSelectedId(null); }} className={cn('flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13.5px] font-semibold transition-colors', folder === f.id ? 'bg-white text-ink shadow-glass-soft' : 'text-ink-soft hover:bg-white/55 hover:text-ink')}>
-                <f.icon className="size-[18px]" />
-                <span className="flex-1 text-left">{f.label}</span>
-                {count > 0 ? <span className={cn('rounded-full px-1.5 text-[11px] font-bold', f.id === 'inbox' ? 'bg-brand text-white' : 'text-ink-muted')}>{count}</span> : null}
+              <button key={item.id} type="button" onClick={() => { setFolder(item.id); setSelectedId(null); }} className={cn('flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13.5px] font-semibold transition-colors', folder === item.id ? 'bg-white text-ink shadow-glass-soft' : 'text-ink-soft hover:bg-white/55 hover:text-ink')}>
+                <item.icon className="size-[18px]" />
+                <span className="flex-1 text-left">{item.label}</span>
+                {count > 0 ? <span className={cn('rounded-full px-1.5 text-[11px] font-bold', item.id === 'inbox' ? 'bg-brand text-white' : 'text-ink-muted')}>{count}</span> : null}
               </button>
             );
           })}
         </GlassSurface>
 
-        {/* List */}
         <GlassSurface tone="strong" className="flex w-[340px] shrink-0 flex-col">
           <div className="p-3">
             <div className="flex h-10 items-center gap-2.5 rounded-xl bg-white/70 px-3.5 ring-1 ring-white/70">
               <Search className="size-4 text-ink-muted" />
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search mail…" className="w-full bg-transparent text-[13px] text-ink placeholder:text-ink-muted focus:outline-none" />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search mail..." className="w-full bg-transparent text-[13px] text-ink placeholder:text-ink-muted focus:outline-none" />
             </div>
           </div>
           <ul className="scrollbar-thin flex min-h-0 flex-1 flex-col overflow-y-auto">
-            {list.map((m) => (
-              <li key={m.id}>
-                <button type="button" onClick={() => { setSelectedId(m.id); if (!m.read) markRead(email, m.id); }} className={cn('flex w-full flex-col gap-1 border-b border-white/40 px-4 py-3 text-left transition-colors', selected?.id === m.id ? 'bg-white' : 'hover:bg-white/55', !m.read && folder === 'inbox' && 'bg-brand-soft/30')}>
+            {list.map((message) => (
+              <li key={message.id}>
+                <button type="button" onClick={() => { setSelectedId(message.id); if (!message.read) void markRead(message.id); }} className={cn('flex w-full flex-col gap-1 border-b border-white/40 px-4 py-3 text-left transition-colors', selected?.id === message.id ? 'bg-white' : 'hover:bg-white/55', !message.read && folder === 'inbox' && 'bg-brand-soft/30')}>
                   <div className="flex items-center gap-2">
-                    <p className={cn('flex-1 truncate text-[13px]', m.read ? 'font-semibold text-ink-soft' : 'font-bold text-ink')}>{folder === 'sent' ? m.toName : m.fromName}</p>
-                    <span className="shrink-0 text-[10.5px] text-ink-muted">{new Date(m.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                    <p className={cn('flex-1 truncate text-[13px]', message.read ? 'font-semibold text-ink-soft' : 'font-bold text-ink')}>{folder === 'sent' ? message.toName : message.fromName}</p>
+                    <span className="shrink-0 text-[10.5px] text-ink-muted">{new Date(message.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
                   </div>
-                  <p className={cn('truncate text-[12.5px]', m.read ? 'text-ink-soft' : 'font-semibold text-ink')}>{m.subject}</p>
-                  <p className="truncate text-[11px] text-ink-muted">{m.preview}</p>
-                  {m.label ? <span className={cn('mt-0.5 w-fit rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase', LABEL_TONE[m.label])}>{m.label}{m.agentDrafted ? ' · AI' : ''}</span> : null}
+                  <p className={cn('truncate text-[12.5px]', message.read ? 'text-ink-soft' : 'font-semibold text-ink')}>{message.subject}</p>
+                  <p className="truncate text-[11px] text-ink-muted">{message.preview}</p>
+                  {message.label ? <span className={cn('mt-0.5 w-fit rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase', LABEL_TONE[message.label])}>{message.label}{message.agentDrafted ? ' · AI' : ''}</span> : null}
                 </button>
               </li>
             ))}
@@ -114,7 +122,6 @@ export function Mailbox() {
           </ul>
         </GlassSurface>
 
-        {/* Reading pane */}
         <GlassSurface tone="strong" className="flex min-w-0 flex-1 flex-col">
           {selected ? (
             <>
@@ -126,7 +133,7 @@ export function Mailbox() {
                     {folder === 'sent' ? `To ${selected.toName} <${selected.toEmail}>` : `${selected.fromName} <${selected.fromEmail}>`} · {new Date(selected.date).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                   </p>
                 </div>
-                <button type="button" onClick={() => toggleStar(email, selected.id)} aria-label="Star" className={cn('grid size-9 place-items-center rounded-xl', selected.starred ? 'text-warning' : 'text-ink-muted hover:bg-white/60')}>
+                <button type="button" onClick={() => void toggleStar(selected.id)} aria-label="Star" className={cn('grid size-9 place-items-center rounded-xl', selected.starred ? 'text-warning' : 'text-ink-muted hover:bg-white/60')}>
                   <Star className={cn('size-4', selected.starred && 'fill-current')} />
                 </button>
               </header>

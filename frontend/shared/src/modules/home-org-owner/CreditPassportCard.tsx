@@ -1,9 +1,7 @@
-import { RefreshCw } from 'lucide-react';
 import { GaugeChart, GlassSurface } from '../../design-system';
-import { seedCreditPassport } from '../../seed/orgOwnerHome';
 
-export function CreditPassportCard() {
-  const { score, label, caption, updated, factors } = seedCreditPassport;
+export function CreditPassportCard({ summary }: { summary: { score: number; label: string; caption: string; updated: string; factors: { name: string; rating: string }[] } }) {
+  const { score, label, caption, updated, factors } = summary;
   return (
     <GlassSurface tone="strong" className="flex h-full flex-col gap-4 p-5">
       <header className="flex items-center justify-between gap-3">
@@ -15,13 +13,13 @@ export function CreditPassportCard() {
       <div className="flex items-center gap-5">
         <GaugeChart value={score} size={170} centerValue={score} centerLabel={label} />
         <ul className="flex flex-1 flex-col gap-2.5">
-          {factors.map((f) => (
-            <li key={f.name} className="flex items-center justify-between gap-3">
+          {factors.map((factor) => (
+            <li key={factor.name} className="flex items-center justify-between gap-3">
               <span className="flex items-center gap-2">
                 <span className="size-1.5 rounded-full bg-success" />
-                <span className="text-[12.5px] font-medium text-ink">{f.name}</span>
+                <span className="text-[12.5px] font-medium text-ink">{factor.name}</span>
               </span>
-              <span className="text-[12px] font-semibold text-success">{f.rating}</span>
+              <span className="text-[12px] font-semibold text-success">{factor.rating}</span>
             </li>
           ))}
         </ul>

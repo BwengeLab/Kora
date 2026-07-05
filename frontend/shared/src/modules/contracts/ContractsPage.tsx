@@ -1,11 +1,14 @@
 import { CalendarClock, FileText, Flag, RefreshCw, Search, Sparkles, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
+import { getApiBaseUrl } from '../../api/client';
+import { fetchContractsOverview, flagContractRenewal, renewContract } from '../../api/governanceOps';
 import { DateRangePill, PageHeader } from '../../app/shell';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
 import type { Money } from '../../lib/money';
 import { CONTRACT_STATUS_META, CONTRACT_TYPE_META, seedContracts, type Contract, type ContractStatus, type ContractType } from '../../seed/contracts';
 import { openDoc } from '../../state/docViewerStore';
+import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
 
 const TODAY = new Date('2025-05-18');
@@ -37,11 +40,26 @@ export function ContractsPage({ variant = 'manage' }: { variant?: ContractVarian
 // the "Contracts" tab of the owner's Relationships page. `initialQuery` lets a
 // caller deep-link to one party's contracts.
 export function ContractsView({ variant = 'manage', initialQuery = '' }: { variant?: ContractVariant; initialQuery?: string }) {
+  const token = useSessionStore((s) => s.session?.token ?? '');
+  const apiBaseUrl = getApiBaseUrl();
   const [contracts, setContracts] = useState<Contract[]>(seedContracts);
   const [query, setQuery] = useState(initialQuery);
   const [type, setType] = useState<ContractType | 'all'>('all');
   const [status, setStatus] = useState<ContractStatus | 'all'>('all');
   const [selected, setSelected] = useState<Contract | null>(null);
+
+  useEffect(() => {
+    if (!token) return;
+    const controller = new AbortController();
+    fetchContractsOverview(apiBaseUrl, token, controller.signal)
+      .then((payload) => setContracts(payload.items))
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          toast({ tone: 'warning', title: 'Contracts unavailable', body: error instanceof Error ? error.message : 'Could not load contracts.' });
+        }
+      });
+    return () => controller.abort();
+  }, [apiBaseUrl, token]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -52,10 +70,26 @@ export function ContractsView({ variant = 'manage', initialQuery = '' }: { varia
       .sort((a, b) => daysToExpiry(a.endDate) - daysToExpiry(b.endDate));
   }, [contracts, query, type, status]);
 
-  const renew = (id: string) => {
-    setContracts((cs) => cs.map((c) => (c.id === id ? { ...c, status: 'active', startDate: c.endDate, endDate: new Date(new Date(c.endDate).setFullYear(new Date(c.endDate).getFullYear() + 1)).toISOString().slice(0, 10) } : c)));
+  const renew = async (id: string) => {
+    if (!token) {
+      setContracts((cs) => cs.map((c) => (c.id === id ? { ...c, status: 'active', startDate: c.endDate, endDate: new Date(new Date(c.endDate).setFullYear(new Date(c.endDate).getFullYear() + 1)).toISOString().slice(0, 10) } : c)));
+    } else {
+      const snapshot = await renewContract(apiBaseUrl, token, id);
+      setContracts(snapshot.items);
+    }
     setSelected(null);
     toast({ tone: 'success', title: 'Renewed', body: 'Contract renewed for another term and logged.' });
+  };
+
+  const flagRenewal = async (id: string, title: string) => {
+    if (!token) {
+      setContracts((items) => items.map((item) => (item.id === id && item.status === 'active' ? { ...item, status: 'renewal-due' } : item)));
+    } else {
+      const snapshot = await flagContractRenewal(apiBaseUrl, token, id);
+      setContracts(snapshot.items);
+    }
+    setSelected(null);
+    toast({ tone: 'info', title: 'Flagged for renewal', body: `${title} sent to finance to action the renewal.` });
   };
 
   const renewalDue = contracts.filter((c) => c.status === 'renewal-due' || c.status === 'expiring').length;
@@ -154,9 +188,9 @@ export function ContractsView({ variant = 'manage', initialQuery = '' }: { varia
                   <footer className="flex items-center gap-2 border-t border-white/55 p-4">
                     <button type="button" onClick={() => toast({ tone: 'info', title: 'Reminder set', body: `You'll be alerted 30 days before ${selected.reference} expires.` })} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-white/70 px-4 text-[13px] font-bold text-ink ring-1 ring-white/70 hover:bg-white"><CalendarClock className="size-4" /> Remind me</button>
                     {variant === 'manage' ? (
-                      <button type="button" onClick={() => renew(selected.id)} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110"><RefreshCw className="size-4" /> Renew contract</button>
+                      <button type="button" onClick={() => void renew(selected.id)} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110"><RefreshCw className="size-4" /> Renew contract</button>
                     ) : (
-                      <button type="button" onClick={() => { toast({ tone: 'info', title: 'Flagged for renewal', body: `${selected.title} sent to finance to action the renewal.` }); setSelected(null); }} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110"><Flag className="size-4" /> Flag for renewal</button>
+                      <button type="button" onClick={() => void flagRenewal(selected.id, selected.title)} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110"><Flag className="size-4" /> Flag for renewal</button>
                     )}
                   </footer>
                 )}

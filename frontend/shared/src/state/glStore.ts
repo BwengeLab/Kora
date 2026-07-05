@@ -16,12 +16,14 @@ export const linesBalanced = (lines: JournalLine[]): boolean => {
 
 interface GLState {
   journals: JournalEntry[];
+  hydrate: (journals: JournalEntry[]) => void;
   postJournal: (entry: Omit<JournalEntry, 'id' | 'status'>) => boolean;
   voidJournal: (id: string) => void;
 }
 
 export const useGLStore = create<GLState>((set) => ({
   journals: seedJournals,
+  hydrate: (journals) => set({ journals }),
   postJournal: (entry) => {
     if (!linesBalanced(entry.lines)) return false;
     const full: JournalEntry = { ...entry, id: `je-${Date.now()}`, status: 'posted' };

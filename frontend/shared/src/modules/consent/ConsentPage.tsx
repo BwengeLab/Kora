@@ -1,9 +1,13 @@
 import { Ban, Check, Clock, Plus, Search, ShieldCheck, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
+import { useQuery } from '@tanstack/react-query';
 import { DateRangePill, PageHeader } from '../../app/shell';
+import { getApiBaseUrl } from '../../api/client';
+import { fetchConsentGrants } from '../../api/consent';
 import { GlassSurface, PartyAvatar, cn } from '../../design-system';
 import { CONSENT_STATUS_META, SCOPE_LABEL, seedConsents, type ConsentGrant, type ConsentStatus } from '../../seed/consent';
+import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
 
 const TODAY = new Date('2025-05-18');
@@ -13,10 +17,21 @@ const daysLeft = (end: string) => Math.round((new Date(end).getTime() - TODAY.ge
 // The Finance Lead grants & revokes; the Auditor reviews it as an immutable log
 // (readOnly). Sharing data is a deliberate, revocable, time-boxed act.
 export function ConsentPage({ readOnly = false }: { readOnly?: boolean }) {
+  const apiBaseUrl = getApiBaseUrl();
+  const token = useSessionStore((s) => s.session?.token ?? '');
+  const { data } = useQuery({
+    queryKey: ['consent-grants', token],
+    queryFn: ({ signal }) => fetchConsentGrants(apiBaseUrl, token, signal),
+    enabled: Boolean(token),
+  });
   const [grants, setGrants] = useState<ConsentGrant[]>(seedConsents);
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<ConsentStatus | 'all'>('all');
   const [selected, setSelected] = useState<ConsentGrant | null>(null);
+
+  useEffect(() => {
+    setGrants(data ?? seedConsents);
+  }, [data]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

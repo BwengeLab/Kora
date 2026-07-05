@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react';
 import { DateRangePill, PageHeader } from '../../app/shell';
 import { ConfidenceChip, DonutChart, GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
 import type { Money } from '../../lib/money';
-import { seedTierStats } from '../../seed/reconciliation';
 import type { Reconciliation } from '../../seed/reconciliation';
 import { openDoc } from '../../state/docViewerStore';
 import { toast } from '../../state/toastStore';
@@ -19,9 +18,20 @@ export function ReconciliationOverview({ readOnly = false }: { readOnly?: boolea
   const open = recons.filter((r) => r.stage === 'reviewing' || r.stage === 'detected');
   const [selected, setSelected] = useState<Reconciliation | null>(null);
 
-  const matched = seedTierStats.find((t) => t.tier === 'auto')?.count ?? 0;
-  const totalAll = seedTierStats.reduce((a, t) => a + t.count, 0);
-  const autoRate = Math.round((matched / totalAll) * 100);
+  const tierStats = [
+    { tier: 'auto', label: 'Auto matched', color: '#16a37b' },
+    { tier: 'suggested', label: 'Suggested', color: '#8b5cf6' },
+    { tier: 'review', label: 'Needs review', color: '#e89914' },
+    { tier: 'duplicate', label: 'Duplicate risk', color: '#3b86ff' },
+    { tier: 'suspicious', label: 'Suspicious', color: '#dc4848' },
+  ].map((item) => ({
+    ...item,
+    count: recons.filter((r) => r.tier === item.tier).length,
+  }));
+
+  const matched = tierStats.find((t) => t.tier === 'auto')?.count ?? 0;
+  const totalAll = tierStats.reduce((a, t) => a + t.count, 0);
+  const autoRate = totalAll === 0 ? 0 : Math.round((matched / totalAll) * 100);
 
   // Value at risk = unmatched / unexplained money the owner is accountable for.
   const valueAtRisk: Money = useMemo(
@@ -29,10 +39,10 @@ export function ReconciliationOverview({ readOnly = false }: { readOnly?: boolea
     [open],
   );
 
-  const slices = seedTierStats.map((t) => ({
+  const slices = tierStats.map((t) => ({
     name: t.label,
     value: t.count,
-    color: t.tier === 'auto' ? '#16a37b' : t.tier === 'suggested' ? '#8b5cf6' : t.tier === 'review' ? '#e89914' : t.tier === 'duplicate' ? '#3b86ff' : '#dc4848',
+    color: t.color,
   }));
 
   return (
@@ -54,7 +64,7 @@ export function ReconciliationOverview({ readOnly = false }: { readOnly?: boolea
           <GlassSurface tone="strong" className="flex items-center gap-6 p-6 @5xl:col-span-5">
             <DonutChart slices={slices} centerLabel={totalAll.toLocaleString()} centerSub="Total" size={180} />
             <ul className="flex flex-1 flex-col gap-2.5">
-              {seedTierStats.map((t, i) => (
+              {tierStats.map((t, i) => (
                 <li key={t.tier} className="flex items-center gap-2.5">
                   <span className="size-2.5 rounded-full" style={{ backgroundColor: slices[i]!.color }} />
                   <span className="flex-1 text-[12.5px] font-medium text-ink">{t.label}</span>

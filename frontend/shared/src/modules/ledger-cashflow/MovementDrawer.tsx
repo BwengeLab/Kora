@@ -5,23 +5,31 @@ import { CATEGORY_META, type CashMovement } from '../../seed/cashLedger';
 import { openDoc } from '../../state/docViewerStore';
 import { toast } from '../../state/toastStore';
 
-// Who is looking at the ledger decides what they can DO with a movement:
-//  • operate   — Finance Operator: reconcile it (match bank ↔ record).
-//  • post      — Finance Lead: post the entry to the ledger (commit it).
-//  • oversight — Owner: view, understand, ask finance or flag.
-//  • read      — Auditor: view only, no actions.
 export type LedgerMode = 'operate' | 'post' | 'oversight' | 'read';
 
-// The detail drawer for a single cash movement — the "why", the linked record,
-// reconciliation status, and evidence. Opening a movement is how anyone
-// understands a cash event; the action footer is role-aware.
-export function MovementDrawer({ movement, onClose, mode = 'oversight' }: { movement: CashMovement | null; onClose: () => void; mode?: LedgerMode }) {
+export function MovementDrawer({
+  movement,
+  onClose,
+  mode = 'oversight',
+  onReconcile,
+  onHold,
+  onPost,
+  onFlag,
+}: {
+  movement: CashMovement | null;
+  onClose: () => void;
+  mode?: LedgerMode;
+  onReconcile?: (movement: CashMovement) => void | Promise<void>;
+  onHold?: (movement: CashMovement) => void | Promise<void>;
+  onPost?: (movement: CashMovement) => void | Promise<void>;
+  onFlag?: (movement: CashMovement) => void | Promise<void>;
+}) {
   const open = movement !== null;
   const m = movement;
   const isIn = m?.direction === 'in';
 
   return (
-    <Dialog.Root open={open} onOpenChange={(o) => !o && onClose()}>
+    <Dialog.Root open={open} onOpenChange={(value) => !value && onClose()}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-[90] bg-ink/20 backdrop-blur-sm" />
         <Dialog.Content
@@ -44,24 +52,21 @@ export function MovementDrawer({ movement, onClose, mode = 'oversight' }: { move
               </header>
 
               <div className="scrollbar-thin flex-1 space-y-4 overflow-y-auto p-5">
-                {/* Amount */}
                 <div>
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">{isIn ? 'Money in' : 'Money out'}</span>
                   <div className="flex items-center gap-2">
                     <span className={cn('font-display text-3xl font-bold tabular', isIn ? 'text-success' : 'text-danger')}>
-                      {isIn ? '+' : '−'}<MoneyCell amount={m.amount} size="xl" className={cn('!text-3xl', isIn ? 'text-success' : 'text-danger')} />
+                      {isIn ? '+' : '-'}<MoneyCell amount={m.amount} size="xl" className={cn('!text-3xl', isIn ? 'text-success' : 'text-danger')} />
                     </span>
                   </div>
                 </div>
 
-                {/* Why */}
                 <GlassSurface noBlur tone="subtle" className="bg-white/60 p-4">
                   <p className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">Purpose</p>
                   <p className="mt-1 text-[14px] font-semibold text-ink">{m.purpose}</p>
                   <p className="mt-0.5 text-[12px] text-ink-muted">{m.description}</p>
                 </GlassSurface>
 
-                {/* Party + meta */}
                 <div className="flex items-center gap-3 rounded-2xl bg-white/55 p-3 ring-1 ring-white/60">
                   <PartyAvatar name={m.counterparty} size="md" />
                   <div className="min-w-0 flex-1">
@@ -76,7 +81,6 @@ export function MovementDrawer({ movement, onClose, mode = 'oversight' }: { move
                   <Meta label="Reconciled" value={m.reconciled ? 'Yes' : 'Not yet'} tone={m.reconciled ? 'success' : 'warning'} />
                 </dl>
 
-                {/* Linked record */}
                 {m.linked ? (
                   <button
                     type="button"
@@ -91,18 +95,17 @@ export function MovementDrawer({ movement, onClose, mode = 'oversight' }: { move
                   </button>
                 ) : null}
 
-                {/* Evidence */}
                 {m.evidence.length > 0 ? (
                   <div>
                     <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-ink-muted">Evidence</p>
                     <ul className="flex flex-col gap-2">
-                      {m.evidence.map((d) => (
-                        <li key={d.id}>
-                          <button type="button" onClick={() => openDoc({ name: d.name, kind: d.kind, sizeText: d.sizeText, context: `${m.reference} · ${m.counterparty}` })} className="flex w-full items-center gap-3 rounded-2xl bg-white/55 p-3 text-left ring-1 ring-white/60 hover:bg-white">
+                      {m.evidence.map((doc) => (
+                        <li key={doc.id}>
+                          <button type="button" onClick={() => openDoc({ name: doc.name, kind: doc.kind, sizeText: doc.sizeText, context: `${m.reference} · ${m.counterparty}` })} className="flex w-full items-center gap-3 rounded-2xl bg-white/55 p-3 text-left ring-1 ring-white/60 hover:bg-white">
                             <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-danger-soft text-danger"><FileText className="size-4" /></span>
                             <div className="min-w-0 flex-1">
-                              <p className="truncate text-[12.5px] font-semibold text-ink">{d.name}</p>
-                              <p className="truncate text-[11px] text-ink-muted">{d.kind} · {d.sizeText}</p>
+                              <p className="truncate text-[12.5px] font-semibold text-ink">{doc.name}</p>
+                              <p className="truncate text-[11px] text-ink-muted">{doc.kind} · {doc.sizeText}</p>
                             </div>
                             <span className="rounded-lg bg-white/80 px-2 py-0.5 text-[10.5px] font-bold text-brand ring-1 ring-white/70">View</span>
                           </button>
@@ -111,11 +114,10 @@ export function MovementDrawer({ movement, onClose, mode = 'oversight' }: { move
                     </ul>
                   </div>
                 ) : (
-                  <p className="rounded-2xl bg-warning-soft/50 p-3 text-[12px] font-medium text-warning ring-1 ring-warning/20">No supporting document attached — request one for a complete audit trail.</p>
+                  <p className="rounded-2xl bg-warning-soft/50 p-3 text-[12px] font-medium text-warning ring-1 ring-warning/20">No supporting document attached - request one for a complete audit trail.</p>
                 )}
               </div>
 
-              {/* Actions — role-aware */}
               {mode === 'read' ? (
                 <footer className="border-t border-white/55 p-4">
                   <span className={cn('inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl text-[13px] font-bold', m.reconciled ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning')}>
@@ -125,7 +127,7 @@ export function MovementDrawer({ movement, onClose, mode = 'oversight' }: { move
               ) : mode === 'operate' ? (
                 <footer className="flex items-center gap-2 border-t border-white/55 p-4">
                   {!m.reconciled ? (
-                    <button type="button" onClick={() => toast({ tone: 'success', title: 'Marked reconciled', body: `${m.reference} matched and reconciled.` })} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">
+                    <button type="button" onClick={() => { void onReconcile?.(m); }} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">
                       <Check className="size-4" /> Reconcile
                     </button>
                   ) : (
@@ -133,19 +135,17 @@ export function MovementDrawer({ movement, onClose, mode = 'oversight' }: { move
                   )}
                 </footer>
               ) : mode === 'post' ? (
-                // Finance Lead — posts the entry to the ledger (commits it), or holds it.
                 <footer className="flex items-center gap-2 border-t border-white/55 p-4">
-                  <button type="button" onClick={() => toast({ tone: 'warning', title: 'Held for query', body: `${m.reference} held — sent back to the operator with a query.` })} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-white/70 px-4 text-[13px] font-bold text-ink ring-1 ring-white/70 hover:bg-white">
+                  <button type="button" onClick={() => { void onHold?.(m); }} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-white/70 px-4 text-[13px] font-bold text-ink ring-1 ring-white/70 hover:bg-white">
                     <MessageSquare className="size-4" /> Hold
                   </button>
-                  <button type="button" onClick={() => toast({ tone: 'success', title: 'Posted to ledger', body: `${m.reference} committed to the general ledger and audited.` })} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">
+                  <button type="button" onClick={() => { void onPost?.(m); }} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">
                     <Check className="size-4" /> Post to ledger
                   </button>
                 </footer>
               ) : (
-                // oversight (Owner / Finance Lead) — understand & delegate, don't reconcile
                 <footer className="flex items-center gap-2 border-t border-white/55 p-4">
-                  <button type="button" onClick={() => toast({ tone: 'warning', title: 'Flagged for review', body: `${m.reference} flagged for finance to check.` })} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-white/70 px-4 text-[13px] font-bold text-danger ring-1 ring-white/70 hover:bg-white">
+                  <button type="button" onClick={() => { void onFlag?.(m); }} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-white/70 px-4 text-[13px] font-bold text-danger ring-1 ring-white/70 hover:bg-white">
                     <Flag className="size-4" /> Flag
                   </button>
                   <button type="button" onClick={() => toast({ tone: 'info', title: 'Asked finance', body: `Requested an explanation for ${m.reference} from the finance team.` })} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">

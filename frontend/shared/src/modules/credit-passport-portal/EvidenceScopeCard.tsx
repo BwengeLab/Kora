@@ -2,10 +2,16 @@ import { CalendarClock, Check, FileText, Plus, ShieldCheck } from 'lucide-react'
 import { GlassSurface } from '../../design-system';
 import { openDoc } from '../../state/docViewerStore';
 import { toast } from '../../state/toastStore';
-import { seedEvidencePack, seedGrant } from '../../seed/portalHome';
+import type { EvidenceFactor } from '../../seed/portalHome';
 
-export function EvidenceScopeCard() {
-  const g = seedGrant;
+export function EvidenceScopeCard({
+  evidencePack,
+  grant,
+}: {
+  evidencePack: EvidenceFactor[];
+  grant: { expiresInDays: number; dataCategories: string[]; scopeNote: string };
+}) {
+  const g = grant;
   return (
     <GlassSurface tone="strong" className="flex h-full flex-col gap-4 p-6">
       <header className="flex items-center gap-2">
@@ -14,7 +20,7 @@ export function EvidenceScopeCard() {
       </header>
 
       <ul className="flex flex-col gap-2">
-        {seedEvidencePack.map((e) => (
+        {evidencePack.map((e) => (
           <li key={e.id}>
             <button
               type="button"

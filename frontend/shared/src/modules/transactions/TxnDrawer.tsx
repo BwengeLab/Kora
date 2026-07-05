@@ -1,7 +1,10 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { ArrowDownLeft, ArrowUpRight, Check, FileText, Flag, Link2, Send, X } from 'lucide-react';
+import { getApiBaseUrl } from '../../api/client';
+import { classifyTransaction, flagTransaction, prepareTransaction } from '../../api/financeOperations';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
 import { CATEGORY_META, type CashCategory } from '../../seed/cashLedger';
+import { useSessionStore } from '../../state/sessionStore';
 import { REVIEW_META, useTransactionsStore, type Txn } from '../../state/transactionsStore';
 import { openDoc } from '../../state/docViewerStore';
 import { toast } from '../../state/toastStore';
@@ -13,8 +16,57 @@ export function TxnDrawer({ txn, onClose, readOnly }: { txn: Txn | null; onClose
   const classify = useTransactionsStore((s) => s.classify);
   const prepare = useTransactionsStore((s) => s.prepare);
   const flag = useTransactionsStore((s) => s.flag);
+  const hydrateTransactions = useTransactionsStore((s) => s.hydrate);
+  const token = useSessionStore((s) => s.session?.token ?? '');
   const t = txn;
   const isIn = t?.direction === 'in';
+
+  const handleClassify = async (id: string, reference: string, category: CashCategory) => {
+    if (!token) {
+      classify(id, category);
+      toast({ tone: 'success', title: 'Reclassified', body: `${reference} -> ${CATEGORY_META[category].label}` });
+      return;
+    }
+    try {
+      const snapshot = await classifyTransaction(getApiBaseUrl(), token, id, category);
+      hydrateTransactions(snapshot.transactions);
+      toast({ tone: 'success', title: 'Reclassified', body: `${reference} -> ${CATEGORY_META[category].label}` });
+    } catch (error) {
+      toast({ tone: 'danger', title: 'Classification failed', body: error instanceof Error ? error.message : 'Unable to update transaction.' });
+    }
+  };
+
+  const handleFlag = async (id: string, reference: string) => {
+    if (!token) {
+      flag(id);
+      toast({ tone: 'warning', title: 'Flagged for Finance Lead', body: `${reference} escalated for review.` });
+      return;
+    }
+    try {
+      const snapshot = await flagTransaction(getApiBaseUrl(), token, id);
+      hydrateTransactions(snapshot.transactions);
+      toast({ tone: 'warning', title: 'Flagged for Finance Lead', body: `${reference} escalated for review.` });
+    } catch (error) {
+      toast({ tone: 'danger', title: 'Flag failed', body: error instanceof Error ? error.message : 'Unable to flag transaction.' });
+    }
+  };
+
+  const handlePrepare = async (id: string, reference: string) => {
+    if (!token) {
+      prepare(id);
+      toast({ tone: 'success', title: 'Prepared for reconciliation', body: `${reference} handed to the matching queue.` });
+      onClose();
+      return;
+    }
+    try {
+      const snapshot = await prepareTransaction(getApiBaseUrl(), token, id);
+      hydrateTransactions(snapshot.transactions);
+      toast({ tone: 'success', title: 'Prepared for reconciliation', body: `${reference} handed to the matching queue.` });
+      onClose();
+    } catch (error) {
+      toast({ tone: 'danger', title: 'Prepare failed', body: error instanceof Error ? error.message : 'Unable to prepare transaction.' });
+    }
+  };
 
   return (
     <Dialog.Root open={t !== null} onOpenChange={(o) => !o && onClose()}>
@@ -110,10 +162,10 @@ export function TxnDrawer({ txn, onClose, readOnly }: { txn: Txn | null; onClose
 
               {!readOnly && t.review !== 'prepared' ? (
                 <footer className="flex items-center gap-2 border-t border-white/55 p-4">
-                  <button type="button" onClick={() => { flag(t.id); toast({ tone: 'warning', title: 'Flagged for Finance Lead', body: `${t.reference} escalated for review.` }); }} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-white/70 px-4 text-[13px] font-bold text-danger ring-1 ring-white/70 hover:bg-white">
+                  <button type="button" onClick={() => { void handleFlag(t.id, t.reference); }} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-white/70 px-4 text-[13px] font-bold text-danger ring-1 ring-white/70 hover:bg-white">
                     <Flag className="size-4" /> Flag
                   </button>
-                  <button type="button" onClick={() => { prepare(t.id); toast({ tone: 'success', title: 'Prepared for reconciliation', body: `${t.reference} handed to the matching queue.` }); onClose(); }} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">
+                  <button type="button" onClick={() => { void handlePrepare(t.id, t.reference); }} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">
                     <Send className="size-4" /> Prepare for reconciliation
                   </button>
                 </footer>

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kora-finance/kora/libs/access"
+	"github.com/kora-finance/kora/libs/connectors"
 	"github.com/kora-finance/kora/libs/connectors/momo"
 )
 
@@ -41,6 +43,37 @@ func TestValidateRejectsRawCredentials(t *testing.T) {
 	}
 }
 
+func TestCreateAndQueryConnections(t *testing.T) {
+	server := New(nil)
+	create := httptest.NewRequest(http.MethodPost, "/v1/integrations/connections", strings.NewReader(`{
+		"actor":{"UserID":"u_admin","OrganizationID":"org_1","Roles":["ORG_ADMIN"]},
+		"connection":{
+			"id":"conn_momo","organization_id":"org_1","kind":"MOMO",
+			"display_name":"MTN MoMo","secret_ref":"secret://org_1/momo","active":true,
+			"config":{"environment":"sandbox"}
+		}
+	}`))
+	createResp := httptest.NewRecorder()
+	server.ServeHTTP(createResp, create)
+	if createResp.Code != http.StatusCreated {
+		t.Fatalf("create status = %d body = %s", createResp.Code, createResp.Body.String())
+	}
+
+	query := httptest.NewRequest(http.MethodPost, "/v1/integrations/connections/query", strings.NewReader(`{
+		"actor":{"UserID":"u_admin","OrganizationID":"org_1","Roles":["ORG_ADMIN"]},
+		"organization_id":"org_1",
+		"kind":"MOMO"
+	}`))
+	queryResp := httptest.NewRecorder()
+	server.ServeHTTP(queryResp, query)
+	if queryResp.Code != http.StatusOK {
+		t.Fatalf("query status = %d body = %s", queryResp.Code, queryResp.Body.String())
+	}
+	if !strings.Contains(queryResp.Body.String(), "conn_momo") {
+		t.Fatalf("query body = %s", queryResp.Body.String())
+	}
+}
+
 func TestMoMoValidateAuth(t *testing.T) {
 	server := NewWithMoMo(nil, stubMoMoClient{
 		createAccessToken: func(ctx context.Context) (momo.AccessToken, error) {
@@ -69,7 +102,7 @@ func TestMoMoRequestToPayRequiresCollectionsPermission(t *testing.T) {
 	server := NewWithMoMo(nil, stubMoMoClient{})
 	body := `{
 		"actor":{"UserID":"u_admin","OrganizationID":"org_1","Roles":["ORG_ADMIN"]},
-		"reference_id":"req-1",
+		"reference_id":"67c20e44-f6d3-4f7a-b8f0-5d7c2d0146f1",
 		"amount":"1000",
 		"currency":"RWF",
 		"external_id":"invoice-1",
@@ -88,10 +121,14 @@ func TestMoMoRequestToPayRequiresCollectionsPermission(t *testing.T) {
 func TestMoMoRequestToPayAndStatus(t *testing.T) {
 	var requested momo.RequestToPay
 	var referenceID string
+	var callbackURL string
+	t.Setenv("MOMO_CALLBACK_BASE_URL", "https://kora.example.com")
+	t.Setenv("MOMO_CALLBACK_TOKEN", "token-1")
 	server := NewWithMoMo(nil, stubMoMoClient{
-		requestToPay: func(ctx context.Context, ref string, payment momo.RequestToPay) error {
+		requestToPay: func(ctx context.Context, ref string, payment momo.RequestToPay, opts momo.RequestToPayOptions) error {
 			referenceID = ref
 			requested = payment
+			callbackURL = opts.CallbackURL
 			return nil
 		},
 		getRequestToPay: func(ctx context.Context, ref string) (momo.RequestToPayStatus, error) {
@@ -100,7 +137,7 @@ func TestMoMoRequestToPayAndStatus(t *testing.T) {
 	})
 	request := httptest.NewRequest(http.MethodPost, "/v1/integrations/momo/request-to-pay", strings.NewReader(`{
 		"actor":{"UserID":"u_fin","OrganizationID":"org_1","Roles":["FINANCE_LEAD"]},
-		"reference_id":"req-1",
+		"reference_id":"67c20e44-f6d3-4f7a-b8f0-5d7c2d0146f1",
 		"amount":"1000",
 		"currency":"RWF",
 		"external_id":"invoice-1",
@@ -115,13 +152,16 @@ func TestMoMoRequestToPayAndStatus(t *testing.T) {
 	if recorder.Code != http.StatusAccepted {
 		t.Fatalf("request-to-pay status = %d body = %s", recorder.Code, recorder.Body.String())
 	}
-	if referenceID != "req-1" || requested.Payer.PartyID != "250780000000" {
+	if referenceID != "67c20e44-f6d3-4f7a-b8f0-5d7c2d0146f1" || requested.Payer.PartyID != "250780000000" {
 		t.Fatalf("reference = %s payment = %+v", referenceID, requested)
+	}
+	if !strings.Contains(callbackURL, "https://kora.example.com/v1/integrations/momo/request-to-pay/callback/provider") || !strings.Contains(callbackURL, "reference_id=67c20e44-f6d3-4f7a-b8f0-5d7c2d0146f1") {
+		t.Fatalf("callbackURL = %s", callbackURL)
 	}
 
 	statusRequest := httptest.NewRequest(http.MethodPost, "/v1/integrations/momo/request-to-pay/status", strings.NewReader(`{
 		"actor":{"UserID":"u_fin","OrganizationID":"org_1","Roles":["FINANCE_LEAD"]},
-		"reference_id":"req-1"
+		"reference_id":"67c20e44-f6d3-4f7a-b8f0-5d7c2d0146f1"
 	}`))
 	statusRecorder := httptest.NewRecorder()
 
@@ -132,11 +172,30 @@ func TestMoMoRequestToPayAndStatus(t *testing.T) {
 	}
 }
 
+func TestMoMoRequestToPayRejectsNonUUIDReference(t *testing.T) {
+	server := NewWithMoMo(nil, stubMoMoClient{})
+	request := httptest.NewRequest(http.MethodPost, "/v1/integrations/momo/request-to-pay", strings.NewReader(`{
+		"actor":{"UserID":"u_fin","OrganizationID":"org_1","Roles":["FINANCE_LEAD"]},
+		"reference_id":"req-1",
+		"amount":"1000",
+		"currency":"RWF",
+		"external_id":"invoice-1",
+		"payer_msisdn":"250780000000"
+	}`))
+	recorder := httptest.NewRecorder()
+
+	server.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d body = %s", recorder.Code, recorder.Body.String())
+	}
+}
+
 type stubMoMoClient struct {
 	createAccessToken     func(ctx context.Context) (momo.AccessToken, error)
 	getAccountBalance     func(ctx context.Context) (momo.AccountBalance, error)
 	validateAccountHolder func(ctx context.Context, partyIDType string, partyID string) (momo.AccountHolderStatus, error)
-	requestToPay          func(ctx context.Context, referenceID string, payment momo.RequestToPay) error
+	requestToPay          func(ctx context.Context, referenceID string, payment momo.RequestToPay, opts momo.RequestToPayOptions) error
 	getRequestToPay       func(ctx context.Context, referenceID string) (momo.RequestToPayStatus, error)
 }
 
@@ -161,9 +220,9 @@ func (s stubMoMoClient) ValidateAccountHolder(ctx context.Context, partyIDType s
 	return momo.AccountHolderStatus{}, nil
 }
 
-func (s stubMoMoClient) RequestToPay(ctx context.Context, referenceID string, payment momo.RequestToPay) error {
+func (s stubMoMoClient) RequestToPay(ctx context.Context, referenceID string, payment momo.RequestToPay, opts momo.RequestToPayOptions) error {
 	if s.requestToPay != nil {
-		return s.requestToPay(ctx, referenceID, payment)
+		return s.requestToPay(ctx, referenceID, payment, opts)
 	}
 	return nil
 }
@@ -200,7 +259,7 @@ func TestMoMoValidateAccountHolder(t *testing.T) {
 
 func TestMoMoImportSuccessfulRequestToPay(t *testing.T) {
 	server := NewWithMoMo(nil, stubMoMoClient{
-		requestToPay: func(ctx context.Context, ref string, payment momo.RequestToPay) error {
+		requestToPay: func(ctx context.Context, ref string, payment momo.RequestToPay, opts momo.RequestToPayOptions) error {
 			return nil
 		},
 		getRequestToPay: func(ctx context.Context, ref string) (momo.RequestToPayStatus, error) {
@@ -217,7 +276,7 @@ func TestMoMoImportSuccessfulRequestToPay(t *testing.T) {
 	})
 	request := httptest.NewRequest(http.MethodPost, "/v1/integrations/momo/request-to-pay", strings.NewReader(`{
 		"actor":{"UserID":"u_fin","OrganizationID":"org_1","Roles":["FINANCE_LEAD"]},
-		"reference_id":"req-1",
+		"reference_id":"67c20e44-f6d3-4f7a-b8f0-5d7c2d0146f1",
 		"amount":"1000",
 		"currency":"RWF",
 		"external_id":"invoice-1",
@@ -231,17 +290,26 @@ func TestMoMoImportSuccessfulRequestToPay(t *testing.T) {
 		t.Fatalf("request-to-pay status = %d body = %s", recorder.Code, recorder.Body.String())
 	}
 
+	register := httptest.NewRequest(http.MethodPost, "/v1/integrations/connections", strings.NewReader(`{
+		"actor":{"UserID":"u_admin","OrganizationID":"org_1","Roles":["ORG_ADMIN"]},
+		"connection":{"id":"conn_momo","organization_id":"org_1","kind":"MOMO","display_name":"MTN MoMo","secret_ref":"secret://org_1/momo","active":true,"config":{"environment":"sandbox"}}
+	}`))
+	registerResp := httptest.NewRecorder()
+	server.ServeHTTP(registerResp, register)
+	if registerResp.Code != http.StatusCreated {
+		t.Fatalf("register status = %d body = %s", registerResp.Code, registerResp.Body.String())
+	}
+
 	importRequest := httptest.NewRequest(http.MethodPost, "/v1/integrations/momo/request-to-pay/import", strings.NewReader(`{
 		"actor":{"UserID":"u_admin","OrganizationID":"org_1","Roles":["ORG_ADMIN"]},
-		"connection":{"id":"conn_momo","organization_id":"org_1","kind":"MOMO","display_name":"MTN MoMo","secret_ref":"secret://org_1/momo","active":true,"config":{"environment":"sandbox"}},
-		"reference_id":"req-1",
+		"reference_id":"67c20e44-f6d3-4f7a-b8f0-5d7c2d0146f1",
 		"input":{
 			"organization_id":"org_1",
 			"connection_id":"conn_momo",
 			"source_name":"momo-request-to-pay",
 			"window_start":"2026-07-02T00:00:00Z",
 			"window_end":"2026-07-02T01:00:00Z",
-			"sync_cursor":"req-1",
+			"sync_cursor":"67c20e44-f6d3-4f7a-b8f0-5d7c2d0146f1",
 			"idempotency_key":"idem-momo-1"
 		}
 	}`))
@@ -258,14 +326,16 @@ func TestMoMoImportSuccessfulRequestToPay(t *testing.T) {
 
 func TestMoMoImportRejectsUnsuccessfulStatus(t *testing.T) {
 	server := NewWithMoMo(nil, stubMoMoClient{
-		requestToPay: func(ctx context.Context, ref string, payment momo.RequestToPay) error { return nil },
+		requestToPay: func(ctx context.Context, ref string, payment momo.RequestToPay, opts momo.RequestToPayOptions) error {
+			return nil
+		},
 		getRequestToPay: func(ctx context.Context, ref string) (momo.RequestToPayStatus, error) {
 			return momo.RequestToPayStatus{Status: "PENDING"}, nil
 		},
 	})
 	request := httptest.NewRequest(http.MethodPost, "/v1/integrations/momo/request-to-pay", strings.NewReader(`{
 		"actor":{"UserID":"u_fin","OrganizationID":"org_1","Roles":["FINANCE_LEAD"]},
-		"reference_id":"req-2",
+		"reference_id":"898ab35f-39ee-4c3c-b418-841ba8c4370c",
 		"amount":"1000",
 		"currency":"RWF",
 		"external_id":"invoice-2",
@@ -280,14 +350,14 @@ func TestMoMoImportRejectsUnsuccessfulStatus(t *testing.T) {
 	importRequest := httptest.NewRequest(http.MethodPost, "/v1/integrations/momo/request-to-pay/import", strings.NewReader(`{
 		"actor":{"UserID":"u_admin","OrganizationID":"org_1","Roles":["ORG_ADMIN"]},
 		"connection":{"id":"conn_momo","organization_id":"org_1","kind":"MOMO","display_name":"MTN MoMo","secret_ref":"secret://org_1/momo","active":true,"config":{"environment":"sandbox"}},
-		"reference_id":"req-2",
+		"reference_id":"898ab35f-39ee-4c3c-b418-841ba8c4370c",
 		"input":{
 			"organization_id":"org_1",
 			"connection_id":"conn_momo",
 			"source_name":"momo-request-to-pay",
 			"window_start":"2026-07-02T00:00:00Z",
 			"window_end":"2026-07-02T01:00:00Z",
-			"sync_cursor":"req-2",
+			"sync_cursor":"898ab35f-39ee-4c3c-b418-841ba8c4370c",
 			"idempotency_key":"idem-momo-2"
 		}
 	}`))
@@ -350,16 +420,44 @@ func TestMoMoCallbackAndTransactionImport(t *testing.T) {
 	}
 }
 
+func TestMoMoProviderCallbackAutoImportsSuccessful(t *testing.T) {
+	t.Setenv("MOMO_CALLBACK_TOKEN", "token-1")
+	t.Setenv("MOMO_SYNC_CONNECTION_SECRET_REF", "secret://org_1/momo")
+	t.Setenv("MOMO_SYNC_CONNECTION_DISPLAY_NAME", "MTN MoMo")
+	server := NewWithMoMo(nil, stubMoMoClient{})
+	callback := httptest.NewRequest(http.MethodPost, "/v1/integrations/momo/request-to-pay/callback/provider?organization_id=org_1&connection_id=conn_momo&reference_id=44fbd799-07b8-4956-95f8-140802671370&token=token-1", strings.NewReader(`{
+		"amount":"1",
+		"currency":"EUR",
+		"financialTransactionId":"191895435",
+		"externalId":"invoice-probe-3",
+		"status":"SUCCESSFUL",
+		"payerMessage":"Kora request to pay",
+		"payeeNote":"Kora sandbox collection",
+		"reason":"",
+		"payer":{"partyIdType":"MSISDN","partyId":"250780000000"}
+	}`))
+	callbackRecorder := httptest.NewRecorder()
+	server.ServeHTTP(callbackRecorder, callback)
+	if callbackRecorder.Code != http.StatusAccepted {
+		t.Fatalf("provider callback status = %d body = %s", callbackRecorder.Code, callbackRecorder.Body.String())
+	}
+	if !strings.Contains(callbackRecorder.Body.String(), `"imported":true`) || !strings.Contains(callbackRecorder.Body.String(), "normalized_events") {
+		t.Fatalf("provider callback body = %s", callbackRecorder.Body.String())
+	}
+}
+
 func TestMoMoHistoryShowsAppendOnlyLifecycle(t *testing.T) {
 	server := NewWithMoMo(nil, stubMoMoClient{
-		requestToPay: func(ctx context.Context, ref string, payment momo.RequestToPay) error { return nil },
+		requestToPay: func(ctx context.Context, ref string, payment momo.RequestToPay, opts momo.RequestToPayOptions) error {
+			return nil
+		},
 		getRequestToPay: func(ctx context.Context, ref string) (momo.RequestToPayStatus, error) {
 			return momo.RequestToPayStatus{Status: "SUCCESSFUL", FinancialTxn: "fin-9"}, nil
 		},
 	})
 	create := httptest.NewRequest(http.MethodPost, "/v1/integrations/momo/request-to-pay", strings.NewReader(`{
 		"actor":{"UserID":"u_fin","OrganizationID":"org_1","Roles":["FINANCE_LEAD"]},
-		"reference_id":"req-9",
+		"reference_id":"b2526e5f-a8e4-4b9d-9f4b-1c4e95cf8114",
 		"amount":"1000",
 		"currency":"RWF",
 		"external_id":"invoice-9",
@@ -373,7 +471,7 @@ func TestMoMoHistoryShowsAppendOnlyLifecycle(t *testing.T) {
 
 	status := httptest.NewRequest(http.MethodPost, "/v1/integrations/momo/request-to-pay/status", strings.NewReader(`{
 		"actor":{"UserID":"u_fin","OrganizationID":"org_1","Roles":["FINANCE_LEAD"]},
-		"reference_id":"req-9"
+		"reference_id":"b2526e5f-a8e4-4b9d-9f4b-1c4e95cf8114"
 	}`))
 	statusResp := httptest.NewRecorder()
 	server.ServeHTTP(statusResp, status)
@@ -383,7 +481,7 @@ func TestMoMoHistoryShowsAppendOnlyLifecycle(t *testing.T) {
 
 	history := httptest.NewRequest(http.MethodPost, "/v1/integrations/momo/request-to-pay/history", strings.NewReader(`{
 		"actor":{"UserID":"u_fin","OrganizationID":"org_1","Roles":["FINANCE_LEAD"]},
-		"reference_id":"req-9"
+		"reference_id":"b2526e5f-a8e4-4b9d-9f4b-1c4e95cf8114"
 	}`))
 	historyResp := httptest.NewRecorder()
 	server.ServeHTTP(historyResp, history)
@@ -445,5 +543,128 @@ func TestMoMoBulkImportTransactions(t *testing.T) {
 	}
 	if !strings.Contains(recorder.Body.String(), "normalized_events") {
 		t.Fatalf("unexpected body=%s", recorder.Body.String())
+	}
+}
+
+func TestMoMoSyncRequestStatusesAutoImportsSuccessful(t *testing.T) {
+	server := NewWithMoMo(nil, stubMoMoClient{
+		requestToPay: func(ctx context.Context, ref string, payment momo.RequestToPay, opts momo.RequestToPayOptions) error {
+			return nil
+		},
+		getRequestToPay: func(ctx context.Context, ref string) (momo.RequestToPayStatus, error) {
+			return momo.RequestToPayStatus{
+				ExternalID:   "invoice-30",
+				Status:       "SUCCESSFUL",
+				Amount:       "5000",
+				Currency:     "RWF",
+				FinancialTxn: "fin-30",
+			}, nil
+		},
+	})
+	create := httptest.NewRequest(http.MethodPost, "/v1/integrations/momo/request-to-pay", strings.NewReader(`{
+		"actor":{"UserID":"u_fin","OrganizationID":"org_1","Roles":["FINANCE_LEAD"]},
+		"reference_id":"a2116ee2-6aea-4d54-a0db-b3b493be0201",
+		"amount":"5000",
+		"currency":"RWF",
+		"external_id":"invoice-30",
+		"payer_msisdn":"250780000030"
+	}`))
+	createResp := httptest.NewRecorder()
+	server.ServeHTTP(createResp, create)
+	if createResp.Code != http.StatusAccepted {
+		t.Fatalf("create status=%d body=%s", createResp.Code, createResp.Body.String())
+	}
+
+	register := httptest.NewRequest(http.MethodPost, "/v1/integrations/connections", strings.NewReader(`{
+		"actor":{"UserID":"u_admin","OrganizationID":"org_1","Roles":["ORG_ADMIN"]},
+		"connection":{"id":"conn_momo","organization_id":"org_1","kind":"MOMO","display_name":"MTN MoMo","secret_ref":"secret://org_1/momo","active":true,"config":{"environment":"sandbox"}}
+	}`))
+	registerResp := httptest.NewRecorder()
+	server.ServeHTTP(registerResp, register)
+	if registerResp.Code != http.StatusCreated {
+		t.Fatalf("register status=%d body=%s", registerResp.Code, registerResp.Body.String())
+	}
+
+	sync := httptest.NewRequest(http.MethodPost, "/v1/integrations/momo/request-to-pay/sync-statuses", strings.NewReader(`{
+		"actor":{"UserID":"u_admin","OrganizationID":"org_1","Roles":["ORG_ADMIN"]},
+		"input":{
+			"organization_id":"org_1",
+			"connection_id":"conn_momo",
+			"source_name":"momo-status-sync",
+			"window_start":"2026-07-02T00:00:00Z",
+			"window_end":"2026-07-02T23:59:59Z",
+			"sync_cursor":"fin-30",
+			"idempotency_key":"idem-momo-sync-30"
+		},
+		"reference_ids":["a2116ee2-6aea-4d54-a0db-b3b493be0201"],
+		"auto_import":true
+	}`))
+	syncResp := httptest.NewRecorder()
+	server.ServeHTTP(syncResp, sync)
+	if syncResp.Code != http.StatusOK {
+		t.Fatalf("sync status=%d body=%s", syncResp.Code, syncResp.Body.String())
+	}
+	if !strings.Contains(syncResp.Body.String(), `"imported":true`) {
+		t.Fatalf("sync body=%s", syncResp.Body.String())
+	}
+}
+
+func TestSyncMoMoRequestStatusesMethod(t *testing.T) {
+	server := NewWithMoMo(nil, stubMoMoClient{
+		requestToPay: func(ctx context.Context, ref string, payment momo.RequestToPay, opts momo.RequestToPayOptions) error {
+			return nil
+		},
+		getRequestToPay: func(ctx context.Context, ref string) (momo.RequestToPayStatus, error) {
+			return momo.RequestToPayStatus{
+				ExternalID:   "invoice-40",
+				Status:       "SUCCESSFUL",
+				Amount:       "9000",
+				Currency:     "RWF",
+				FinancialTxn: "fin-40",
+			}, nil
+		},
+	})
+	create := httptest.NewRequest(http.MethodPost, "/v1/integrations/momo/request-to-pay", strings.NewReader(`{
+		"actor":{"UserID":"u_fin","OrganizationID":"org_1","Roles":["FINANCE_LEAD"]},
+		"reference_id":"c6892996-cab8-4dcb-b6bf-7c6c643d7c46",
+		"amount":"9000",
+		"currency":"RWF",
+		"external_id":"invoice-40",
+		"payer_msisdn":"250780000040"
+	}`))
+	createResp := httptest.NewRecorder()
+	server.ServeHTTP(createResp, create)
+	if createResp.Code != http.StatusAccepted {
+		t.Fatalf("create status=%d body=%s", createResp.Code, createResp.Body.String())
+	}
+	results, err := server.SyncMoMoRequestStatuses(context.Background(), MoMoSyncOptions{
+		Actor: access.Actor{
+			UserID:         "u_admin",
+			OrganizationID: "org_1",
+			Roles:          []access.Role{access.RoleOrgAdmin},
+		},
+		Connection: connectors.Connection{
+			ID:             "conn_momo",
+			OrganizationID: "org_1",
+			Kind:           connectors.MoMo,
+			DisplayName:    "MTN MoMo",
+			SecretRef:      "secret://org_1/momo",
+			Active:         true,
+			Config:         map[string]string{"environment": "sandbox"},
+		},
+		Input: MoMoSyncInput{
+			OrganizationID: "org_1",
+			ConnectionID:   "conn_momo",
+			SourceName:     "momo-auto-sync",
+			IdempotencyKey: "idem-momo-40",
+		},
+		ReferenceIDs: []string{"c6892996-cab8-4dcb-b6bf-7c6c643d7c46"},
+		AutoImport:   true,
+	})
+	if err != nil {
+		t.Fatalf("SyncMoMoRequestStatuses() error=%v", err)
+	}
+	if len(results) != 1 || !results[0].Imported || results[0].Status != "SUCCESSFUL" {
+		t.Fatalf("results=%+v", results)
 	}
 }

@@ -2,8 +2,8 @@ import { ShieldCheck } from 'lucide-react';
 import { GlassSurface, ProgressRing, cn } from '../../design-system';
 import { seedControlHealth } from '../../seed/auditorHome';
 
-export function ControlHealthCard() {
-  const c = seedControlHealth;
+export function ControlHealthCard({ controlHealth = seedControlHealth }: { controlHealth?: typeof seedControlHealth }) {
+  const c = controlHealth;
   return (
     <GlassSurface tone="strong" className="flex h-full flex-col gap-4 p-6">
       <div className="flex items-center gap-2">

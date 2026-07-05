@@ -1,0 +1,1 @@
+export { DataIntakePage } from './DataIntakePage';

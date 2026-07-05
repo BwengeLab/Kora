@@ -1,69 +1,108 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, Globe, LogOut, Shield, User } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { PageHeader } from '../../app/shell';
+import { fetchAccountSettings, saveAccountSettings, signOutOtherSessions, type AccountSettingsPayload } from '../../api/accountMailbox';
+import { getApiBaseUrl } from '../../api/client';
 import { useSession } from '../../auth/hooks';
 import { GlassSurface, PartyAvatar, cn } from '../../design-system';
-import { useMyPersonalSettings, usePersonalSettingsStore, type PersonalSettings } from '../../state/personalSettingsStore';
 import { toast } from '../../state/toastStore';
 
-// Personal Account & Preferences — scoped to the signed-in user. This is the
-// gear-icon destination: YOUR profile, YOUR preferences, YOUR notifications.
-// Org-wide configuration lives separately in the Admin Console (/settings).
 export function AccountSettings() {
   const session = useSession();
-  const { email, settings } = useMyPersonalSettings();
-  const update = usePersonalSettingsStore((s) => s.update);
-  const set = <K extends keyof PersonalSettings>(k: K, v: PersonalSettings[K]) => update(email, { [k]: v } as Partial<PersonalSettings>);
+  const apiBaseUrl = getApiBaseUrl();
+  const queryClient = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ['account-settings', session?.user.email],
+    queryFn: ({ signal }) => fetchAccountSettings(apiBaseUrl, session!.token, signal),
+    enabled: Boolean(session?.token),
+    staleTime: 30_000,
+  });
+  const [settings, setSettings] = useState<AccountSettingsPayload>({
+    displayName: session?.user.displayName ?? 'You',
+    jobTitle: session?.roles[0]?.name ?? 'User',
+    phone: '+250 788 555 121',
+    language: 'en',
+    theme: 'system',
+    dateFormat: 'DMY',
+    notifyApprovals: true,
+    notifyMentions: true,
+    notifyDigest: true,
+    notifyAgent: false,
+    twoFactor: true,
+  });
+
+  useEffect(() => {
+    if (data) setSettings(data);
+  }, [data]);
+
+  const persist = async <K extends keyof AccountSettingsPayload>(key: K, value: AccountSettingsPayload[K]) => {
+    if (!session?.token) return;
+    const next = { ...settings, [key]: value };
+    setSettings(next);
+    try {
+      await saveAccountSettings(apiBaseUrl, session.token, next);
+      await queryClient.invalidateQueries({ queryKey: ['account-settings'] });
+    } catch (error) {
+      toast({ tone: 'warning', title: 'Save failed', body: error instanceof Error ? error.message : 'Could not update account settings.' });
+    }
+  };
+
+  const revokeSessions = async () => {
+    if (!session?.token) return;
+    try {
+      await signOutOtherSessions(apiBaseUrl, session.token);
+      toast({ tone: 'info', title: 'Signed out elsewhere', body: 'All other sessions were ended.' });
+    } catch (error) {
+      toast({ tone: 'warning', title: 'Session revoke failed', body: error instanceof Error ? error.message : 'Could not revoke other sessions.' });
+    }
+  };
 
   return (
     <div className="flex h-full flex-col">
-      <PageHeader title="Account & Preferences" subtitle="Your personal profile and settings — only you see and control these." />
+      <PageHeader title="Account & Preferences" subtitle="Your personal profile and settings - only you see and control these." />
       <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto px-8 pb-8">
         <div className="mx-auto flex max-w-3xl flex-col gap-5">
-          {/* Identity */}
           <GlassSurface tone="strong" className="flex items-center gap-4 p-5">
             <PartyAvatar name={settings.displayName} size="lg" />
             <div className="min-w-0 flex-1">
               <p className="font-display text-lg font-bold text-ink">{settings.displayName}</p>
-              <p className="text-[12.5px] text-ink-muted">{settings.jobTitle} · {email}</p>
+              <p className="text-[12.5px] text-ink-muted">{settings.jobTitle} · {session?.user.email ?? 'guest@kora.local'}</p>
             </div>
             <span className="rounded-full bg-success-soft px-2.5 py-1 text-[11px] font-bold text-success">Signed in</span>
           </GlassSurface>
 
-          {/* Profile */}
           <Section icon={<User className="size-4" />} title="Profile">
             <div className="grid grid-cols-2 gap-4">
-              <TextField label="Full name" value={settings.displayName} onChange={(v) => set('displayName', v)} />
-              <TextField label="Job title" value={settings.jobTitle} onChange={(v) => set('jobTitle', v)} />
-              <TextField label="Phone" value={settings.phone} onChange={(v) => set('phone', v)} />
-              <TextField label="Email" value={email} readOnly />
+              <TextField label="Full name" value={settings.displayName} onChange={(value) => void persist('displayName', value)} />
+              <TextField label="Job title" value={settings.jobTitle} onChange={(value) => void persist('jobTitle', value)} />
+              <TextField label="Phone" value={settings.phone} onChange={(value) => void persist('phone', value)} />
+              <TextField label="Email" value={session?.user.email ?? 'guest@kora.local'} readOnly />
             </div>
           </Section>
 
-          {/* Preferences */}
           <Section icon={<Globe className="size-4" />} title="Preferences">
             <div className="grid grid-cols-3 gap-4">
-              <SelectField label="Language" value={settings.language} options={[['en', 'English'], ['fr', 'Français'], ['rw', 'Kinyarwanda']]} onChange={(v) => set('language', v as PersonalSettings['language'])} />
-              <SelectField label="Theme" value={settings.theme} options={[['system', 'System'], ['light', 'Light']]} onChange={(v) => set('theme', v as PersonalSettings['theme'])} />
-              <SelectField label="Date format" value={settings.dateFormat} options={[['DMY', 'DD/MM/YYYY'], ['MDY', 'MM/DD/YYYY'], ['ISO', 'YYYY-MM-DD']]} onChange={(v) => set('dateFormat', v as PersonalSettings['dateFormat'])} />
+              <SelectField label="Language" value={settings.language} options={[['en', 'English'], ['fr', 'Français'], ['rw', 'Kinyarwanda']]} onChange={(value) => void persist('language', value as AccountSettingsPayload['language'])} />
+              <SelectField label="Theme" value={settings.theme} options={[['system', 'System'], ['light', 'Light']]} onChange={(value) => void persist('theme', value as AccountSettingsPayload['theme'])} />
+              <SelectField label="Date format" value={settings.dateFormat} options={[['DMY', 'DD/MM/YYYY'], ['MDY', 'MM/DD/YYYY'], ['ISO', 'YYYY-MM-DD']]} onChange={(value) => void persist('dateFormat', value as AccountSettingsPayload['dateFormat'])} />
             </div>
           </Section>
 
-          {/* Notifications */}
           <Section icon={<Bell className="size-4" />} title="Notifications">
             <div className="flex flex-col gap-2">
-              <ToggleRow label="Approvals awaiting me" desc="Alert when an item needs my decision." on={settings.notifyApprovals} onToggle={(v) => set('notifyApprovals', v)} />
-              <ToggleRow label="Mentions" desc="When a teammate @mentions me." on={settings.notifyMentions} onToggle={(v) => set('notifyMentions', v)} />
-              <ToggleRow label="Daily digest" desc="A morning summary email." on={settings.notifyDigest} onToggle={(v) => set('notifyDigest', v)} />
-              <ToggleRow label="Agent suggestions" desc="When Kora flags something for me." on={settings.notifyAgent} onToggle={(v) => set('notifyAgent', v)} />
+              <ToggleRow label="Approvals awaiting me" desc="Alert when an item needs my decision." on={settings.notifyApprovals} onToggle={(value) => void persist('notifyApprovals', value)} />
+              <ToggleRow label="Mentions" desc="When a teammate @mentions me." on={settings.notifyMentions} onToggle={(value) => void persist('notifyMentions', value)} />
+              <ToggleRow label="Daily digest" desc="A morning summary email." on={settings.notifyDigest} onToggle={(value) => void persist('notifyDigest', value)} />
+              <ToggleRow label="Agent suggestions" desc="When Kora flags something for me." on={settings.notifyAgent} onToggle={(value) => void persist('notifyAgent', value)} />
             </div>
           </Section>
 
-          {/* Security */}
           <Section icon={<Shield className="size-4" />} title="Security">
-            <ToggleRow label="Two-factor authentication" desc="Require a second factor at sign-in." on={settings.twoFactor} onToggle={(v) => set('twoFactor', v)} />
+            <ToggleRow label="Two-factor authentication" desc="Require a second factor at sign-in." on={settings.twoFactor} onToggle={(value) => void persist('twoFactor', value)} />
             <div className="mt-3 flex items-center justify-between rounded-2xl bg-white/55 p-3.5 ring-1 ring-white/60">
               <div><p className="text-[13px] font-semibold text-ink">This session</p><p className="text-[11.5px] text-ink-muted">{session?.tenant.name ?? 'Acme'} · Kigali · started today</p></div>
-              <button type="button" onClick={() => toast({ tone: 'info', title: 'Signed out elsewhere', body: 'All other sessions were ended.' })} className="inline-flex items-center gap-1.5 rounded-xl bg-white/80 px-3 py-1.5 text-[12px] font-bold text-danger ring-1 ring-white/70 hover:bg-white"><LogOut className="size-3.5" /> Sign out other sessions</button>
+              <button type="button" onClick={() => void revokeSessions()} className="inline-flex items-center gap-1.5 rounded-xl bg-white/80 px-3 py-1.5 text-[12px] font-bold text-danger ring-1 ring-white/70 hover:bg-white"><LogOut className="size-3.5" /> Sign out other sessions</button>
             </div>
           </Section>
         </div>
@@ -81,27 +120,27 @@ function Section({ icon, title, children }: { icon: React.ReactNode; title: stri
   );
 }
 
-function TextField({ label, value, onChange, readOnly }: { label: string; value: string; onChange?: (v: string) => void; readOnly?: boolean }) {
+function TextField({ label, value, onChange, readOnly }: { label: string; value: string; onChange?: (value: string) => void; readOnly?: boolean }) {
   return (
     <label className="flex flex-col gap-1">
       <span className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">{label}</span>
-      <input value={value} readOnly={readOnly} onChange={(e) => onChange?.(e.target.value)} className={cn('h-11 rounded-xl px-3.5 text-[13.5px] font-semibold text-ink ring-1 ring-white/70 focus:outline-none focus:ring-2 focus:ring-brand/30', readOnly ? 'bg-white/40 text-ink-muted' : 'bg-white/70')} />
+      <input value={value} readOnly={readOnly} onChange={(event) => onChange?.(event.target.value)} className={cn('h-11 rounded-xl px-3.5 text-[13.5px] font-semibold text-ink ring-1 ring-white/70 focus:outline-none focus:ring-2 focus:ring-brand/30', readOnly ? 'bg-white/40 text-ink-muted' : 'bg-white/70')} />
     </label>
   );
 }
 
-function SelectField({ label, value, options, onChange }: { label: string; value: string; options: [string, string][]; onChange: (v: string) => void }) {
+function SelectField({ label, value, options, onChange }: { label: string; value: string; options: [string, string][]; onChange: (value: string) => void }) {
   return (
     <label className="flex flex-col gap-1">
       <span className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">{label}</span>
-      <select value={value} onChange={(e) => onChange(e.target.value)} className="h-11 rounded-xl bg-white/70 px-3 text-[13.5px] font-semibold text-ink ring-1 ring-white/70 focus:outline-none focus:ring-2 focus:ring-brand/30">
-        {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      <select value={value} onChange={(event) => onChange(event.target.value)} className="h-11 rounded-xl bg-white/70 px-3 text-[13.5px] font-semibold text-ink ring-1 ring-white/70 focus:outline-none focus:ring-2 focus:ring-brand/30">
+        {options.map(([optionValue, optionLabel]) => <option key={optionValue} value={optionValue}>{optionLabel}</option>)}
       </select>
     </label>
   );
 }
 
-function ToggleRow({ label, desc, on, onToggle }: { label: string; desc: string; on: boolean; onToggle: (v: boolean) => void }) {
+function ToggleRow({ label, desc, on, onToggle }: { label: string; desc: string; on: boolean; onToggle: (value: boolean) => void }) {
   return (
     <button type="button" onClick={() => onToggle(!on)} className="flex w-full items-center justify-between gap-3 rounded-2xl bg-white/55 p-3.5 text-left ring-1 ring-white/60 hover:bg-white/70">
       <div><p className="text-[13px] font-semibold text-ink">{label}</p><p className="text-[11.5px] text-ink-muted">{desc}</p></div>

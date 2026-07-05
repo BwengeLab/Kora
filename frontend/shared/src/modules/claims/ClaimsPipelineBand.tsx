@@ -1,16 +1,23 @@
 import { Clock, FileSearch, Layers, ShieldAlert, TrendingDown } from 'lucide-react';
 import { GlassSurface, MoneyCell, cn } from '../../design-system';
-import { CLAIM_STAGES, seedClaimsStats, type ClaimStage } from '../../seed/claims';
+import { CLAIM_STAGES, type ClaimStage } from '../../seed/claims';
 import { useClaimsStore } from '../../state/claimsStore';
 
 export interface ClaimsPipelineBandProps {
   activeStage: ClaimStage | 'all';
   onStage: (s: ClaimStage | 'all') => void;
+  stats: {
+    openClaims: number;
+    totalReserves: Parameters<typeof MoneyCell>[0]['amount'];
+    avgCycleDays: number;
+    fraudFlagged: number;
+    leakagePrevented: Parameters<typeof MoneyCell>[0]['amount'];
+    pipeline: Record<ClaimStage, number>;
+  };
 }
 
-export function ClaimsPipelineBand({ activeStage, onStage }: ClaimsPipelineBandProps) {
+export function ClaimsPipelineBand({ activeStage, onStage, stats }: ClaimsPipelineBandProps) {
   const claims = useClaimsStore((s) => s.claims);
-  const s = seedClaimsStats;
 
   // live snapshot counts from the queue, blended with the larger period totals
   const liveCount = (stage: ClaimStage) => claims.filter((c) => c.stage === stage).length;
@@ -19,11 +26,11 @@ export function ClaimsPipelineBand({ activeStage, onStage }: ClaimsPipelineBandP
     <div className="flex flex-col gap-5">
       {/* Portfolio KPIs */}
       <section className="grid grid-cols-2 gap-4 @2xl:grid-cols-3 @5xl:grid-cols-5">
-        <Kpi icon={<Layers className="size-[18px]" />} tone="bg-brand-soft text-brand-ink" value={String(s.openClaims)} label="Open claims" />
-        <KpiMoney icon={<FileSearch className="size-[18px]" />} tone="bg-ai-soft text-ai" money={s.totalReserves} label="Total reserves" />
-        <Kpi icon={<Clock className="size-[18px]" />} tone="bg-info-soft text-info" value={`${s.avgCycleDays}d`} label="Avg cycle time" />
-        <Kpi icon={<ShieldAlert className="size-[18px]" />} tone="bg-danger-soft text-danger" value={String(s.fraudFlagged)} label="Fraud flagged" />
-        <KpiMoney icon={<TrendingDown className="size-[18px]" />} tone="bg-success-soft text-success" money={s.leakagePrevented} label="Leakage prevented" />
+        <Kpi icon={<Layers className="size-[18px]" />} tone="bg-brand-soft text-brand-ink" value={String(stats.openClaims)} label="Open claims" />
+        <KpiMoney icon={<FileSearch className="size-[18px]" />} tone="bg-ai-soft text-ai" money={stats.totalReserves} label="Total reserves" />
+        <Kpi icon={<Clock className="size-[18px]" />} tone="bg-info-soft text-info" value={`${stats.avgCycleDays}d`} label="Avg cycle time" />
+        <Kpi icon={<ShieldAlert className="size-[18px]" />} tone="bg-danger-soft text-danger" value={String(stats.fraudFlagged)} label="Fraud flagged" />
+        <KpiMoney icon={<TrendingDown className="size-[18px]" />} tone="bg-success-soft text-success" money={stats.leakagePrevented} label="Leakage prevented" />
       </section>
 
       {/* Pipeline by stage (clickable filters) */}
@@ -34,7 +41,7 @@ export function ClaimsPipelineBand({ activeStage, onStage }: ClaimsPipelineBandP
             {i > 0 ? <span className="text-ink-muted">→</span> : null}
             <StageChip
               label={st.label}
-              count={st.id === 'closed' ? s.pipeline.closed : liveCount(st.id)}
+              count={st.id === 'closed' ? stats.pipeline.closed : liveCount(st.id)}
               active={activeStage === st.id}
               onClick={() => onStage(st.id)}
             />

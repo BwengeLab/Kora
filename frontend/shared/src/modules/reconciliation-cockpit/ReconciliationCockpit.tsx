@@ -1,6 +1,9 @@
+import { useMutation } from '@tanstack/react-query';
 import { Keyboard, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 import { DateRangePill, PageHeader } from '../../app/shell';
+import { getApiBaseUrl } from '../../api/client';
+import { workflowReconciliationAction } from '../../api/workflow';
 import { useSession } from '../../auth/hooks';
 import { type ReconciliationTier } from '../../seed/reconciliation';
 import { toast } from '../../state/toastStore';
@@ -14,10 +17,13 @@ import { ReconStatsBand } from './ReconStatsBand';
 // the Finance Lead's Action Center.
 export function ReconciliationCockpit() {
   const recons = useWorkflowStore((s) => s.reconciliations);
-  const prepareMatch = useWorkflowStore((s) => s.prepareMatch);
-  const rejectReconciliation = useWorkflowStore((s) => s.rejectReconciliation);
+  const hydrate = useWorkflowStore((s) => s.hydrate);
   const session = useSession();
-  const actor = { name: session?.user.displayName ?? 'Operator', role: session?.roles[0]?.name ?? 'Finance Operator' };
+  const apiBaseUrl = getApiBaseUrl();
+  const mutation = useMutation({
+    mutationFn: ({ id, action }: { id: string; action: 'prepare' | 'reject' }) => workflowReconciliationAction(apiBaseUrl, session!.token, id, action),
+    onSuccess: (response) => hydrate(response.snapshot),
+  });
 
   const [selectedId, setSelectedId] = useState<string>(recons[0]?.id ?? '');
   const [tierFilter, setTierFilter] = useState<ReconciliationTier | 'all'>('all');
@@ -33,19 +39,27 @@ export function ReconciliationCockpit() {
       return nextSet;
     });
 
-  const handlePrepare = (id: string) => {
+  const handlePrepare = async (id: string) => {
     const recon = recons.find((r) => r.id === id);
-    prepareMatch(id, actor);
-    toast({
-      tone: 'success',
-      title: 'Match prepared',
-      body: `${recon?.transaction.counterparty ?? 'Match'} sent to Finance Lead for approval.`,
-    });
+    try {
+      await mutation.mutateAsync({ id, action: 'prepare' });
+      toast({
+        tone: 'success',
+        title: 'Match prepared',
+        body: `${recon?.transaction.counterparty ?? 'Match'} sent to Finance Lead for approval.`,
+      });
+    } catch (error) {
+      toast({ tone: 'danger', title: 'Prepare failed', body: error instanceof Error ? error.message : 'Could not prepare match.' });
+    }
   };
 
-  const handleReject = (id: string) => {
-    rejectReconciliation(id);
-    toast({ tone: 'warning', title: 'Match rejected', body: 'Returned to the review queue.' });
+  const handleReject = async (id: string) => {
+    try {
+      await mutation.mutateAsync({ id, action: 'reject' });
+      toast({ tone: 'warning', title: 'Match rejected', body: 'Returned to the review queue.' });
+    } catch (error) {
+      toast({ tone: 'danger', title: 'Reject failed', body: error instanceof Error ? error.message : 'Could not reject match.' });
+    }
   };
 
   return (
@@ -66,7 +80,7 @@ export function ReconciliationCockpit() {
         }
       />
       <div className="@container flex min-h-0 flex-1 flex-col gap-5 px-8">
-        <ReconStatsBand activeTier={tierFilter} onTier={setTierFilter} />
+        <ReconStatsBand activeTier={tierFilter} onTier={setTierFilter} recons={recons} />
 
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 pb-6 @5xl:grid-cols-[400px_1fr]">
           <ExceptionQueue

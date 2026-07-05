@@ -4,9 +4,22 @@ import { AreaChart, ConfidenceChip, GlassSurface, MoneyCell, cn } from '../../de
 import { seedOperatorThroughput, seedResume } from '../../seed/operatorHome';
 
 // "Resume where I left off" + throughput, combined into one motivating card.
-export function ResumeThroughputCard() {
-  const t = seedOperatorThroughput;
-  const r = seedResume;
+export function ResumeThroughputCard({
+  throughput = seedOperatorThroughput,
+  resume = seedResume,
+}: {
+  throughput?: typeof seedOperatorThroughput;
+  resume?: {
+    reconId: string;
+    party: string;
+    amount: typeof seedResume.amount;
+    tier: string;
+    confidence: number;
+    note: string;
+  };
+}) {
+  const t = throughput;
+  const r = resume;
   const goalPct = Math.min(1, t.clearedToday / t.dailyGoal);
 
   return (

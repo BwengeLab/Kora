@@ -3,7 +3,13 @@ import { GlassSurface, cn } from '../../design-system';
 import { seedIncidents, seedSupportQueue } from '../../seed/platformHome';
 import { toast } from '../../state/toastStore';
 
-export function IncidentsSupportCard() {
+export function IncidentsSupportCard({
+  incidents = seedIncidents,
+  supportQueue = seedSupportQueue,
+}: {
+  incidents?: typeof seedIncidents;
+  supportQueue?: typeof seedSupportQueue;
+}) {
   return (
     <GlassSurface tone="strong" className="flex h-full flex-col gap-4 p-6">
       {/* Incidents */}
@@ -13,7 +19,7 @@ export function IncidentsSupportCard() {
           <h3 className="font-display text-base font-bold text-ink">Open incidents</h3>
         </header>
         <ul className="flex flex-col gap-2">
-          {seedIncidents.map((i) => (
+          {incidents.map((i) => (
             <li key={i.id} className="flex items-center gap-3 rounded-2xl bg-white/55 p-3 ring-1 ring-white/60">
               <span className={cn('size-2 shrink-0 rounded-full', i.severity === 'critical' ? 'bg-danger' : i.severity === 'major' ? 'bg-warning' : 'bg-info')} />
               <div className="min-w-0 flex-1">
@@ -38,7 +44,7 @@ export function IncidentsSupportCard() {
           </span>
         </header>
         <ul className="flex flex-col gap-2">
-          {seedSupportQueue.map((r) => (
+          {supportQueue.map((r) => (
             <li key={r.id} className="flex items-center gap-3 rounded-2xl bg-white/55 p-3 ring-1 ring-white/60">
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[12.5px] font-bold text-ink">{r.tenant}</p>

@@ -38,14 +38,16 @@ export function ApprovalDetail({
   onSelect,
   onApprove,
   onReject,
+  onAction,
 }: {
   items: ApprovalItem[];
   variant: ActionVariant;
   track?: boolean;
   selectedId: string;
   onSelect: (id: string) => void;
-  onApprove: (id: string) => void;
-  onReject: (id: string) => void;
+  onApprove: (id: string) => void | Promise<void>;
+  onReject: (id: string) => void | Promise<void>;
+  onAction: (id: string, action: 'withdraw' | 'nudge' | 'resubmit' | 'request-info' | 'reassign' | 'escalate') => void | Promise<void>;
 }) {
   const item = useMemo(() => items.find((a) => a.id === selectedId) ?? items[0]!, [items, selectedId]);
   const [tab, setTab] = useState<Tab>('summary');
@@ -157,7 +159,7 @@ export function ApprovalDetail({
       </div>
 
       {/* Action bar — preparer tracks status; approver acts */}
-      {track ? <TrackBar item={item} /> : <ActionBar item={item} canApprove={canApprove} done={done} block={block} onApprove={() => onApprove(item.id)} onReject={() => onReject(item.id)} />}
+      {track ? <TrackBar item={item} onAction={onAction} /> : <ActionBar item={item} canApprove={canApprove} done={done} block={block} onApprove={() => onApprove(item.id)} onReject={() => onReject(item.id)} onAction={onAction} />}
     </GlassSurface>
   );
 }
@@ -177,7 +179,7 @@ function TrackNote() {
 }
 
 // Status + light follow-up actions for the preparer — never approve/reject.
-function TrackBar({ item }: { item: ApprovalItem }) {
+function TrackBar({ item, onAction }: { item: ApprovalItem; onAction: (id: string, action: 'withdraw' | 'nudge' | 'resubmit') => void | Promise<void> }) {
   const status =
     item.stage === 'approved' ? { label: 'Approved & posted', tone: 'bg-success-soft text-success' }
     : item.stage === 'rejected' ? { label: 'Sent back to you', tone: 'bg-danger-soft text-danger' }
@@ -191,11 +193,11 @@ function TrackBar({ item }: { item: ApprovalItem }) {
         <div className="flex items-center gap-2">
           {pending ? (
             <>
-              <button type="button" onClick={() => toast({ tone: 'warning', title: 'Withdrawn', body: `${item.title} pulled back to your drafts to revise.` })} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-white px-4 text-[13.5px] font-bold text-ink-soft ring-1 ring-white/70 hover:bg-white/80">Withdraw</button>
-              <button type="button" onClick={() => toast({ tone: 'info', title: 'Reminder sent', body: 'Nudged the Finance Lead to review your submission.' })} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink px-5 text-[13.5px] font-bold text-white shadow-glass-soft hover:brightness-110"><Forward className="size-4" /> Nudge approver</button>
+              <button type="button" onClick={() => void onAction(item.id, 'withdraw')} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-white px-4 text-[13.5px] font-bold text-ink-soft ring-1 ring-white/70 hover:bg-white/80">Withdraw</button>
+              <button type="button" onClick={() => void onAction(item.id, 'nudge')} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink px-5 text-[13.5px] font-bold text-white shadow-glass-soft hover:brightness-110"><Forward className="size-4" /> Nudge approver</button>
             </>
           ) : item.stage === 'rejected' ? (
-            <button type="button" onClick={() => toast({ tone: 'info', title: 'Reopened', body: `${item.title} reopened to fix and resubmit.` })} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink px-5 text-[13.5px] font-bold text-white shadow-glass-soft hover:brightness-110">Fix &amp; resubmit</button>
+            <button type="button" onClick={() => void onAction(item.id, 'resubmit')} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink px-5 text-[13.5px] font-bold text-white shadow-glass-soft hover:brightness-110">Fix &amp; resubmit</button>
           ) : (
             <span className="inline-flex h-11 items-center gap-2 rounded-2xl bg-success-soft px-5 text-[14px] font-bold text-success"><Check className="size-[18px]" /> Done</span>
           )}
@@ -337,7 +339,7 @@ function HistoryTab({ events }: { events: HistoryEvent[] }) {
 }
 
 // ─── Action bar ────────────────────────────────────────────────────────────
-function ActionBar({ item, canApprove, done, block, onApprove, onReject }: { item: ApprovalItem; canApprove: boolean; done: boolean; block: ApproveResult; onApprove: () => void; onReject: () => void }) {
+function ActionBar({ item, canApprove, done, block, onApprove, onReject, onAction }: { item: ApprovalItem; canApprove: boolean; done: boolean; block: ApproveResult; onApprove: () => void | Promise<void>; onReject: () => void | Promise<void>; onAction: (id: string, action: 'request-info' | 'reassign' | 'escalate') => void | Promise<void> }) {
   const approveLabel = item.requiresDualApproval
     ? item.approvals.length === 0
       ? 'Approve (1 of 2)'
@@ -363,14 +365,14 @@ function ActionBar({ item, canApprove, done, block, onApprove, onReject }: { ite
             </span>
           ) : (
             <>
-              <MoreMenu />
-              <button type="button" onClick={onReject} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-white px-4 text-[13.5px] font-bold text-danger ring-1 ring-danger/25 transition-colors hover:bg-danger-soft">
+              <MoreMenu approvalID={item.id} onAction={onAction} />
+              <button type="button" onClick={() => void onReject()} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-white px-4 text-[13.5px] font-bold text-danger ring-1 ring-danger/25 transition-colors hover:bg-danger-soft">
                 <X className="size-4" /> Reject
               </button>
               <button
                 type="button"
                 disabled={!canApprove}
-                onClick={onApprove}
+                onClick={() => void onApprove()}
                 className={cn(
                   'inline-flex h-11 items-center gap-2.5 rounded-2xl px-5 text-[14px] font-bold transition-all',
                   canApprove
@@ -394,11 +396,11 @@ function ActionBar({ item, canApprove, done, block, onApprove, onReject }: { ite
   );
 }
 
-function MoreMenu() {
+function MoreMenu({ approvalID, onAction }: { approvalID: string; onAction: (id: string, action: 'request-info' | 'reassign' | 'escalate') => void | Promise<void> }) {
   const items = [
-    { label: 'Request more info', icon: MessageSquareWarning },
-    { label: 'Reassign approver', icon: UserPlus },
-    { label: 'Escalate to Owner', icon: Forward },
+    { label: 'Request more info', icon: MessageSquareWarning, action: 'request-info' as const },
+    { label: 'Reassign approver', icon: UserPlus, action: 'reassign' as const },
+    { label: 'Escalate to Owner', icon: Forward, action: 'escalate' as const },
   ];
   return (
     <DropdownMenu.Root>
@@ -410,7 +412,7 @@ function MoreMenu() {
       <DropdownMenu.Portal>
         <DropdownMenu.Content side="top" align="end" sideOffset={8} className="z-50 flex w-56 flex-col gap-0.5 rounded-2xl border border-glass-border-strong bg-glass-strong p-1.5 shadow-glass-lg backdrop-blur-glass-lg">
           {items.map((it) => (
-            <DropdownMenu.Item key={it.label} className="flex cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] font-semibold text-ink-soft outline-none transition-colors hover:bg-white/80 hover:text-ink">
+            <DropdownMenu.Item key={it.label} onSelect={() => void onAction(approvalID, it.action)} className="flex cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] font-semibold text-ink-soft outline-none transition-colors hover:bg-white/80 hover:text-ink">
               <it.icon className="size-4" /> {it.label}
             </DropdownMenu.Item>
           ))}

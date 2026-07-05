@@ -2,6 +2,8 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { ArrowRight, Banknote, Check, FileText, Link2, Search, ShieldCheck, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { DateRangePill, PageHeader } from '../../app/shell';
+import { getApiBaseUrl } from '../../api/client';
+import { approveBill, payBill } from '../../api/financeOperations';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
 import type { Money } from '../../lib/money';
 import { accountByCode } from '../../seed/chartOfAccounts';
@@ -10,8 +12,11 @@ import { matchStatus, type Bill, type BillStatus, type MatchStatus } from '../..
 import { resolveChainFrom, useApprovalPolicyStore } from '../../state/approvalPolicyStore';
 import { useEntityStore } from '../../state/entityStore';
 import { openDoc } from '../../state/docViewerStore';
+import { useGLStore } from '../../state/glStore';
 import { usePayablesStore } from '../../state/payablesStore';
+import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
+import { useTransactionsStore } from '../../state/transactionsStore';
 
 const M = (n: number): Money => ({ amountMinor: BigInt(Math.round(n * 100)), currency: 'USD' });
 const TODAY = new Date('2025-05-18');
@@ -26,8 +31,12 @@ const isOverdue = (b: Bill) => b.status !== 'paid' && new Date(b.dueDate) < TODA
 export function Payables({ canApprove = false }: { canApprove?: boolean }) {
   const scope = useEntityStore((s) => s.scope);
   const bills = usePayablesStore((s) => s.bills);
+  const hydrateBills = usePayablesStore((s) => s.hydrate);
   const approve = usePayablesStore((s) => s.approve);
   const pay = usePayablesStore((s) => s.pay);
+  const hydrateGL = useGLStore((s) => s.hydrate);
+  const hydrateTransactions = useTransactionsStore((s) => s.hydrate);
+  const token = useSessionStore((s) => s.session?.token ?? '');
   const rules = useApprovalPolicyStore((s) => s.rules);
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<BillStatus | 'all'>('all');
@@ -48,6 +57,42 @@ export function Payables({ canApprove = false }: { canApprove?: boolean }) {
   const overdue = scoped.filter(isOverdue).length;
   const outstanding = M(scoped.filter((b) => b.status !== 'paid').reduce((a, b) => a + b.amount, 0));
   const selected = bills.find((b) => b.id === selectedId) ?? null;
+
+  const doApproveRemote = async (b: Bill) => {
+    if (!token) {
+      approve(b.id, 'Finance Lead');
+      toast({ tone: 'success', title: 'Bill approved & posted', body: `${b.vendor} - liability posted to the GL (CR Accounts Payable).` });
+      return;
+    }
+    try {
+      const snapshot = await approveBill(getApiBaseUrl(), token, b.id);
+      hydrateBills(snapshot.bills);
+      hydrateGL(snapshot.journals);
+      hydrateTransactions(snapshot.transactions);
+      toast({ tone: 'success', title: 'Bill approved & posted', body: `${b.vendor} - liability posted to the GL (CR Accounts Payable).` });
+    } catch (error) {
+      toast({ tone: 'danger', title: 'Approval failed', body: error instanceof Error ? error.message : 'Unable to approve bill.' });
+    }
+  };
+
+  const doPayRemote = async (b: Bill) => {
+    if (!token) {
+      pay(b.id);
+      toast({ tone: 'success', title: 'Payment posted', body: `${b.vendor} paid - DR Accounts Payable, CR cash. Books updated.` });
+      setSelectedId(null);
+      return;
+    }
+    try {
+      const snapshot = await payBill(getApiBaseUrl(), token, b.id);
+      hydrateBills(snapshot.bills);
+      hydrateGL(snapshot.journals);
+      hydrateTransactions(snapshot.transactions);
+      toast({ tone: 'success', title: 'Payment posted', body: `${b.vendor} paid - DR Accounts Payable, CR cash. Books updated.` });
+      setSelectedId(null);
+    } catch (error) {
+      toast({ tone: 'danger', title: 'Payment failed', body: error instanceof Error ? error.message : 'Unable to pay bill.' });
+    }
+  };
 
   const doApprove = (b: Bill) => { approve(b.id, 'Finance Lead'); toast({ tone: 'success', title: 'Bill approved & posted', body: `${b.vendor} — liability posted to the GL (CR Accounts Payable).` }); };
   const doPay = (b: Bill) => { pay(b.id); toast({ tone: 'success', title: 'Payment posted', body: `${b.vendor} paid — DR Accounts Payable, CR cash. Books updated.` }); setSelectedId(null); };
@@ -101,7 +146,7 @@ export function Payables({ canApprove = false }: { canApprove?: boolean }) {
         </GlassSurface>
       </div>
 
-      <BillDrawer bill={selected} canApprove={canApprove} rules={rules} onClose={() => setSelectedId(null)} onApprove={doApprove} onPay={doPay} />
+      <BillDrawer bill={selected} canApprove={canApprove} rules={rules} onClose={() => setSelectedId(null)} onApprove={doApproveRemote} onPay={doPayRemote} />
     </div>
   );
 }

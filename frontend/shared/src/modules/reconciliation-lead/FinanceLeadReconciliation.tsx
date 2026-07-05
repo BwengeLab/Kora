@@ -1,10 +1,12 @@
+import { useMutation } from '@tanstack/react-query';
 import * as Dialog from '@radix-ui/react-dialog';
 import { ArrowRight, Check, FileText, Search, Send, Sparkles, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { DateRangePill, PageHeader } from '../../app/shell';
+import { getApiBaseUrl } from '../../api/client';
+import { workflowReconciliationAction } from '../../api/workflow';
 import { ConfidenceChip, GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
 import { useSession } from '../../auth/hooks';
-import { seedTierStats } from '../../seed/reconciliation';
 import type { FieldDelta, Reconciliation, ReconciliationTier } from '../../seed/reconciliation';
 import { openDoc } from '../../state/docViewerStore';
 import { toast } from '../../state/toastStore';
@@ -26,10 +28,13 @@ const DELTA_TONE: Record<FieldDelta['status'], string> = { match: 'text-success'
 // owner's high-level assurance and from the broad Action Center queue.
 export function FinanceLeadReconciliation() {
   const recons = useWorkflowStore((s) => s.reconciliations);
-  const approveRecon = useWorkflowStore((s) => s.approveReconciliation);
-  const rejectRecon = useWorkflowStore((s) => s.rejectReconciliation);
+  const hydrate = useWorkflowStore((s) => s.hydrate);
   const session = useSession();
-  const actor = { name: session?.user.displayName ?? 'Finance Lead', role: session?.roles[0]?.name ?? 'Finance Lead' };
+  const apiBaseUrl = getApiBaseUrl();
+  const mutation = useMutation({
+    mutationFn: ({ id, action }: { id: string; action: 'approve' | 'reject' }) => workflowReconciliationAction(apiBaseUrl, session!.token, id, action),
+    onSuccess: (response) => hydrate(response.snapshot),
+  });
 
   const [query, setQuery] = useState('');
   const [tier, setTier] = useState<ReconciliationTier | 'all'>('all');
@@ -51,9 +56,34 @@ export function FinanceLeadReconciliation() {
     suggested: recons.filter((r) => r.tier === 'suggested' && r.stage !== 'posted').length,
     suspicious: recons.filter((r) => r.tier === 'suspicious' && r.stage !== 'posted').length,
   }), [recons]);
+  const tierStats = useMemo(
+    () =>
+      (['auto', 'suggested', 'review', 'duplicate', 'suspicious'] as ReconciliationTier[]).map((value) => ({
+        tier: value,
+        label: TIER_LABEL[value],
+        count: recons.filter((r) => r.tier === value && r.stage !== 'posted').length,
+      })),
+    [recons],
+  );
 
-  const approve = (r: Reconciliation) => { approveRecon(r.id, actor); toast({ tone: 'success', title: 'Match approved & posted', body: `${r.transaction.counterparty} reconciled and written to the audit log.` }); setSelectedId(null); };
-  const sendBack = (r: Reconciliation) => { rejectRecon(r.id); toast({ tone: 'warning', title: 'Sent back', body: `${r.transaction.counterparty} returned to the operator to re-prepare.` }); setSelectedId(null); };
+  const approve = async (r: Reconciliation) => {
+    try {
+      await mutation.mutateAsync({ id: r.id, action: 'approve' });
+      toast({ tone: 'success', title: 'Match approved & posted', body: `${r.transaction.counterparty} reconciled and written to the audit log.` });
+      setSelectedId(null);
+    } catch (error) {
+      toast({ tone: 'danger', title: 'Approve failed', body: error instanceof Error ? error.message : 'Could not approve match.' });
+    }
+  };
+  const sendBack = async (r: Reconciliation) => {
+    try {
+      await mutation.mutateAsync({ id: r.id, action: 'reject' });
+      toast({ tone: 'warning', title: 'Sent back', body: `${r.transaction.counterparty} returned to the operator to re-prepare.` });
+      setSelectedId(null);
+    } catch (error) {
+      toast({ tone: 'danger', title: 'Send back failed', body: error instanceof Error ? error.message : 'Could not return match.' });
+    }
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -103,7 +133,7 @@ export function FinanceLeadReconciliation() {
           <div className="flex flex-col gap-4">
             <GlassSurface tone="strong" className="flex flex-col gap-2.5 p-4">
               <h4 className="text-[12px] font-bold text-ink">By tier</h4>
-              {seedTierStats.map((t) => (
+              {tierStats.map((t) => (
                 <button key={t.tier} type="button" onClick={() => setTier(t.tier === 'auto' ? 'all' : t.tier)} className="flex items-center justify-between rounded-xl bg-white/55 p-2.5 text-left ring-1 ring-white/60 hover:bg-white">
                   <span className="inline-flex items-center gap-2 text-[11.5px] font-semibold text-ink"><span className={cn('size-2 rounded-full', TIER_TONE[t.tier])} />{t.label}</span>
                   <span className="text-[11.5px] font-bold tabular text-ink-soft">{t.count.toLocaleString()}</span>
@@ -112,7 +142,7 @@ export function FinanceLeadReconciliation() {
             </GlassSurface>
             <GlassSurface tone="strong" className="flex flex-col gap-2 bg-gradient-to-br from-ai-soft/60 to-white/40 p-4 ring-1 ring-ai/15">
               <header className="flex items-center gap-1.5"><Sparkles className="size-3.5 text-ai" /><h4 className="text-[12px] font-bold text-ink">Reconciliation agent</h4></header>
-              <button type="button" onClick={() => setTier('suspicious')} className="rounded-xl bg-white/65 p-2.5 text-left text-[11.5px] text-ink ring-1 ring-white/60 hover:bg-white"><span className="font-bold text-danger">1 suspicious match</span> needs your decision before posting. <span className="font-semibold text-brand">Review →</span></button>
+              <button type="button" onClick={() => setTier('suspicious')} className="rounded-xl bg-white/65 p-2.5 text-left text-[11.5px] text-ink ring-1 ring-white/60 hover:bg-white"><span className="font-bold text-danger">{counts.suspicious} suspicious {counts.suspicious === 1 ? 'match' : 'matches'}</span> need your decision before posting. <span className="font-semibold text-brand">Review →</span></button>
             </GlassSurface>
           </div>
         </div>

@@ -24,6 +24,7 @@ function seedTxns(): Txn[] {
 
 interface TxnState {
   txns: Txn[];
+  hydrate: (txns: Txn[]) => void;
   classify: (id: string, category: CashCategory) => void;
   setReview: (id: string, review: ReviewState) => void;
   setNote: (id: string, note: string) => void;
@@ -33,6 +34,7 @@ interface TxnState {
 
 export const useTransactionsStore = create<TxnState>((set) => ({
   txns: seedTxns(),
+  hydrate: (txns) => set({ txns }),
   classify: (id, category) => set((s) => ({ txns: s.txns.map((t) => (t.id === id ? { ...t, category, review: t.review === 'needs-review' ? 'reviewed' : t.review } : t)) })),
   setReview: (id, review) => set((s) => ({ txns: s.txns.map((t) => (t.id === id ? { ...t, review } : t)) })),
   setNote: (id, note) => set((s) => ({ txns: s.txns.map((t) => (t.id === id ? { ...t, note } : t)) })),

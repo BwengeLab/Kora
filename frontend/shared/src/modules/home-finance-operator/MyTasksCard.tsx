@@ -10,7 +10,7 @@ const STATUS: Record<TaskStatus, { label: string; icon: LucideIcon; tone: string
   returned: { label: 'Returned', icon: RotateCcw, tone: 'bg-danger-soft text-danger' },
 };
 
-export function MyTasksCard() {
+export function MyTasksCard({ tasks = seedOperatorTasks }: { tasks?: typeof seedOperatorTasks }) {
   return (
     <GlassSurface tone="strong" className="flex h-full min-h-0 flex-col gap-3 p-6">
       <header className="flex items-center justify-between gap-3">
@@ -20,7 +20,7 @@ export function MyTasksCard() {
         </Link>
       </header>
       <ul className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-0.5">
-        {seedOperatorTasks.map((t) => {
+        {tasks.map((t) => {
           const s = STATUS[t.status];
           return (
             <li key={t.id} className="flex items-center gap-3 rounded-2xl bg-white/55 p-3 ring-1 ring-white/60">

@@ -8,6 +8,8 @@ Implemented as a replay-safe connector import framework with offline/import conn
 
 `libs/connectors` validates connector connections, rejects raw credentials in config, requires secret references, converts connector records into existing ingestion source records, and normalizes those records through the generic Kora business event pipeline.
 
+Stored connector connections are now first-class backend objects through the integrations HTTP service, so MoMo imports and sync flows can resolve a previously registered `connection_id` instead of requiring the full connection payload on every request.
+
 Supported connector kinds are:
 
 - `MOMO`
@@ -24,6 +26,7 @@ Kora now includes a provider-specific MTN MoMo sandbox client:
 
 - `libs/connectors/momo/client.go`
 - `services/integrations/cmd/momo-sandbox/main.go`
+- `services/integrations/cmd/momo-kora/main.go`
 - `docs/24-MOMO-SANDBOX.md`
 
 The adapter covers sandbox provisioning and auth:
@@ -35,15 +38,27 @@ The adapter covers sandbox provisioning and auth:
 - account-holder validation
 - request-to-pay submission
 - request-to-pay status lookup
+- bulk request status refresh with optional auto-import
 - request-to-pay callback ingestion
+- request-to-pay callback URL generation and provider callback listener support
 - request lifecycle history
 - provider transaction import into generic connector records
 - bulk MoMo transaction sync import
+- automatic status refresh and auto-import in the integrations server runtime
+- a receivables simulation runner for invoice, premium, installment, and other receivable collection scenarios
 
 MoMo request lifecycle persistence now has an append-only SQL schema:
 
 - `deploy/migrations/022_momo_request_tracking.sql`
 - `testdata/sql/phase16_momo_request_tracking_acceptance.sql`
+
+Runtime tracker implementations now include:
+
+- in-memory tracker
+- append-only journal tracker
+- direct SQL-backed tracker
+
+When `MOMO_TRACKER_DATABASE_URL` or `DATABASE_URL` is set, the integrations service now treats SQL tracker startup as required and fails fast if the tracker cannot initialize. That prevents silent fallback to memory in production-style environments.
 
 Raw credentials are still not stored in connector config or persistence. Local development uses environment variables until a real secrets manager is wired in.
 
@@ -53,6 +68,8 @@ Connector imports require an idempotency key and stable source record IDs. The i
 
 ## API And Persistence
 
+- `POST /v1/integrations/connections`
+- `POST /v1/integrations/connections/query`
 - `POST /v1/integrations/validate`
 - `POST /v1/integrations/import`
 - `proto/integrations/integrations.proto`

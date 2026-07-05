@@ -1,5 +1,8 @@
+import { useMutation } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { Check, Sparkles, X } from 'lucide-react';
+import { getApiBaseUrl } from '../../api/client';
+import { workflowReconciliationAction } from '../../api/workflow';
 import { ConfidenceChip, GlassSurface, MoneyCell, PartyAvatar } from '../../design-system';
 import { useSession } from '../../auth/hooks';
 import { toast } from '../../state/toastStore';
@@ -11,24 +14,35 @@ import { useWorkflowStore } from '../../state/workflowStore';
 export function AgentSuggestionsCard() {
   const recons = useWorkflowStore((s) => s.reconciliations);
   const dismissed = useWorkflowStore((s) => s.dismissedReconIds);
-  const prepareMatch = useWorkflowStore((s) => s.prepareMatch);
-  const dismissSuggestion = useWorkflowStore((s) => s.dismissSuggestion);
+  const hydrate = useWorkflowStore((s) => s.hydrate);
   const session = useSession();
   const navigate = useNavigate();
-  const actor = { name: session?.user.displayName ?? 'Operator', role: session?.roles[0]?.name ?? 'Finance Operator' };
+  const apiBaseUrl = getApiBaseUrl();
+  const mutation = useMutation({
+    mutationFn: ({ id, action }: { id: string; action: 'prepare' | 'dismiss' }) => workflowReconciliationAction(apiBaseUrl, session!.token, id, action),
+    onSuccess: (response) => hydrate(response.snapshot),
+  });
 
   const suggestions = recons.filter(
     (r) => r.suggestedRecord && (r.stage === 'reviewing' || r.stage === 'detected') && !dismissed.includes(r.id),
   );
 
-  const accept = (id: string, party: string) => {
-    prepareMatch(id, actor);
-    toast({ tone: 'success', title: 'Match prepared', body: `${party} sent to Finance Lead for approval.` });
+  const accept = async (id: string, party: string) => {
+    try {
+      await mutation.mutateAsync({ id, action: 'prepare' });
+      toast({ tone: 'success', title: 'Match prepared', body: `${party} sent to Finance Lead for approval.` });
+    } catch (error) {
+      toast({ tone: 'danger', title: 'Prepare failed', body: error instanceof Error ? error.message : 'Could not prepare match.' });
+    }
   };
 
-  const dismiss = (id: string) => {
-    dismissSuggestion(id);
-    toast({ tone: 'info', title: 'Suggestion dismissed', body: 'Removed from your review list.' });
+  const dismiss = async (id: string) => {
+    try {
+      await mutation.mutateAsync({ id, action: 'dismiss' });
+      toast({ tone: 'info', title: 'Suggestion dismissed', body: 'Removed from your review list.' });
+    } catch (error) {
+      toast({ tone: 'danger', title: 'Dismiss failed', body: error instanceof Error ? error.message : 'Could not dismiss suggestion.' });
+    }
   };
 
   return (
@@ -69,7 +83,7 @@ export function AgentSuggestionsCard() {
                 type="button"
                 aria-label="Dismiss"
                 title="Dismiss"
-                onClick={() => dismiss(r.id)}
+                onClick={() => void dismiss(r.id)}
                 className="grid size-8 place-items-center rounded-xl bg-white/70 text-ink-muted ring-1 ring-white/70 transition-colors hover:bg-danger-soft hover:text-danger"
               >
                 <X className="size-4" />
@@ -78,7 +92,7 @@ export function AgentSuggestionsCard() {
                 type="button"
                 aria-label="Accept and prepare"
                 title="Accept & prepare"
-                onClick={() => accept(r.id, r.transaction.counterparty)}
+                onClick={() => void accept(r.id, r.transaction.counterparty)}
                 className="grid size-8 place-items-center rounded-xl bg-gradient-to-br from-brand to-brand-ink text-white shadow-glass-soft transition-transform hover:-translate-y-0.5"
               >
                 <Check className="size-4" />

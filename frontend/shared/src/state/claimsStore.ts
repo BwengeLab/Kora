@@ -7,17 +7,36 @@ import { seedClaims, type Claim, type ClaimStage } from '../seed/claims';
 
 const ORDER: ClaimStage[] = ['fnol', 'triage', 'adjusting', 'approval', 'settlement', 'closed'];
 
-const clone = (): Claim[] => seedClaims.map((c) => ({ ...c, fraudFlags: [...c.fraudFlags] }));
+const cloneClaims = (claims: Claim[]): Claim[] =>
+  claims.map((c) => ({
+    ...c,
+    fraudFlags: [...c.fraudFlags],
+    evidence: c.evidence.map((doc) => ({ ...doc })),
+  }));
+
+const clone = (): Claim[] => cloneClaims(seedClaims);
 
 interface ClaimsState {
+  initialClaims: Claim[];
   claims: Claim[];
+  hydrate: (claims: Claim[]) => void;
+  loadClaims: (claims: Claim[]) => void;
   advance: (id: string) => ClaimStage | null;
   referSIU: (id: string) => void;
   reset: () => void;
 }
 
 export const useClaimsStore = create<ClaimsState>((set, get) => ({
+  initialClaims: clone(),
   claims: clone(),
+  hydrate: (claims) => {
+    const next = cloneClaims(claims);
+    set({ initialClaims: next, claims: cloneClaims(next) });
+  },
+  loadClaims: (claims) => {
+    const next = cloneClaims(claims);
+    set({ initialClaims: next, claims: cloneClaims(next) });
+  },
   advance: (id) => {
     const c = get().claims.find((x) => x.id === id);
     if (!c) return null;
@@ -40,5 +59,5 @@ export const useClaimsStore = create<ClaimsState>((set, get) => ({
       ),
     }));
   },
-  reset: () => set({ claims: clone() }),
+  reset: () => set((state) => ({ claims: cloneClaims(state.initialClaims) })),
 }));

@@ -2,9 +2,10 @@ import { Link } from '@tanstack/react-router';
 import { ArrowUpRight, Info } from 'lucide-react';
 import { AreaChart, GlassSurface, MoneyCell } from '../../design-system';
 import { seedCashForecast } from '../../seed/financeLeadHome';
+import type { FinanceLeadDashboardPayload } from '../../api/governanceOps';
 
-export function CashForecastCard() {
-  const c = seedCashForecast;
+export function CashForecastCard({ forecast = seedCashForecast }: { forecast?: FinanceLeadDashboardPayload['cashForecast'] }) {
+  const c = forecast;
   return (
     <GlassSurface tone="strong" className="flex h-full flex-col gap-4 p-6">
       <header className="flex items-center justify-between gap-3">

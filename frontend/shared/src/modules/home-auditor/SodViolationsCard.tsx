@@ -2,7 +2,7 @@ import { ChevronRight, ShieldAlert } from 'lucide-react';
 import { GlassSurface, cn } from '../../design-system';
 import { seedSodViolations } from '../../seed/auditorHome';
 
-export function SodViolationsCard() {
+export function SodViolationsCard({ items = seedSodViolations }: { items?: typeof seedSodViolations }) {
   return (
     <GlassSurface tone="strong" className="flex h-full flex-col gap-3 p-6">
       <header className="flex items-center gap-2">
@@ -12,7 +12,7 @@ export function SodViolationsCard() {
         <h3 className="font-display text-base font-bold text-ink">Segregation-of-duty violations</h3>
       </header>
       <ul className="flex flex-col gap-2">
-        {seedSodViolations.map((v) => (
+        {items.map((v) => (
           <li key={v.id}>
             <button type="button" className="group flex w-full items-center gap-3 rounded-2xl bg-white/55 p-3 text-left ring-1 ring-white/60 hover:bg-white">
               <div className="min-w-0 flex-1">

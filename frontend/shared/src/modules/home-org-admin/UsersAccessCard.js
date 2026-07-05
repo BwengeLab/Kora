@@ -1,0 +1,12 @@
+import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { Link } from '@tanstack/react-router';
+import { AlertTriangle, Plus, Wand2 } from 'lucide-react';
+import { GlassSurface, PartyAvatar, cn } from '../../design-system';
+const STATUS_TONE = {
+    active: 'bg-success-soft text-success',
+    invited: 'bg-warning-soft text-warning',
+    suspended: 'bg-danger-soft text-danger',
+};
+export function UsersAccessCard({ users }) {
+    return (_jsxs(GlassSurface, { tone: "strong", className: "flex h-full min-h-0 flex-col gap-3 p-6", children: [_jsxs("header", { className: "flex items-center justify-between gap-3", children: [_jsx("h3", { className: "font-display text-base font-bold text-ink", children: "Users & access" }), _jsxs("div", { className: "flex items-center gap-2", children: [_jsxs(Link, { to: "/settings/users-and-roles", className: "inline-flex h-9 items-center gap-1.5 rounded-xl bg-white/65 px-3 text-[12px] font-bold text-ink-soft ring-1 ring-white/70 hover:bg-white hover:text-ink", children: [_jsx(Wand2, { className: "size-3.5" }), " Role builder"] }), _jsxs(Link, { to: "/settings/users-and-roles", className: "inline-flex h-9 items-center gap-1.5 rounded-xl bg-gradient-to-br from-brand to-brand-ink px-3 text-[12px] font-bold text-white shadow-glass-soft", children: [_jsx(Plus, { className: "size-3.5" }), " Invite user"] })] })] }), _jsx("ul", { className: "scrollbar-thin flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-0.5", children: users.map((user) => (_jsxs("li", { className: "flex items-center gap-3 rounded-2xl bg-white/55 p-3 ring-1 ring-white/60", children: [_jsx(PartyAvatar, { name: user.name, size: "md" }), _jsxs("div", { className: "min-w-0 flex-1", children: [_jsxs("div", { className: "flex items-center gap-2", children: [_jsx("p", { className: "truncate text-[13px] font-bold text-ink", children: user.name }), user.sodConflict ? (_jsxs("span", { className: "inline-flex items-center gap-1 rounded-full bg-danger-soft px-1.5 py-0.5 text-[9px] font-bold text-danger", children: [_jsx(AlertTriangle, { className: "size-2.5" }), " SoD"] })) : null] }), _jsxs("p", { className: "truncate text-[11px] text-ink-muted", children: [user.roles.join(', '), " \u00B7 ", user.lastActive] })] }), _jsx("span", { className: cn('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase', STATUS_TONE[user.status]), children: user.status })] }, user.id))) })] }));
+}

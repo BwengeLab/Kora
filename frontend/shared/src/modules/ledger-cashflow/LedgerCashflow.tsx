@@ -1,11 +1,13 @@
 import { ArrowUpRight, Banknote, Download, Info, Percent, TrendingUp, Wallet2 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { getApiBaseUrl } from '../../api/client';
+import { fetchFinanceCashflowView, flagCashMovement, holdCashMovement, postCashMovement, reconcileCashMovement, type FinanceCashflowViewPayload } from '../../api/financeAuditViews';
 import { DateRangePill, PageHeader } from '../../app/shell';
 import { AreaChart, GlassSurface, KpiCard, MoneyCell, cn } from '../../design-system';
 import type { Money } from '../../lib/money';
-import { CATEGORY_META, OPENING_BALANCE, seedCashMovements, type CashCategory } from '../../seed/cashLedger';
+import { seedCashMovements, type CashMovement } from '../../seed/cashLedger';
 import { seedLedgerCashflow, seedLedgerKpis, seedMarginBySegment, seedPnl, type LedgerKpi } from '../../seed/ownerLedger';
-import { useEntityStore } from '../../state/entityStore';
+import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
 import { CashMovementsTab } from './CashMovementsTab';
 import type { LedgerMode } from './MovementDrawer';
@@ -27,21 +29,93 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 const LEDGER_SUBTITLE: Record<LedgerMode, string> = {
-  operate: 'Every cash movement — record and reconcile each one against the bank, none missed.',
-  post: 'Every cash movement — review and post each entry to the ledger. You commit; the operator reconciles.',
-  oversight: 'Every cash movement in the business — what came in, what went out, and why.',
-  read: 'Every cash movement in the business — read-only, with full purpose and evidence.',
+  operate: 'Every cash movement - record and reconcile each one against the bank, none missed.',
+  post: 'Every cash movement - review and post each entry to the ledger. You commit; the operator reconciles.',
+  oversight: 'Every cash movement in the business - what came in, what went out, and why.',
+  read: 'Every cash movement in the business - read-only, with full purpose and evidence.',
 };
 
-// "Cash Flow / Ledger" — a working ledger, not a dashboard. The body is every
-// cash movement (with its purpose), filterable and drillable. The action you can
-// take on a movement is role-aware (operate / post / oversight / read).
 export function LedgerCashflow({ mode = 'oversight' }: { mode?: LedgerMode }) {
-  // The Finance Operator works at the transaction level — cash movements and the
-  // derived cashflow statement. Profit & loss and the forecast are management
-  // analysis (Lead / Owner), so they're hidden from the operator.
-  const tabs = mode === 'operate' ? TABS.filter((t) => t.id === 'movements' || t.id === 'statement') : TABS;
+  const token = useSessionStore((s) => s.session?.token ?? '');
+  const apiBaseUrl = getApiBaseUrl();
+  const tabs = mode === 'operate' ? TABS.filter((item) => item.id === 'movements' || item.id === 'statement') : TABS;
   const [tab, setTab] = useState<Tab>('movements');
+  const [view, setView] = useState<FinanceCashflowViewPayload | null>(null);
+
+  useEffect(() => {
+    if (!token) return;
+    const controller = new AbortController();
+    fetchFinanceCashflowView(apiBaseUrl, token, controller.signal)
+      .then(setView)
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          toast({ tone: 'warning', title: 'Cashflow unavailable', body: error instanceof Error ? error.message : 'Could not load ledger cashflow.' });
+        }
+      });
+    return () => controller.abort();
+  }, [apiBaseUrl, token]);
+
+  const kpis = view?.kpis ?? seedLedgerKpis;
+  const forecast = view?.forecast ?? seedLedgerCashflow;
+  const pnl = view?.pnl ?? seedPnl;
+  const marginBySegment = view?.marginBySegment ?? seedMarginBySegment;
+  const movements = view?.movements ?? seedCashMovements;
+  const openingBalance = view?.openingBalance ?? { amountMinor: 198000000n, currency: 'USD' };
+
+  const refresh = async (runner: () => Promise<FinanceCashflowViewPayload>, success: { title: string; body: string }) => {
+    try {
+      const payload = await runner();
+      setView(payload);
+      toast({ tone: 'success', title: success.title, body: success.body });
+    } catch (error) {
+      toast({ tone: 'warning', title: 'Action failed', body: error instanceof Error ? error.message : 'Could not update the cash movement.' });
+    }
+  };
+
+  const handleReconcile = async (movement: CashMovement) => {
+    if (!token) {
+      toast({ tone: 'success', title: 'Marked reconciled', body: `${movement.reference} matched and reconciled.` });
+      return;
+    }
+    await refresh(() => reconcileCashMovement(apiBaseUrl, token, movement.id), {
+      title: 'Marked reconciled',
+      body: `${movement.reference} matched and reconciled.`,
+    });
+  };
+
+  const handleHold = async (movement: CashMovement) => {
+    if (!token) {
+      toast({ tone: 'warning', title: 'Held for query', body: `${movement.reference} held - sent back to the operator with a query.` });
+      return;
+    }
+    await refresh(() => holdCashMovement(apiBaseUrl, token, movement.id, 'Held for operator follow-up.'), {
+      title: 'Held for query',
+      body: `${movement.reference} held - sent back to the operator with a query.`,
+    });
+  };
+
+  const handlePost = async (movement: CashMovement) => {
+    if (!token) {
+      toast({ tone: 'success', title: 'Posted to ledger', body: `${movement.reference} committed to the general ledger and audited.` });
+      return;
+    }
+    await refresh(() => postCashMovement(apiBaseUrl, token, movement.id), {
+      title: 'Posted to ledger',
+      body: `${movement.reference} committed to the general ledger and audited.`,
+    });
+  };
+
+  const handleFlag = async (movement: CashMovement) => {
+    if (!token) {
+      toast({ tone: 'warning', title: 'Flagged for review', body: `${movement.reference} flagged for finance to check.` });
+      return;
+    }
+    await refresh(() => flagCashMovement(apiBaseUrl, token, movement.id, 'Flagged from cashflow oversight.'), {
+      title: 'Flagged for review',
+      body: `${movement.reference} flagged for finance to check.`,
+    });
+  };
+
   return (
     <div className="flex h-full flex-col">
       <PageHeader
@@ -57,96 +131,108 @@ export function LedgerCashflow({ mode = 'oversight' }: { mode?: LedgerMode }) {
         }
       />
       <div className="@container flex min-h-0 flex-1 flex-col gap-5 px-8 pb-6">
-        {/* Orient band */}
         <section className="grid grid-cols-1 gap-4 @2xl:grid-cols-2 @5xl:grid-cols-4">
-          {seedLedgerKpis.map((k) =>
-            k.money ? (
-              <KpiCard key={k.id} label={k.label} money={k.money} icon={KPI_ICON[k.id]} delta={k.delta} positiveDirection={k.positiveDirection} />
+          {kpis.map((kpi) =>
+            kpi.money ? (
+              <KpiCard key={kpi.id} label={kpi.label} money={kpi.money} icon={KPI_ICON[kpi.id]} delta={kpi.delta} positiveDirection={kpi.positiveDirection} />
             ) : (
-              <KpiCard key={k.id} label={k.label} valueText={k.valueText!} icon={KPI_ICON[k.id]} delta={k.delta} positiveDirection={k.positiveDirection} />
+              <KpiCard key={kpi.id} label={kpi.label} valueText={kpi.valueText!} icon={KPI_ICON[kpi.id]} delta={kpi.delta} positiveDirection={kpi.positiveDirection} />
             ),
           )}
         </section>
 
-        {/* Tabs */}
         <div className="flex gap-1 border-b border-white/55">
-          {tabs.map((t) => (
-            <button key={t.id} type="button" onClick={() => setTab(t.id)} className={cn('relative px-3.5 pb-2.5 text-[13.5px] font-semibold transition-colors', tab === t.id ? 'text-ink' : 'text-ink-muted hover:text-ink-soft')}>
-              {t.label}
-              {tab === t.id ? <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-brand" /> : null}
+          {tabs.map((item) => (
+            <button key={item.id} type="button" onClick={() => setTab(item.id)} className={cn('relative px-3.5 pb-2.5 text-[13.5px] font-semibold transition-colors', tab === item.id ? 'text-ink' : 'text-ink-muted hover:text-ink-soft')}>
+              {item.label}
+              {tab === item.id ? <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-brand" /> : null}
             </button>
           ))}
         </div>
 
-        {/* Tab content */}
-        {tab === 'movements' ? <CashMovementsTab mode={mode} /> : null}
-        {tab === 'statement' ? <StatementTab /> : null}
-        {tab === 'pnl' ? <PnlTab /> : null}
-        {tab === 'forecast' ? <ForecastTab /> : null}
+        {tab === 'movements' ? <CashMovementsTab mode={mode} movements={movements} openingBalance={openingBalance} onReconcile={handleReconcile} onHold={handleHold} onPost={handlePost} onFlag={handleFlag} /> : null}
+        {tab === 'statement' ? <StatementTab movements={movements} openingBalance={openingBalance} /> : null}
+        {tab === 'pnl' ? <PnlTab lines={pnl} marginBySegment={marginBySegment} /> : null}
+        {tab === 'forecast' ? <ForecastTab forecast={forecast} /> : null}
       </div>
     </div>
   );
 }
 
-// ── Cashflow statement (computed from the movements) ────────────────────────
-function StatementTab() {
-  const scope = useEntityStore((s) => s.scope);
+function StatementTab({ movements, openingBalance }: { movements: CashMovement[]; openingBalance: Money }) {
   const rows = useMemo(() => {
-    const movements = scope === 'all' ? seedCashMovements : seedCashMovements.filter((m) => m.entity === scope);
-    const map = new Map<CashCategory, { in: bigint; out: bigint }>();
-    for (const m of movements) {
-      const e = map.get(m.category) ?? { in: 0n, out: 0n };
-      if (m.direction === 'in') e.in += m.amount.amountMinor;
-      else e.out += m.amount.amountMinor;
-      map.set(m.category, e);
+    const map = new Map<string, { inflow: bigint; outflow: bigint }>();
+    for (const movement of movements) {
+      const entry = map.get(movement.category) ?? { inflow: 0n, outflow: 0n };
+      if (movement.direction === 'in') entry.inflow += movement.amount.amountMinor;
+      else entry.outflow += movement.amount.amountMinor;
+      map.set(movement.category, entry);
     }
-    return [...map.entries()].map(([cat, v]) => ({ cat, inflow: v.in, outflow: v.out, net: v.in - v.out }));
-  }, [scope]);
+    return [...map.entries()].map(([category, value]) => ({ category, inflow: value.inflow, outflow: value.outflow, net: value.inflow - value.outflow }));
+  }, [movements]);
 
-  const financingCats: CashCategory[] = ['loan'];
-  const operating = rows.filter((r) => !financingCats.includes(r.cat));
-  const financing = rows.filter((r) => financingCats.includes(r.cat));
-  const opNet = operating.reduce((a, r) => a + r.net, 0n);
-  const finNet = financing.reduce((a, r) => a + r.net, 0n);
+  const financingCats = ['loan'];
+  const operating = rows.filter((row) => !financingCats.includes(row.category));
+  const financing = rows.filter((row) => financingCats.includes(row.category));
+  const opNet = operating.reduce((sum, row) => sum + row.net, 0n);
+  const finNet = financing.reduce((sum, row) => sum + row.net, 0n);
   const netChange = opNet + finNet;
-  const closing = OPENING_BALANCE.amountMinor + netChange;
-  const m = (v: bigint): Money => ({ amountMinor: v, currency: 'USD' });
+  const closing = openingBalance.amountMinor + netChange;
+  const money = (value: bigint): Money => ({ amountMinor: value, currency: 'USD' });
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
       <GlassSurface tone="strong" className="mx-auto max-w-3xl p-7">
         <h3 className="font-display text-lg font-bold text-ink">Cashflow statement · May 2025</h3>
         <div className="mt-4 grid grid-cols-[1fr_auto_auto_auto] gap-x-6 text-[10.5px] font-bold uppercase tracking-wider text-ink-muted">
-          <span /><span className="text-right">In</span><span className="text-right">Out</span><span className="text-right">Net</span>
+          <span />
+          <span className="text-right">In</span>
+          <span className="text-right">Out</span>
+          <span className="text-right">Net</span>
         </div>
 
         <Section title="Operating activities" rows={operating} />
-        <SubtotalRow label="Net cash from operations" amount={m(opNet)} />
+        <SubtotalRow label="Net cash from operations" amount={money(opNet)} />
 
         <Section title="Financing activities" rows={financing} />
-        <SubtotalRow label="Net cash from financing" amount={m(finNet)} />
+        <SubtotalRow label="Net cash from financing" amount={money(finNet)} />
 
         <div className="mt-4 space-y-1.5 border-t-2 border-ink/15 pt-3">
-          <BalanceRow label="Opening balance" amount={OPENING_BALANCE} />
-          <BalanceRow label="Net change in cash" amount={m(netChange)} signed />
-          <BalanceRow label="Closing balance" amount={m(closing)} bold />
+          <BalanceRow label="Opening balance" amount={openingBalance} />
+          <BalanceRow label="Net change in cash" amount={money(netChange)} signed />
+          <BalanceRow label="Closing balance" amount={money(closing)} bold />
         </div>
       </GlassSurface>
     </div>
   );
 }
 
-function Section({ title, rows }: { title: string; rows: { cat: CashCategory; inflow: bigint; outflow: bigint; net: bigint }[] }) {
+function Section({ title, rows }: { title: string; rows: { category: string; inflow: bigint; outflow: bigint; net: bigint }[] }) {
+  const categoryLabels: Record<string, string> = {
+    premium: 'Premium',
+    claim: 'Claim payout',
+    commission: 'Commission',
+    payroll: 'Payroll',
+    supplier: 'Supplier',
+    rent: 'Rent',
+    software: 'Software',
+    tax: 'Tax',
+    loan: 'Loan',
+    refund: 'Refund',
+    fee: 'Fee income',
+    reinsurance: 'Reinsurance',
+  };
+
   return (
     <div className="mt-4">
       <p className="text-[12px] font-bold uppercase tracking-wider text-ink-muted">{title}</p>
       <ul>
-        {rows.map((r) => (
-          <li key={r.cat} className="grid grid-cols-[1fr_auto_auto_auto] gap-x-6 border-b border-white/45 py-2 text-[13px]">
-            <span className="font-medium text-ink">{CATEGORY_META[r.cat].label}</span>
-            <span className="text-right tabular text-success">{r.inflow > 0n ? <MoneyCell amount={{ amountMinor: r.inflow, currency: 'USD' }} size="sm" className="!text-[12.5px] text-success" /> : '—'}</span>
-            <span className="text-right tabular text-danger">{r.outflow > 0n ? <MoneyCell amount={{ amountMinor: r.outflow, currency: 'USD' }} size="sm" className="!text-[12.5px] text-danger" /> : '—'}</span>
-            <span className={cn('text-right font-semibold tabular', r.net >= 0n ? 'text-ink' : 'text-danger')}><MoneyCell amount={{ amountMinor: r.net, currency: 'USD' }} size="sm" className="!text-[12.5px]" showSign /></span>
+        {rows.map((row) => (
+          <li key={row.category} className="grid grid-cols-[1fr_auto_auto_auto] gap-x-6 border-b border-white/45 py-2 text-[13px]">
+            <span className="font-medium text-ink">{categoryLabels[row.category] ?? row.category}</span>
+            <span className="text-right tabular text-success">{row.inflow > 0n ? <MoneyCell amount={{ amountMinor: row.inflow, currency: 'USD' }} size="sm" className="!text-[12.5px] text-success" /> : '—'}</span>
+            <span className="text-right tabular text-danger">{row.outflow > 0n ? <MoneyCell amount={{ amountMinor: row.outflow, currency: 'USD' }} size="sm" className="!text-[12.5px] text-danger" /> : '—'}</span>
+            <span className={cn('text-right font-semibold tabular', row.net >= 0n ? 'text-ink' : 'text-danger')}><MoneyCell amount={{ amountMinor: row.net, currency: 'USD' }} size="sm" className="!text-[12.5px]" showSign /></span>
           </li>
         ))}
       </ul>
@@ -172,22 +258,23 @@ function BalanceRow({ label, amount, signed, bold }: { label: string; amount: Mo
   );
 }
 
-// ── P&L tab ─────────────────────────────────────────────────────────────────
-function PnlTab() {
+function PnlTab({ lines, marginBySegment }: { lines: FinanceCashflowViewPayload['pnl']; marginBySegment: FinanceCashflowViewPayload['marginBySegment'] }) {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
       <div className="grid grid-cols-1 gap-5 @5xl:grid-cols-2">
         <GlassSurface tone="strong" className="flex flex-col gap-3 p-6">
           <h3 className="font-display text-base font-bold text-ink">Profit &amp; loss · May 2025</h3>
           <div className="grid grid-cols-[1fr_auto_auto] items-center gap-x-4 text-[10.5px] font-bold uppercase tracking-wider text-ink-muted">
-            <span /><span className="text-right">This period</span><span className="text-right">Prior</span>
+            <span />
+            <span className="text-right">This period</span>
+            <span className="text-right">Prior</span>
           </div>
           <ul className="flex flex-col">
-            {seedPnl.map((l) => (
-              <li key={l.label} className={cn('grid grid-cols-[1fr_auto_auto] items-center gap-x-4 py-2.5', l.emphasis && 'border-t border-white/55', l.emphasis === 'total' && 'mt-1 rounded-xl bg-white/55 px-3 ring-1 ring-white/60')}>
-                <span className={cn('text-[13px]', l.emphasis ? 'font-bold text-ink' : 'font-medium text-ink-soft')}>{l.label}</span>
-                <MoneyCell amount={l.amount} size="sm" className={cn('text-right !text-[13px]', l.emphasis === 'total' && 'font-bold')} />
-                <MoneyCell amount={l.prior} size="sm" className="text-right !text-[12px] text-ink-muted" />
+            {lines.map((line) => (
+              <li key={line.label} className={cn('grid grid-cols-[1fr_auto_auto] items-center gap-x-4 py-2.5', line.emphasis && 'border-t border-white/55', line.emphasis === 'total' && 'mt-1 rounded-xl bg-white/55 px-3 ring-1 ring-white/60')}>
+                <span className={cn('text-[13px]', line.emphasis ? 'font-bold text-ink' : 'font-medium text-ink-soft')}>{line.label}</span>
+                <MoneyCell amount={line.amount} size="sm" className={cn('text-right !text-[13px]', line.emphasis === 'total' && 'font-bold')} />
+                <MoneyCell amount={line.prior} size="sm" className="text-right !text-[12px] text-ink-muted" />
               </li>
             ))}
           </ul>
@@ -195,13 +282,13 @@ function PnlTab() {
         <GlassSurface tone="strong" className="flex flex-col gap-3 p-6">
           <h3 className="font-display text-base font-bold text-ink">Margin by segment</h3>
           <ul className="flex flex-col gap-3">
-            {seedMarginBySegment.map((s) => (
-              <li key={s.segment}>
+            {marginBySegment.map((segment) => (
+              <li key={segment.segment}>
                 <div className="flex items-center justify-between text-[12.5px]">
-                  <span className="font-semibold text-ink">{s.segment}</span>
-                  <span className="flex items-center gap-1.5 font-bold text-ink">{s.marginPct}%<span className={cn('text-[10.5px] font-bold', s.trendPts >= 0 ? 'text-success' : 'text-danger')}>{s.trendPts >= 0 ? '+' : ''}{s.trendPts}pp</span></span>
+                  <span className="font-semibold text-ink">{segment.segment}</span>
+                  <span className="flex items-center gap-1.5 font-bold text-ink">{segment.marginPct}%<span className={cn('text-[10.5px] font-bold', segment.trendPts >= 0 ? 'text-success' : 'text-danger')}>{segment.trendPts >= 0 ? '+' : ''}{segment.trendPts}pp</span></span>
                 </div>
-                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-ink/8"><div className="h-full rounded-full bg-gradient-to-r from-brand to-ai" style={{ width: `${s.marginPct}%` }} /></div>
+                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-ink/8"><div className="h-full rounded-full bg-gradient-to-r from-brand to-ai" style={{ width: `${segment.marginPct}%` }} /></div>
               </li>
             ))}
           </ul>
@@ -211,9 +298,7 @@ function PnlTab() {
   );
 }
 
-// ── Forecast tab ────────────────────────────────────────────────────────────
-function ForecastTab() {
-  const c = seedLedgerCashflow;
+function ForecastTab({ forecast }: { forecast: { current: Money; projected: Money; labels: string[]; inflow: Array<number | null>; outflow: Array<number | null>; forecast: Array<number | null> } }) {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
       <GlassSurface tone="strong" className="flex flex-col gap-4 p-6">
@@ -226,11 +311,11 @@ function ForecastTab() {
           </div>
         </header>
         <div className="flex flex-wrap items-end gap-6">
-          <div><span className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">Today</span><MoneyCell amount={c.current} size="xl" className="!text-[26px]" /></div>
-          <div><span className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">Projected EOM</span><div className="flex items-center gap-2"><MoneyCell amount={c.projected} size="lg" className="!text-xl text-brand-ink" /><span className="inline-flex items-center gap-0.5 rounded-full bg-success-soft px-1.5 py-0.5 text-[11px] font-bold text-success"><ArrowUpRight className="size-3" /> 23%</span></div></div>
+          <div><span className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">Today</span><MoneyCell amount={forecast.current} size="xl" className="!text-[26px]" /></div>
+          <div><span className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">Projected EOM</span><div className="flex items-center gap-2"><MoneyCell amount={forecast.projected} size="lg" className="!text-xl text-brand-ink" /><span className="inline-flex items-center gap-0.5 rounded-full bg-success-soft px-1.5 py-0.5 text-[11px] font-bold text-success"><ArrowUpRight className="size-3" /> 23%</span></div></div>
         </div>
         <div className="h-[300px]">
-          <AreaChart xLabels={[...c.labels]} height="100%" series={[{ name: 'Inflow', color: '#4361ee', data: [...c.inflow] }, { name: 'Outflow', color: '#9a8ce8', data: [...c.outflow] }, { name: 'Forecast', color: '#8b5cf6', data: [...c.forecast], dashed: true }]} />
+          <AreaChart xLabels={[...forecast.labels]} height="100%" series={[{ name: 'Inflow', color: '#4361ee', data: [...forecast.inflow] }, { name: 'Outflow', color: '#9a8ce8', data: [...forecast.outflow] }, { name: 'Forecast', color: '#8b5cf6', data: [...forecast.forecast], dashed: true }]} />
         </div>
       </GlassSurface>
     </div>

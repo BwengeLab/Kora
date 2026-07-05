@@ -9,7 +9,7 @@ const STATUS: Record<BatchStatus, { label: string; icon: LucideIcon; tone: strin
   needs_review: { label: 'Needs review', icon: FileWarning, tone: 'text-warning' },
 };
 
-export function DataIntakeCard() {
+export function DataIntakeCard({ batches = seedIntakeBatches }: { batches?: typeof seedIntakeBatches }) {
   return (
     <GlassSurface tone="strong" className="flex h-full min-h-0 flex-col gap-3 p-6">
       <header className="flex items-center justify-between gap-3">
@@ -37,7 +37,7 @@ export function DataIntakeCard() {
 
       {/* Recent batches */}
       <ul className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-0.5">
-        {seedIntakeBatches.map((b) => {
+        {batches.map((b) => {
           const s = STATUS[b.status];
           return (
             <li key={b.id} className="flex items-center gap-3 rounded-2xl bg-white/55 p-3 ring-1 ring-white/60">

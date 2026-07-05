@@ -10,12 +10,14 @@ const toMinor = (n: number) => BigInt(Math.round(n * 100));
 
 interface PayablesState {
   bills: Bill[];
+  hydrate: (bills: Bill[]) => void;
   approve: (id: string, by: string) => void; // recognise the liability in the GL
   pay: (id: string, cashAccount?: string) => void; // settle it from cash
 }
 
 export const usePayablesStore = create<PayablesState>((set, get) => ({
   bills: seedBills,
+  hydrate: (bills) => set({ bills }),
   approve: (id) => {
     const b = get().bills.find((x) => x.id === id);
     if (!b || b.status !== 'draft') return;

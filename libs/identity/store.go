@@ -46,6 +46,7 @@ type Store interface {
 	CreateOrganization(org Organization) error
 	CreateUser(user User) error
 	CreateRoleBinding(binding RoleBinding) error
+	FindOrganizationByID(organizationID string) (Organization, error)
 	FindUserByEmail(email string) (User, error)
 	FindUserByID(userID string) (User, error)
 	RolesForUser(userID string) ([]access.Role, error)
@@ -109,6 +110,16 @@ func (s *MemoryStore) CreateRoleBinding(binding RoleBinding) error {
 	}
 	s.roleBindings = append(s.roleBindings, binding)
 	return nil
+}
+
+func (s *MemoryStore) FindOrganizationByID(organizationID string) (Organization, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	org, exists := s.organizations[organizationID]
+	if !exists {
+		return Organization{}, errors.New("organization not found")
+	}
+	return org, nil
 }
 
 func (s *MemoryStore) FindUserByEmail(email string) (User, error) {

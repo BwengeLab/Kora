@@ -34,6 +34,7 @@ interface WorkflowState {
   approvals: ApprovalItem[];
   auditLog: AuditEvent[];
   dismissedReconIds: string[];
+  hydrate: (snapshot: { reconciliations: Reconciliation[]; approvals: ApprovalItem[]; auditLog: AuditEvent[]; dismissedReconIds?: string[] }) => void;
   prepareMatch: (reconId: string, by: Actor) => void;
   agentSuggestMatches: (max?: number) => number; // Reconciliation Agent: detected → reviewing
   approveReconciliation: (reconId: string, by: Actor) => void;
@@ -89,6 +90,14 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   approvals: cloneApprovals(),
   auditLog: cloneAudit(),
   dismissedReconIds: [],
+
+  hydrate: (snapshot) =>
+    set({
+      reconciliations: snapshot.reconciliations.map((r) => ({ ...r, history: [...r.history], evidence: [...r.evidence], deltas: [...r.deltas] })),
+      approvals: snapshot.approvals.map((a) => ({ ...a, approvals: [...a.approvals], evidence: [...a.evidence], history: [...a.history] })),
+      auditLog: snapshot.auditLog.map((e) => ({ ...e })),
+      dismissedReconIds: [...(snapshot.dismissedReconIds ?? [])],
+    }),
 
   prepareMatch: (reconId, by) => {
     const recon = get().reconciliations.find((r) => r.id === reconId);
