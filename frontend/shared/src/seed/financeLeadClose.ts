@@ -32,6 +32,7 @@ export interface EvidenceGap {
   party: string;
   amount: string;
   age: string;
+  requested?: boolean;
 }
 
 export const seedEvidenceGaps: EvidenceGap[] = [

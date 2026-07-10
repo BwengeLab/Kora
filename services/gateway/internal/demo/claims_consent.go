@@ -41,26 +41,27 @@ type ClaimStageCounts struct {
 }
 
 type ClaimStats struct {
-	OpenClaims        int              `json:"openClaims"`
-	TotalReserves     Money            `json:"totalReserves"`
-	AvgCycleDays      float64          `json:"avgCycleDays"`
-	FraudFlagged      int              `json:"fraudFlagged"`
-	LeakagePrevented  Money            `json:"leakagePrevented"`
-	Pipeline          ClaimStageCounts `json:"pipeline"`
+	OpenClaims       int              `json:"openClaims"`
+	TotalReserves    Money            `json:"totalReserves"`
+	AvgCycleDays     float64          `json:"avgCycleDays"`
+	FraudFlagged     int              `json:"fraudFlagged"`
+	LeakagePrevented Money            `json:"leakagePrevented"`
+	Pipeline         ClaimStageCounts `json:"pipeline"`
 }
 
 type ConsentGrantData struct {
-	ID           string   `json:"id"`
-	Grantee      string   `json:"grantee"`
-	GranteeType  string   `json:"granteeType"`
-	Purpose      string   `json:"purpose"`
-	Scopes       []string `json:"scopes"`
-	Status       string   `json:"status"`
-	Basis        string   `json:"basis"`
-	GrantedBy    string   `json:"grantedBy"`
-	GrantedAt    string   `json:"grantedAt"`
-	ExpiresAt    string   `json:"expiresAt"`
-	LastAccessed string   `json:"lastAccessed,omitempty"`
+	ID              string   `json:"id"`
+	Grantee         string   `json:"grantee"`
+	GranteeType     string   `json:"granteeType"`
+	RecipientUserID string   `json:"recipientUserId,omitempty"`
+	Purpose         string   `json:"purpose"`
+	Scopes          []string `json:"scopes"`
+	Status          string   `json:"status"`
+	Basis           string   `json:"basis"`
+	GrantedBy       string   `json:"grantedBy"`
+	GrantedAt       string   `json:"grantedAt"`
+	ExpiresAt       string   `json:"expiresAt"`
+	LastAccessed    string   `json:"lastAccessed,omitempty"`
 }
 
 func ClaimsWorkspaceDemoData() ClaimWorkspaceData {
@@ -73,7 +74,7 @@ func ClaimsWorkspaceDemoData() ClaimWorkspaceData {
 				ID: "CLM-2025-00412", Claimant: "Jean-Paul Niyonzima", PolicyNumber: "MOT-88231", Type: "motor", Stage: "triage",
 				IncidentDate: "2025-05-12", ReportedDate: "2025-05-13", Description: "Rear-end collision at Kimironko roundabout; bumper and tail-light damage.",
 				ClaimedAmount: usd(2400), Deductible: usd(200),
-				AISummary: "Single-vehicle rear-end collision. Police report and 4 photos attached. Damage consistent with a low-speed impact; repair quote from approved garage included.",
+				AISummary:      "Single-vehicle rear-end collision. Police report and 4 photos attached. Damage consistent with a low-speed impact; repair quote from approved garage included.",
 				TriageSeverity: "low", TriageFastTrack: true, FraudScore: 12, FraudFlags: []string{},
 				SuggestedReserve: usd(2200), SuggestedSettlement: usd(2200), Reserve: usd(2200),
 				Evidence: []EvidenceDoc{
@@ -86,7 +87,7 @@ func ClaimsWorkspaceDemoData() ClaimWorkspaceData {
 				ID: "CLM-2025-00408", Claimant: "Aline Uwimana", PolicyNumber: "HLT-44120", Type: "health", Stage: "adjusting",
 				IncidentDate: "2025-05-08", ReportedDate: "2025-05-09", Description: "Inpatient surgery - appendectomy at King Faisal Hospital.",
 				ClaimedAmount: usd(8600), Deductible: usd(0),
-				AISummary: "Inpatient surgical claim. Hospital invoice, discharge summary and pre-authorization on file. Procedure covered under the policy; amounts within network tariff.",
+				AISummary:      "Inpatient surgical claim. Hospital invoice, discharge summary and pre-authorization on file. Procedure covered under the policy; amounts within network tariff.",
 				TriageSeverity: "medium", TriageFastTrack: false, FraudScore: 18, FraudFlags: []string{},
 				SuggestedReserve: usd(8600), SuggestedSettlement: usd(8200), Reserve: usd(8600),
 				Evidence: []EvidenceDoc{
@@ -100,7 +101,7 @@ func ClaimsWorkspaceDemoData() ClaimWorkspaceData {
 				ID: "CLM-2025-00401", Claimant: "Eric Mugisha", PolicyNumber: "PRP-20984", Type: "property", Stage: "approval",
 				IncidentDate: "2025-05-02", ReportedDate: "2025-05-03", Description: "Warehouse fire - stock and structural damage, Gikondo industrial zone.",
 				ClaimedAmount: usd(184000), Deductible: usd(5000),
-				AISummary: "Major property loss. Loss-adjuster report estimates structural damage and destroyed inventory. Fire-brigade report confirms accidental electrical cause. High-value - over Finance Lead limit, requires dual approval.",
+				AISummary:      "Major property loss. Loss-adjuster report estimates structural damage and destroyed inventory. Fire-brigade report confirms accidental electrical cause. High-value - over Finance Lead limit, requires dual approval.",
 				TriageSeverity: "critical", TriageFastTrack: false, FraudScore: 34, FraudFlags: []string{"High value", "Inventory valuation pending second estimate"},
 				SuggestedReserve: usd(179000), SuggestedSettlement: usd(176500), Reserve: usd(180000),
 				Evidence: []EvidenceDoc{
@@ -114,7 +115,7 @@ func ClaimsWorkspaceDemoData() ClaimWorkspaceData {
 				ID: "CLM-2025-00395", Claimant: "Grace Keza", PolicyNumber: "MOT-77310", Type: "motor", Stage: "triage",
 				IncidentDate: "2025-05-11", ReportedDate: "2025-05-15", Description: "Theft of vehicle accessories and reported windshield damage.",
 				ClaimedAmount: usd(3200), Deductible: usd(200),
-				AISummary: "Reported 4 days after incident. Two similar claims on this policy in the last 90 days. Photos show inconsistent damage angles; no police report attached. Recommend SIU review before proceeding.",
+				AISummary:      "Reported 4 days after incident. Two similar claims on this policy in the last 90 days. Photos show inconsistent damage angles; no police report attached. Recommend SIU review before proceeding.",
 				TriageSeverity: "high", TriageFastTrack: false, FraudScore: 78, FraudFlags: []string{"3rd claim in 90 days", "Late reporting (4 days)", "No police report", "Inconsistent photo evidence"},
 				SuggestedReserve: usd(0), SuggestedSettlement: usd(0), Reserve: usd(1500),
 				Evidence: []EvidenceDoc{
@@ -127,20 +128,20 @@ func ClaimsWorkspaceDemoData() ClaimWorkspaceData {
 				ID: "CLM-2025-00370", Claimant: "Patrick Habiyaremye", PolicyNumber: "HLT-41902", Type: "health", Stage: "settlement",
 				IncidentDate: "2025-04-28", ReportedDate: "2025-04-29", Description: "Outpatient treatment and prescription - covered, approved.",
 				ClaimedAmount: usd(640), Deductible: usd(0),
-				AISummary: "Outpatient claim approved at $620. Payment issued to provider; matching against the bank feed.",
+				AISummary:      "Outpatient claim approved at $620. Payment issued to provider; matching against the bank feed.",
 				TriageSeverity: "low", TriageFastTrack: true, FraudScore: 8, FraudFlags: []string{},
 				SuggestedReserve: usd(640), SuggestedSettlement: usd(620), Reserve: usd(640),
-				Evidence: []EvidenceDoc{{ID: "cev-11", Name: "Pharmacy invoice.pdf", Kind: "invoice", SizeText: "70 KB"}},
+				Evidence:   []EvidenceDoc{{ID: "cev-11", Name: "Pharmacy invoice.pdf", Kind: "invoice", SizeText: "70 KB"}},
 				AssignedTo: "James Okello", SLAText: "Paid - reconciling", PaymentReconciled: &reconciledFalse, CoverageOK: true,
 			},
 			{
 				ID: "CLM-2025-00355", Claimant: "Diane Ingabire", PolicyNumber: "MOT-69521", Type: "motor", Stage: "closed",
 				IncidentDate: "2025-04-20", ReportedDate: "2025-04-20", Description: "Windshield replacement - settled and reconciled.",
 				ClaimedAmount: usd(480), Deductible: usd(100),
-				AISummary: "Settled at $380 (after deductible). Payment matched to bank statement; claim closed.",
+				AISummary:      "Settled at $380 (after deductible). Payment matched to bank statement; claim closed.",
 				TriageSeverity: "low", TriageFastTrack: true, FraudScore: 5, FraudFlags: []string{},
 				SuggestedReserve: usd(380), SuggestedSettlement: usd(380), Reserve: usd(380),
-				Evidence: []EvidenceDoc{{ID: "cev-12", Name: "Repair invoice.pdf", Kind: "invoice", SizeText: "110 KB"}},
+				Evidence:   []EvidenceDoc{{ID: "cev-12", Name: "Repair invoice.pdf", Kind: "invoice", SizeText: "110 KB"}},
 				AssignedTo: "James Okello", SLAText: "Closed", PaymentReconciled: &reconciledTrue, CoverageOK: true,
 			},
 		},
@@ -153,7 +154,7 @@ func ClaimsWorkspaceDemoData() ClaimWorkspaceData {
 
 func ConsentGrantsDemoData() []ConsentGrantData {
 	return []ConsentGrantData{
-		{ID: "cs-1", Grantee: "Bank of Kigali - SME Lending", GranteeType: "lender", Purpose: "Working-capital facility underwriting", Scopes: []string{"credit-passport", "financials", "bank-statements"}, Status: "active", Basis: "Explicit consent - loan application", GrantedBy: "Aline Mukamana", GrantedAt: "2025-04-02", ExpiresAt: "2025-10-02", LastAccessed: "2025-05-16"},
+		{ID: "cs-1", Grantee: "Bank of Kigali - SME Lending", GranteeType: "lender", Purpose: "Working-capital facility underwriting", Scopes: []string{"credit-passport", "financials", "bank-statements"}, Status: "active", Basis: "Explicit consent - loan application", GrantedBy: "Aline Mukamana", GrantedAt: "2026-04-02", ExpiresAt: "2026-10-02", LastAccessed: "2026-07-09"},
 		{ID: "cs-2", Grantee: "I&M Bank - Trade Finance", GranteeType: "lender", Purpose: "Invoice-financing eligibility check", Scopes: []string{"credit-passport", "transactions"}, Status: "active", Basis: "Explicit consent - facility request", GrantedBy: "Eric Habimana", GrantedAt: "2025-05-01", ExpiresAt: "2025-08-01", LastAccessed: "2025-05-12"},
 		{ID: "cs-3", Grantee: "TransUnion Africa", GranteeType: "bureau", Purpose: "Credit-bureau reporting & scoring", Scopes: []string{"credit-passport", "identity"}, Status: "active", Basis: "Legitimate interest - bureau agreement", GrantedBy: "Aline Mukamana", GrantedAt: "2025-01-15", ExpiresAt: "2026-01-15", LastAccessed: "2025-05-10"},
 		{ID: "cs-4", Grantee: "Deloitte Rwanda - External Audit", GranteeType: "auditor", Purpose: "Annual statutory audit FY2024", Scopes: []string{"financials", "transactions", "contracts"}, Status: "active", Basis: "Statutory obligation", GrantedBy: "Aline Mukamana", GrantedAt: "2025-02-01", ExpiresAt: "2025-07-31", LastAccessed: "2025-05-17"},

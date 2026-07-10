@@ -35,7 +35,9 @@ function makeSession(
     tenant: baseTenant,
     roles: [{ id: roleId, name: roleName, blueprintId }],
     permissions: permissions.map((permission) => ({ permission, scope })),
-    token: `seed-token-${roleId}`,
+    // Seed sessions exist only to render the correct role before real login.
+    // An empty token keeps data queries disabled until the gateway issues one.
+    token: '',
     issuedAt: now.toISOString(),
     expiresAt: tomorrow.toISOString(),
   };

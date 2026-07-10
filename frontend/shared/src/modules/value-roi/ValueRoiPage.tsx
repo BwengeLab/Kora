@@ -2,7 +2,7 @@ import { Clock, Copy, Download, HandCoins, ShieldAlert, TrendingUp, Wallet, type
 import { useQuery } from '@tanstack/react-query';
 import { DateRangePill, PageHeader } from '../../app/shell';
 import { getApiBaseUrl } from '../../api/client';
-import { fetchRoiSummary } from '../../api/roi';
+import { downloadRoiSummary, fetchRoiSummary } from '../../api/roi';
 import { AreaChart, GlassSurface, MoneyCell, cn } from '../../design-system';
 import { seedRoi, type RoiItem } from '../../seed/ownerExtra';
 import { useSessionStore } from '../../state/sessionStore';
@@ -35,6 +35,20 @@ export function ValueRoiPage() {
     enabled: Boolean(token),
   });
   const r = data ?? { ...seedRoi, hoursSaved: 128 };
+  const exportSummary = async () => {
+    try {
+      const blob = await downloadRoiSummary(apiBaseUrl, token);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = 'kora-roi-summary.pdf';
+      anchor.click();
+      URL.revokeObjectURL(url);
+      toast({ tone: 'success', title: 'Export downloaded', body: 'The evidence-backed ROI summary is ready.' });
+    } catch (error) {
+      toast({ tone: 'danger', title: 'Export failed', body: error instanceof Error ? error.message : 'Could not export the ROI summary.' });
+    }
+  };
   return (
     <div className="flex flex-col">
       <PageHeader
@@ -42,7 +56,7 @@ export function ValueRoiPage() {
         subtitle={<>The money Kora makes and saves you — recovered, protected, and freed up.</>}
         right={
           <div className="flex items-center gap-2.5">
-            <button type="button" onClick={() => toast({ tone: 'info', title: 'Exporting', body: 'ROI summary (PDF) is being prepared.' })} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-glass-strong px-4 text-[13px] font-semibold text-ink-soft ring-1 ring-white/70 backdrop-blur-glass hover:bg-white hover:text-ink">
+            <button type="button" onClick={() => void exportSummary()} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-glass-strong px-4 text-[13px] font-semibold text-ink-soft ring-1 ring-white/70 backdrop-blur-glass hover:bg-white hover:text-ink">
               <Download className="size-4" /> Export
             </button>
             <DateRangePill label="Last 6 months" />

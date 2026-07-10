@@ -1,8 +1,9 @@
-import { CalendarClock, FileText, Flag, RefreshCw, Search, Sparkles, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { CalendarClock, FileText, Flag, RefreshCw, Search, Sparkles, X } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { getApiBaseUrl } from '../../api/client';
-import { fetchContractsOverview, flagContractRenewal, renewContract } from '../../api/governanceOps';
+import { fetchContractsOverview, flagContractRenewal, renewContract, setContractReminder } from '../../api/governanceOps';
 import { DateRangePill, PageHeader } from '../../app/shell';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
 import type { Money } from '../../lib/money';
@@ -14,19 +15,14 @@ import { toast } from '../../state/toastStore';
 const TODAY = new Date('2025-05-18');
 const daysToExpiry = (end: string) => Math.round((new Date(end).getTime() - TODAY.getTime()) / 86400000);
 
-// How the viewer relates to a contract:
-//  • manage    — Finance Lead: renew, set reminders (does the work).
-//  • oversight — Owner: see obligations & renewals; flag a renewal to finance.
-//  • read      — Auditor: view only.
 export type ContractVariant = 'manage' | 'oversight' | 'read';
 
 const SUBTITLE: Record<ContractVariant, string> = {
   manage: 'Policies, leases and vendor agreements. Track renewals before they lapse.',
-  oversight: 'What the business is committed to — value, terms and renewals. Finance manages the detail; you oversee the obligations.',
-  read: 'Every obligation the business is committed to — read-only, with signed evidence.',
+  oversight: 'What the business is committed to - value, terms and renewals. Finance manages the detail; you oversee the obligations.',
+  read: 'Every obligation the business is committed to - read-only, with signed evidence.',
 };
 
-// Full standalone page (Finance Lead / Auditor routes).
 export function ContractsPage({ variant = 'manage' }: { variant?: ContractVariant }) {
   return (
     <div className="flex h-full flex-col">
@@ -36,30 +32,39 @@ export function ContractsPage({ variant = 'manage' }: { variant?: ContractVarian
   );
 }
 
-// The contracts register body — reused both as a standalone page and embedded as
-// the "Contracts" tab of the owner's Relationships page. `initialQuery` lets a
-// caller deep-link to one party's contracts.
 export function ContractsView({ variant = 'manage', initialQuery = '' }: { variant?: ContractVariant; initialQuery?: string }) {
   const token = useSessionStore((s) => s.session?.token ?? '');
   const apiBaseUrl = getApiBaseUrl();
-  const [contracts, setContracts] = useState<Contract[]>(seedContracts);
+  const queryClient = useQueryClient();
   const [query, setQuery] = useState(initialQuery);
   const [type, setType] = useState<ContractType | 'all'>('all');
   const [status, setStatus] = useState<ContractStatus | 'all'>('all');
   const [selected, setSelected] = useState<Contract | null>(null);
 
-  useEffect(() => {
-    if (!token) return;
-    const controller = new AbortController();
-    fetchContractsOverview(apiBaseUrl, token, controller.signal)
-      .then((payload) => setContracts(payload.items))
-      .catch((error: unknown) => {
-        if (!controller.signal.aborted) {
-          toast({ tone: 'warning', title: 'Contracts unavailable', body: error instanceof Error ? error.message : 'Could not load contracts.' });
-        }
-      });
-    return () => controller.abort();
-  }, [apiBaseUrl, token]);
+  const { data } = useQuery({
+    queryKey: ['contracts-overview', token],
+    queryFn: ({ signal }) => fetchContractsOverview(apiBaseUrl, token, signal),
+    enabled: Boolean(token),
+  });
+
+  const syncContracts = (items: Contract[]) => {
+    queryClient.setQueryData(['contracts-overview', token], { items });
+  };
+
+  const renewMutation = useMutation({
+    mutationFn: (contractID: string) => renewContract(apiBaseUrl, token, contractID),
+    onSuccess: (payload) => syncContracts(payload.items),
+  });
+  const flagMutation = useMutation({
+    mutationFn: (contractID: string) => flagContractRenewal(apiBaseUrl, token, contractID),
+    onSuccess: (payload) => syncContracts(payload.items),
+  });
+  const reminderMutation = useMutation({
+    mutationFn: (contractID: string) => setContractReminder(apiBaseUrl, token, contractID),
+    onSuccess: (payload) => syncContracts(payload.items),
+  });
+
+  const contracts = data?.items ?? seedContracts;
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -71,29 +76,37 @@ export function ContractsView({ variant = 'manage', initialQuery = '' }: { varia
   }, [contracts, query, type, status]);
 
   const renew = async (id: string) => {
-    if (!token) {
-      setContracts((cs) => cs.map((c) => (c.id === id ? { ...c, status: 'active', startDate: c.endDate, endDate: new Date(new Date(c.endDate).setFullYear(new Date(c.endDate).getFullYear() + 1)).toISOString().slice(0, 10) } : c)));
-    } else {
-      const snapshot = await renewContract(apiBaseUrl, token, id);
-      setContracts(snapshot.items);
+    try {
+      await renewMutation.mutateAsync(id);
+      setSelected(null);
+      toast({ tone: 'success', title: 'Renewed', body: 'Contract renewed for another term and logged.' });
+    } catch (error) {
+      toast({ tone: 'warning', title: 'Renewal failed', body: error instanceof Error ? error.message : 'Could not renew this contract.' });
     }
-    setSelected(null);
-    toast({ tone: 'success', title: 'Renewed', body: 'Contract renewed for another term and logged.' });
   };
 
   const flagRenewal = async (id: string, title: string) => {
-    if (!token) {
-      setContracts((items) => items.map((item) => (item.id === id && item.status === 'active' ? { ...item, status: 'renewal-due' } : item)));
-    } else {
-      const snapshot = await flagContractRenewal(apiBaseUrl, token, id);
-      setContracts(snapshot.items);
+    try {
+      await flagMutation.mutateAsync(id);
+      setSelected(null);
+      toast({ tone: 'info', title: 'Flagged for renewal', body: `${title} sent to finance to action the renewal.` });
+    } catch (error) {
+      toast({ tone: 'warning', title: 'Flag failed', body: error instanceof Error ? error.message : 'Could not flag this contract for renewal.' });
     }
-    setSelected(null);
-    toast({ tone: 'info', title: 'Flagged for renewal', body: `${title} sent to finance to action the renewal.` });
+  };
+
+  const setReminder = async (id: string, reference: string) => {
+    try {
+      await reminderMutation.mutateAsync(id);
+      toast({ tone: 'info', title: 'Reminder set', body: `You will be alerted 30 days before ${reference} expires.` });
+    } catch (error) {
+      toast({ tone: 'warning', title: 'Reminder failed', body: error instanceof Error ? error.message : 'Could not set this contract reminder.' });
+    }
   };
 
   const renewalDue = contracts.filter((c) => c.status === 'renewal-due' || c.status === 'expiring').length;
   const annualValue: Money = { amountMinor: contracts.filter((c) => c.status !== 'expired' && c.status !== 'draft').reduce((a, c) => a + c.value.amountMinor, 0n), currency: 'USD' };
+  const busy = renewMutation.isPending || flagMutation.isPending || reminderMutation.isPending;
 
   return (
     <div className="@container flex min-h-0 flex-1 flex-col gap-4 px-8 pb-6">
@@ -109,7 +122,7 @@ export function ContractsView({ variant = 'manage', initialQuery = '' }: { varia
           <div className="flex flex-wrap items-center gap-2 border-b border-white/55 p-4">
             <div className="flex h-10 min-w-[200px] flex-1 items-center gap-2.5 rounded-xl bg-white/70 px-3.5 ring-1 ring-white/70">
               <Search className="size-4 text-ink-muted" />
-              <input value={query} onChange={(e) => setQuery(e.target.value)} type="search" placeholder="Search title, party, reference…" className="w-full bg-transparent text-[13px] text-ink placeholder:text-ink-muted focus:outline-none" />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} type="search" placeholder="Search title, party, reference..." className="w-full bg-transparent text-[13px] text-ink placeholder:text-ink-muted focus:outline-none" />
             </div>
             <select value={type} onChange={(e) => setType(e.target.value as ContractType | 'all')} className="h-10 rounded-xl bg-white/70 px-3 text-[12.5px] font-semibold text-ink-soft ring-1 ring-white/70 focus:outline-none">
               <option value="all">All types</option>
@@ -133,7 +146,7 @@ export function ContractsView({ variant = 'manage', initialQuery = '' }: { varia
                         <p className="truncate text-[13px] font-semibold text-ink">{c.title}</p>
                         <span className={cn('shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase', CONTRACT_TYPE_META[c.type].tone)}>{CONTRACT_TYPE_META[c.type].label}</span>
                       </div>
-                      <p className="truncate text-[11px] text-ink-muted">{c.counterparty} · {c.reference} · {days < 0 ? 'expired' : `${days}d to expiry`}</p>
+                      <p className="truncate text-[11px] text-ink-muted">{c.counterparty} - {c.reference} - {days < 0 ? 'expired' : `${days}d to expiry`}</p>
                     </div>
                     <MoneyCell amount={c.value} size="sm" className="!text-[12.5px] font-semibold text-ink-soft" />
                     <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase', CONTRACT_STATUS_META[c.status].tone)}>{CONTRACT_STATUS_META[c.status].label}</span>
@@ -178,7 +191,7 @@ export function ContractsView({ variant = 'manage', initialQuery = '' }: { varia
                     <Meta label="Owner" value={selected.owner} />
                     <Meta label="Auto-renew" value={selected.autoRenew ? 'Yes' : 'No'} tone={selected.autoRenew ? 'success' : undefined} />
                   </dl>
-                  <button type="button" onClick={() => openDoc({ name: selected.evidenceName, kind: 'contract', sizeText: '—', context: selected.reference })} className="flex w-full items-center gap-3 rounded-2xl bg-white/55 p-3 text-left ring-1 ring-white/60 hover:bg-white">
+                  <button type="button" onClick={() => openDoc({ name: selected.evidenceName, kind: 'contract', sizeText: '-', context: selected.reference })} className="flex w-full items-center gap-3 rounded-2xl bg-white/55 p-3 text-left ring-1 ring-white/60 hover:bg-white">
                     <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-danger-soft text-danger"><FileText className="size-4" /></span>
                     <div className="min-w-0 flex-1"><p className="truncate text-[12.5px] font-semibold text-ink">{selected.evidenceName}</p><p className="text-[11px] text-ink-muted">Signed contract</p></div>
                     <span className="rounded-lg bg-white/80 px-2 py-0.5 text-[10.5px] font-bold text-brand ring-1 ring-white/70">View</span>
@@ -186,11 +199,11 @@ export function ContractsView({ variant = 'manage', initialQuery = '' }: { varia
                 </div>
                 {variant === 'read' ? null : (
                   <footer className="flex items-center gap-2 border-t border-white/55 p-4">
-                    <button type="button" onClick={() => toast({ tone: 'info', title: 'Reminder set', body: `You'll be alerted 30 days before ${selected.reference} expires.` })} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-white/70 px-4 text-[13px] font-bold text-ink ring-1 ring-white/70 hover:bg-white"><CalendarClock className="size-4" /> Remind me</button>
+                    <button type="button" disabled={busy} onClick={() => void setReminder(selected.id, selected.reference)} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-white/70 px-4 text-[13px] font-bold text-ink ring-1 ring-white/70 hover:bg-white disabled:cursor-not-allowed disabled:opacity-70"><CalendarClock className="size-4" /> {reminderMutation.isPending ? 'Setting...' : 'Remind me'}</button>
                     {variant === 'manage' ? (
-                      <button type="button" onClick={() => void renew(selected.id)} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110"><RefreshCw className="size-4" /> Renew contract</button>
+                      <button type="button" disabled={busy} onClick={() => void renew(selected.id)} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70"><RefreshCw className="size-4" /> {renewMutation.isPending ? 'Renewing...' : 'Renew contract'}</button>
                     ) : (
-                      <button type="button" onClick={() => void flagRenewal(selected.id, selected.title)} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110"><Flag className="size-4" /> Flag for renewal</button>
+                      <button type="button" disabled={busy} onClick={() => void flagRenewal(selected.id, selected.title)} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70"><Flag className="size-4" /> {flagMutation.isPending ? 'Flagging...' : 'Flag for renewal'}</button>
                     )}
                   </footer>
                 )}
@@ -226,7 +239,7 @@ function RenewalRadar({ contracts, onPick }: { contracts: Contract[]; onPick: (c
       <header className="flex items-center gap-1.5"><Sparkles className="size-3.5 text-warning" /><h4 className="text-[12px] font-bold text-ink">Renewal radar</h4></header>
       {soon.length === 0 ? <p className="text-[11.5px] text-ink-muted">Nothing expiring in the next 60 days.</p> : soon.map((c) => (
         <button key={c.id} type="button" onClick={() => onPick(c)} className="rounded-xl bg-white/65 p-2.5 text-left text-[11.5px] text-ink ring-1 ring-white/60 hover:bg-white">
-          <span className="font-bold text-warning">{daysToExpiry(c.endDate)}d</span> · {c.title} <span className="font-semibold text-brand">Open →</span>
+          <span className="font-bold text-warning">{daysToExpiry(c.endDate)}d</span> - {c.title} <span className="font-semibold text-brand">Open {'->'}</span>
         </button>
       ))}
     </GlassSurface>

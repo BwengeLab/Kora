@@ -23,6 +23,22 @@ export async function fetchRelationshipsOverview(apiBaseUrl: string, token: stri
   return reviveBigInts((await response.json()) as RelationshipsOverviewPayload) as RelationshipsOverviewPayload;
 }
 
+export async function relationshipPartyAction(
+  apiBaseUrl: string,
+  token: string,
+  partyID: string,
+  action: 'email-contact' | 'review-terms' | 'send-statement' | 'schedule-payment',
+): Promise<RelationshipsOverviewPayload> {
+  const response = await fetch(`${apiBaseUrl}/api/relationships/parties/${partyID}/${action}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw new Error((await safePayload(response)) || `${response.status} ${response.statusText}`);
+  }
+  return reviveBigInts((await response.json()) as RelationshipsOverviewPayload) as RelationshipsOverviewPayload;
+}
+
 function reviveBigInts(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(reviveBigInts);
   if (value && typeof value === 'object') {

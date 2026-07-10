@@ -37,6 +37,7 @@ export function CashMovementsTab({
   onHold,
   onPost,
   onFlag,
+  onAsk,
 }: {
   mode?: LedgerMode;
   movements: CashMovement[];
@@ -45,6 +46,7 @@ export function CashMovementsTab({
   onHold?: (movement: CashMovement) => void | Promise<void>;
   onPost?: (movement: CashMovement) => void | Promise<void>;
   onFlag?: (movement: CashMovement) => void | Promise<void>;
+  onAsk?: (movement: CashMovement) => void | Promise<void>;
 }) {
   const scope = useEntityStore((s) => s.scope);
   const [query, setQuery] = useState('');
@@ -137,6 +139,7 @@ export function CashMovementsTab({
         {...(onHold ? { onHold } : {})}
         {...(onPost ? { onPost } : {})}
         {...(onFlag ? { onFlag } : {})}
+        {...(onAsk ? { onAsk } : {})}
       />
     </div>
   );

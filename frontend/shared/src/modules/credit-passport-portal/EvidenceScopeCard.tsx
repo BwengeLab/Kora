@@ -1,7 +1,7 @@
+import { Link } from '@tanstack/react-router';
 import { CalendarClock, Check, FileText, Plus, ShieldCheck } from 'lucide-react';
 import { GlassSurface } from '../../design-system';
 import { openDoc } from '../../state/docViewerStore';
-import { toast } from '../../state/toastStore';
 import type { EvidenceFactor } from '../../seed/portalHome';
 
 export function EvidenceScopeCard({
@@ -54,13 +54,12 @@ export function EvidenceScopeCard({
         <p className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-medium text-ink-muted">
           <ShieldCheck className="size-3.5" /> {g.scopeNote}
         </p>
-        <button
-          type="button"
-          onClick={() => toast({ tone: 'info', title: 'Request sent', body: 'Acme Insurance will review your request for additional scope.' })}
+        <Link
+          to="/portal/access"
           className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-white/80 px-3 py-1.5 text-[11.5px] font-bold text-brand ring-1 ring-white/70 hover:bg-white"
         >
           <Plus className="size-3.5" /> Request more access
-        </button>
+        </Link>
       </div>
     </GlassSurface>
   );

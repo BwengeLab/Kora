@@ -109,8 +109,24 @@ export async function flagContractRenewal(apiBaseUrl: string, token: string, con
   return { items: (data.items ?? []).map(reviveContract) };
 }
 
+export async function setContractReminder(apiBaseUrl: string, token: string, contractID: string): Promise<ContractsOverviewPayload> {
+  const data = await postJson<{ items: RawContract[] }>(`${apiBaseUrl}/api/contracts/${contractID}/set-reminder`, token);
+  return { items: (data.items ?? []).map(reviveContract) };
+}
+
 export async function fetchOwnerRiskDashboard(apiBaseUrl: string, token: string, signal?: AbortSignal): Promise<OwnerRiskDashboardPayload> {
   return getJson<OwnerRiskDashboardPayload>(`${apiBaseUrl}/api/owner/risk-dashboard`, token, signal);
+}
+
+export async function downloadOwnerRiskPack(apiBaseUrl: string, token: string): Promise<Blob> {
+  const response = await fetch(`${apiBaseUrl}/api/owner/risk-dashboard/export`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw new Error((await safePayload(response)) || `${response.status} ${response.statusText}`);
+  }
+  return response.blob();
 }
 
 export async function assignRisk(apiBaseUrl: string, token: string, riskID: string): Promise<OwnerRiskDashboardPayload> {

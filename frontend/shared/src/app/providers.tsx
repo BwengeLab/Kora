@@ -19,11 +19,16 @@ import { useSessionStore } from '../state/sessionStore';
 import { useTransactionsStore } from '../state/transactionsStore';
 import { useUiStore } from '../state/uiStore';
 import { useWorkflowStore } from '../state/workflowStore';
+import type { Session } from '../auth/types';
 
 export interface AppProvidersProps {
   platform: Platform;
   apiBaseUrl: string;
   children: ReactNode;
+}
+
+function needsTenantStoreHydration(session: Session): boolean {
+  return !session.roles.some((role) => role.id === 'role.external_collaborator');
 }
 
 export function AppProviders({ platform, apiBaseUrl, children }: AppProvidersProps) {
@@ -56,6 +61,7 @@ export function AppProviders({ platform, apiBaseUrl, children }: AppProvidersPro
           const session = await demoLoginSession(apiBaseUrl, previewRoleId, controller.signal);
           await platform.store.set(tokenKey, session.token);
           useSessionStore.getState().setSession(session);
+          if (!needsTenantStoreHydration(session)) return;
           try {
             const snapshot = await fetchWorkflowSnapshot(apiBaseUrl, session.token, controller.signal);
             hydrateWorkflow(snapshot);
@@ -76,6 +82,7 @@ export function AppProviders({ platform, apiBaseUrl, children }: AppProvidersPro
         if (persisted) {
           const session = await fetchCurrentSession(apiBaseUrl, persisted, controller.signal);
           useSessionStore.getState().setSession(session);
+          if (!needsTenantStoreHydration(session)) return;
           try {
             const snapshot = await fetchWorkflowSnapshot(apiBaseUrl, session.token, controller.signal);
             hydrateWorkflow(snapshot);
@@ -99,6 +106,7 @@ export function AppProviders({ platform, apiBaseUrl, children }: AppProvidersPro
             const session = await demoLoginSession(apiBaseUrl, previewRoleId, controller.signal);
             await platform.store.set(tokenKey, session.token);
             useSessionStore.getState().setSession(session);
+            if (!needsTenantStoreHydration(session)) return;
             try {
               const snapshot = await fetchWorkflowSnapshot(apiBaseUrl, session.token, controller.signal);
               hydrateWorkflow(snapshot);

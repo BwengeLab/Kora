@@ -3,6 +3,25 @@ interface RawMoney {
   currency: string;
 }
 
+export interface PortalAccessGrant {
+  id: string;
+  grantee: string;
+  scopes: string[];
+  status: 'active' | 'pending' | 'revoked' | 'expired';
+  expiresAt: string;
+}
+
+export interface PortalAccessActivity {
+  action: string;
+  at: string;
+}
+
+export interface PortalAccessPayload {
+  organizationName: string;
+  grants: PortalAccessGrant[];
+  activity: PortalAccessActivity[];
+}
+
 export interface CreditPassportPortalPayload {
   passport: {
     tenant: string;
@@ -54,6 +73,41 @@ export async function fetchPortalCreditPassport(apiBaseUrl: string, token: strin
     throw new Error((await safePayload(response)) || `${response.status} ${response.statusText}`);
   }
   return reviveBigInts((await response.json()) as CreditPassportPortalPayload) as CreditPassportPortalPayload;
+}
+
+export async function fetchPortalAccess(apiBaseUrl: string, token: string, signal?: AbortSignal): Promise<PortalAccessPayload> {
+  const init: RequestInit = {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  };
+  if (signal) init.signal = signal;
+  const response = await fetch(`${apiBaseUrl}/api/portal/access`, init);
+  if (!response.ok) {
+    throw new Error((await safePayload(response)) || `${response.status} ${response.statusText}`);
+  }
+  return (await response.json()) as PortalAccessPayload;
+}
+
+export async function requestPortalAccess(apiBaseUrl: string, token: string, scope: string): Promise<void> {
+  const response = await fetch(`${apiBaseUrl}/api/portal/access-requests`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scope }),
+  });
+  if (!response.ok) {
+    throw new Error((await safePayload(response)) || `${response.status} ${response.statusText}`);
+  }
+}
+
+export async function downloadPortalCreditPassport(apiBaseUrl: string, token: string): Promise<Blob> {
+  const response = await fetch(`${apiBaseUrl}/api/portal/credit-passport/download`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw new Error((await safePayload(response)) || `${response.status} ${response.statusText}`);
+  }
+  return response.blob();
 }
 
 function reviveBigInts(value: unknown): unknown {

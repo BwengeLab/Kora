@@ -1,15 +1,16 @@
 import * as Dialog from '@radix-ui/react-dialog';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ArrowRight, CheckCircle2, Download, FileText, ShieldCheck, TrendingDown, TrendingUp, UserPlus, X, XCircle } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import { acceptRisk, assignRisk, downloadOwnerRiskPack, fetchOwnerRiskDashboard, mitigateRisk, type OwnerRiskDashboardPayload } from '../../api/governanceOps';
 import { getApiBaseUrl } from '../../api/client';
-import { acceptRisk, assignRisk, fetchOwnerRiskDashboard, mitigateRisk } from '../../api/governanceOps';
 import { DateRangePill, PageHeader } from '../../app/shell';
 import { GlassSurface, MoneyCell, ProgressRing, cn } from '../../design-system';
+import { seedBusinessRisks, seedCompliance, seedControlPosture, type BusinessRisk, type ComplianceItem, type RiskSeverity } from '../../seed/ownerRisk';
 import { openDoc } from '../../state/docViewerStore';
 import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
 import { useWorkflowStore } from '../../state/workflowStore';
-import { seedBusinessRisks, seedCompliance, seedControlPosture, type BusinessRisk, type ComplianceItem, type RiskSeverity } from '../../seed/ownerRisk';
 
 const SEV_TONE: Record<RiskSeverity, string> = { low: 'bg-success-soft text-success', medium: 'bg-warning-soft text-warning', high: 'bg-danger-soft text-danger' };
 type RiskStatus = 'open' | 'mitigating' | 'accepted';
@@ -18,62 +19,79 @@ type RiskItem = BusinessRisk & { status?: RiskStatus };
 export function OwnerAuditRisk() {
   const token = useSessionStore((s) => s.session?.token ?? '');
   const apiBaseUrl = getApiBaseUrl();
-  const [controlPosture, setControlPosture] = useState(seedControlPosture);
-  const [risks, setRisks] = useState<RiskItem[]>(seedBusinessRisks);
-  const [compliance, setCompliance] = useState<ComplianceItem[]>(seedCompliance);
+  const queryClient = useQueryClient();
   const [selectedRiskID, setSelectedRiskID] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!token) return;
-    const controller = new AbortController();
-    fetchOwnerRiskDashboard(apiBaseUrl, token, controller.signal)
-      .then((payload) => {
-        setControlPosture(payload.controlPosture);
-        setRisks(payload.risks);
-        setCompliance(payload.compliance);
-      })
-      .catch((error: unknown) => {
-        if (!controller.signal.aborted) {
-          toast({ tone: 'warning', title: 'Risk dashboard unavailable', body: error instanceof Error ? error.message : 'Could not load owner risk data.' });
-        }
-      });
-    return () => controller.abort();
-  }, [apiBaseUrl, token]);
+  const { data } = useQuery({
+    queryKey: ['owner-risk-dashboard', token],
+    queryFn: ({ signal }) => fetchOwnerRiskDashboard(apiBaseUrl, token, signal),
+    enabled: Boolean(token),
+  });
 
-  const selectedRisk = selectedRiskID ? risks.find((item) => item.id === selectedRiskID) ?? null : null;
-
-  const syncRiskPayload = (payload: Awaited<ReturnType<typeof fetchOwnerRiskDashboard>>) => {
-    setControlPosture(payload.controlPosture);
-    setRisks(payload.risks);
-    setCompliance(payload.compliance);
+  const syncPayload = (payload: OwnerRiskDashboardPayload) => {
+    queryClient.setQueryData(['owner-risk-dashboard', token], payload);
   };
 
+  const assignMutation = useMutation({
+    mutationFn: (riskID: string) => assignRisk(apiBaseUrl, token, riskID),
+    onSuccess: syncPayload,
+  });
+  const mitigateMutation = useMutation({
+    mutationFn: (riskID: string) => mitigateRisk(apiBaseUrl, token, riskID),
+    onSuccess: syncPayload,
+  });
+  const acceptMutation = useMutation({
+    mutationFn: (riskID: string) => acceptRisk(apiBaseUrl, token, riskID),
+    onSuccess: syncPayload,
+  });
+
+  const controlPosture = data?.controlPosture ?? seedControlPosture;
+  const risks: RiskItem[] = data?.risks ?? seedBusinessRisks.map((risk) => ({ ...risk }));
+  const compliance = data?.compliance ?? seedCompliance;
+  const selectedRisk = selectedRiskID ? risks.find((item) => item.id === selectedRiskID) ?? null : null;
+
   const handleAssign = async (risk: RiskItem) => {
-    if (token) {
-      syncRiskPayload(await assignRisk(apiBaseUrl, token, risk.id));
+    try {
+      await assignMutation.mutateAsync(risk.id);
+      toast({ tone: 'info', title: 'Assigned', body: `${risk.title} assigned to ${risk.owner} with a due date.` });
+    } catch (error) {
+      toast({ tone: 'danger', title: 'Assignment failed', body: error instanceof Error ? error.message : 'Could not assign this risk.' });
     }
-    toast({ tone: 'info', title: 'Assigned', body: `${risk.title} assigned to ${risk.owner} with a due date.` });
   };
 
   const handleMitigate = async (risk: RiskItem) => {
-    if (token) {
-      syncRiskPayload(await mitigateRisk(apiBaseUrl, token, risk.id));
-    } else {
-      setRisks((items) => items.map((item) => (item.id === risk.id ? { ...item, status: 'mitigating' } : item)));
+    try {
+      await mitigateMutation.mutateAsync(risk.id);
+      toast({ tone: 'success', title: 'Mitigation tracked', body: `${risk.title} is now tracked to closure.` });
+      setSelectedRiskID(null);
+    } catch (error) {
+      toast({ tone: 'danger', title: 'Mitigation failed', body: error instanceof Error ? error.message : 'Could not track this mitigation.' });
     }
-    toast({ tone: 'success', title: 'Mitigation tracked', body: `${risk.title} is now tracked to closure.` });
-    setSelectedRiskID(null);
   };
 
   const handleAccept = async (risk: RiskItem) => {
-    if (token) {
-      syncRiskPayload(await acceptRisk(apiBaseUrl, token, risk.id));
-    } else {
-      setRisks((items) => items.map((item) => (item.id === risk.id ? { ...item, status: 'accepted' } : item)));
-      setControlPosture((current) => ({ ...current, openRisks: Math.max(0, current.openRisks - 1) }));
+    try {
+      await acceptMutation.mutateAsync(risk.id);
+      toast({ tone: 'warning', title: 'Risk accepted', body: `${risk.title} accepted and logged with your sign-off.` });
+      setSelectedRiskID(null);
+    } catch (error) {
+      toast({ tone: 'danger', title: 'Acceptance failed', body: error instanceof Error ? error.message : 'Could not accept this risk.' });
     }
-    toast({ tone: 'warning', title: 'Risk accepted', body: `${risk.title} accepted and logged with your sign-off.` });
-    setSelectedRiskID(null);
+  };
+
+  const exportRiskPack = async () => {
+    try {
+      const blob = await downloadOwnerRiskPack(apiBaseUrl, token);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = 'kora-board-risk-pack.pdf';
+      anchor.click();
+      URL.revokeObjectURL(url);
+      toast({ tone: 'success', title: 'Export downloaded', body: 'The board risk pack is ready.' });
+    } catch (error) {
+      toast({ tone: 'danger', title: 'Export failed', body: error instanceof Error ? error.message : 'Could not export the board risk pack.' });
+    }
   };
 
   return (
@@ -83,7 +101,7 @@ export function OwnerAuditRisk() {
         subtitle={<>Your control posture, the top risks to act on, and a live trail of every sensitive action.</>}
         right={
           <div className="flex items-center gap-2.5">
-            <button type="button" onClick={() => toast({ tone: 'info', title: 'Exporting', body: 'Board risk pack (PDF) is being prepared.' })} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-glass-strong px-4 text-[13px] font-semibold text-ink-soft ring-1 ring-white/70 backdrop-blur-glass hover:bg-white hover:text-ink">
+            <button type="button" onClick={() => void exportRiskPack()} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-glass-strong px-4 text-[13px] font-semibold text-ink-soft ring-1 ring-white/70 backdrop-blur-glass hover:bg-white hover:text-ink">
               <Download className="size-4" /> Board risk pack
             </button>
             <DateRangePill label="May 2025" />
@@ -108,6 +126,7 @@ export function OwnerAuditRisk() {
         onAssign={handleAssign}
         onMitigate={handleMitigate}
         onAccept={handleAccept}
+        busy={assignMutation.isPending || mitigateMutation.isPending || acceptMutation.isPending}
       />
     </div>
   );
@@ -120,7 +139,7 @@ function ControlPostureCard({ posture }: { posture: typeof seedControlPosture })
         <div className="flex flex-col"><span className="font-display text-2xl font-bold text-ink tabular">{posture.controlHealth}</span><span className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted">control</span></div>
       </ProgressRing>
       <div className="flex flex-col gap-2">
-        <span className="inline-flex w-fit items-center gap-1 rounded-full bg-success-soft px-2 py-0.5 text-[11px] font-bold text-success">▲ {posture.controlTrend} pts vs last month</span>
+        <span className="inline-flex w-fit items-center gap-1 rounded-full bg-success-soft px-2 py-0.5 text-[11px] font-bold text-success">+ {posture.controlTrend} pts vs last month</span>
         <div><span className="text-[12px] font-semibold text-ink-muted">Overall risk</span><p className="font-display text-xl font-bold text-ink">{posture.riskScore}</p></div>
         <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-warning-soft px-2.5 py-1 text-[11px] font-bold text-warning"><AlertTriangle className="size-3.5" /> {posture.openRisks} open risks to review</span>
       </div>
@@ -149,7 +168,7 @@ function ComplianceRow({ c }: { c: ComplianceItem }) {
       <button type="button" onClick={onClick} className="flex w-full items-start gap-2.5 rounded-2xl bg-white/55 p-3 text-left ring-1 ring-white/60 transition-colors hover:bg-white">
         {c.ok ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" /> : <XCircle className="mt-0.5 size-4 shrink-0 text-danger" />}
         <div className="min-w-0 flex-1"><p className="text-[12.5px] font-bold text-ink">{c.label}</p><p className="text-[11px] text-ink-muted">{c.note}</p></div>
-        {!c.ok ? <span className="shrink-0 rounded-lg bg-danger-soft px-2 py-0.5 text-[10px] font-bold text-danger">Fix →</span> : null}
+        {!c.ok ? <span className="shrink-0 rounded-lg bg-danger-soft px-2 py-0.5 text-[10px] font-bold text-danger">Fix {'->'}</span> : null}
       </button>
     </li>
   );
@@ -198,9 +217,9 @@ function SensitiveActionsCard() {
       <ul className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-0.5">
         {shown.map((event) => (
           <li key={event.id}>
-            <button type="button" onClick={() => toast({ tone: 'info', title: event.action, body: `${event.actor} · ${event.role} · ${event.target ?? ''} · ${new Date(event.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` })} className="flex w-full items-start gap-3 rounded-2xl bg-white/55 p-3 text-left ring-1 ring-white/60 transition-colors hover:bg-white">
+            <button type="button" onClick={() => toast({ tone: 'info', title: event.action, body: `${event.actor} - ${event.role} - ${event.target ?? ''} - ${new Date(event.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` })} className="flex w-full items-start gap-3 rounded-2xl bg-white/55 p-3 text-left ring-1 ring-white/60 transition-colors hover:bg-white">
               <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-lg bg-ink/5 text-ink-soft"><ShieldCheck className="size-3.5" /></span>
-              <div className="min-w-0 flex-1"><p className="truncate text-[12.5px] font-semibold text-ink">{event.action}</p><p className="truncate text-[11px] text-ink-muted">{event.actor} · {event.role} · {new Date(event.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</p></div>
+              <div className="min-w-0 flex-1"><p className="truncate text-[12.5px] font-semibold text-ink">{event.action}</p><p className="truncate text-[11px] text-ink-muted">{event.actor} - {event.role} - {new Date(event.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</p></div>
               {event.amount ? <MoneyCell amount={event.amount} size="sm" className="shrink-0 font-bold !text-[12px]" /> : null}
             </button>
           </li>
@@ -211,7 +230,7 @@ function SensitiveActionsCard() {
   );
 }
 
-function RiskDrawer({ risk, status, onClose, onAssign, onMitigate, onAccept }: { risk: RiskItem | null; status: RiskStatus; onClose: () => void; onAssign: (r: RiskItem) => void; onMitigate: (r: RiskItem) => void; onAccept: (r: RiskItem) => void }) {
+function RiskDrawer({ risk, status, onClose, onAssign, onMitigate, onAccept, busy }: { risk: RiskItem | null; status: RiskStatus; onClose: () => void; onAssign: (r: RiskItem) => void; onMitigate: (r: RiskItem) => void; onAccept: (r: RiskItem) => void; busy: boolean }) {
   const item = risk;
   return (
     <Dialog.Root open={item !== null} onOpenChange={(open) => !open && onClose()}>
@@ -239,16 +258,16 @@ function RiskDrawer({ risk, status, onClose, onAssign, onMitigate, onAccept }: {
                   <Meta label="Potential impact" value={item.impact} />
                   <Meta label="Risk owner" value={item.owner} />
                 </dl>
-                <button type="button" onClick={() => openDoc({ name: item.evidenceName, kind: 'report', sizeText: '—', context: item.title })} className="flex w-full items-center gap-3 rounded-2xl bg-white/55 p-3 text-left ring-1 ring-white/60 hover:bg-white">
+                <button type="button" onClick={() => openDoc({ name: item.evidenceName, kind: 'report', sizeText: '-', context: item.title })} className="flex w-full items-center gap-3 rounded-2xl bg-white/55 p-3 text-left ring-1 ring-white/60 hover:bg-white">
                   <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-danger-soft text-danger"><FileText className="size-4" /></span>
                   <div className="min-w-0 flex-1"><p className="truncate text-[12.5px] font-semibold text-ink">{item.evidenceName}</p><p className="text-[11px] text-ink-muted">Supporting analysis</p></div>
                   <span className="rounded-lg bg-white/80 px-2 py-0.5 text-[10.5px] font-bold text-brand ring-1 ring-white/70">View</span>
                 </button>
               </div>
               <footer className="flex items-center gap-2 border-t border-white/55 p-4">
-                <button type="button" onClick={() => void onAccept(item)} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-white/70 px-3.5 text-[12.5px] font-bold text-ink-soft ring-1 ring-white/70 hover:bg-white">Accept risk</button>
-                <button type="button" onClick={() => void onAssign(item)} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-white/70 px-3.5 text-[12.5px] font-bold text-ink ring-1 ring-white/70 hover:bg-white"><UserPlus className="size-4" /> Assign</button>
-                <button type="button" onClick={() => void onMitigate(item)} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">Track mitigation</button>
+                <button type="button" disabled={busy} onClick={() => void onAccept(item)} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-white/70 px-3.5 text-[12.5px] font-bold text-ink-soft ring-1 ring-white/70 hover:bg-white disabled:cursor-not-allowed disabled:opacity-70">Accept risk</button>
+                <button type="button" disabled={busy} onClick={() => void onAssign(item)} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-white/70 px-3.5 text-[12.5px] font-bold text-ink ring-1 ring-white/70 hover:bg-white disabled:cursor-not-allowed disabled:opacity-70"><UserPlus className="size-4" /> Assign</button>
+                <button type="button" disabled={busy} onClick={() => void onMitigate(item)} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70">{busy ? 'Saving...' : 'Track mitigation'}</button>
               </footer>
             </>
           ) : null}

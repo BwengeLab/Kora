@@ -78,7 +78,7 @@ export async function workflowReconciliationAction(
   apiBaseUrl: string,
   token: string,
   reconciliationID: string,
-  action: 'prepare' | 'reject' | 'approve' | 'dismiss',
+  action: 'prepare' | 'reject' | 'approve' | 'dismiss' | 'assign' | 'ask' | 'acknowledge',
 ): Promise<WorkflowActionResponse> {
   const response = await fetch(`${apiBaseUrl}/api/workflow/reconciliations/${reconciliationID}/${action}`, {
     method: 'POST',
@@ -97,6 +97,15 @@ export async function workflowReconciliationAction(
       dismissedReconIds: data.snapshot.dismissedReconIds ?? [],
     },
   };
+}
+
+export async function downloadReconciliationSummary(apiBaseUrl: string, token: string): Promise<Blob> {
+  const response = await fetch(`${apiBaseUrl}/api/workflow/reconciliation-export`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error((await safePayload(response)) || `${response.status} ${response.statusText}`);
+  return response.blob();
 }
 
 function reviveBigInts(value: unknown): unknown {

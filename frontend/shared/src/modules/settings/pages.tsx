@@ -1,8 +1,8 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Sparkles } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { getApiBaseUrl } from '../../api/client';
-import { fetchIntegrationStatuses, type IntegrationStatusItem } from '../../api/integrations';
+import { fetchIntegrationStatuses, integrationStatusAction, type IntegrationStatusItem } from '../../api/integrations';
 import { fetchSettingsOverview, openBillingPortal, requestDataExport, saveDataControls, saveOrgProfile, savePolicyControls, type SettingsOverviewPayload } from '../../api/settingsOverview';
 import { useSession } from '../../auth/hooks';
 import { toast } from '../../state/toastStore';
@@ -159,11 +159,21 @@ export function SettingsPoliciesPage() {
 
 export function SettingsIntegrationsPage() {
   const session = useSession();
+  const apiBaseUrl = getApiBaseUrl();
+  const queryClient = useQueryClient();
   const { data } = useQuery({
     queryKey: ['integrations', 'settings', session?.tenant.id],
-    queryFn: ({ signal }) => fetchIntegrationStatuses(getApiBaseUrl(), session!.token, signal),
+    queryFn: ({ signal }) => fetchIntegrationStatuses(apiBaseUrl, session!.token, signal),
     enabled: Boolean(session?.token),
     staleTime: 30_000,
+  });
+  const actionMutation = useMutation({
+    mutationFn: ({ integrationID, action }: { integrationID: string; action: 'connect' | 'disconnect' }) =>
+      integrationStatusAction(apiBaseUrl, session!.token, integrationID, action),
+    onSuccess: (items) => {
+      queryClient.setQueryData(['integrations', 'settings', session?.tenant.id], items);
+      queryClient.setQueryData(['integrations', 'status', session?.tenant.id], items);
+    },
   });
   const items = data ?? INTEGRATIONS.map<IntegrationStatusItem>((item, index) => ({
     id: `seed-${index}`,
@@ -174,22 +184,57 @@ export function SettingsIntegrationsPage() {
     connected: item.connected,
   }));
   return (
-    <SettingsCard title="Integrations" desc="Connect bank feeds, mobile money and accounting tools so data flows into Kora automatically.">
-      <div className="grid grid-cols-2 gap-3">
-        {items.map((item) => (
-          <div key={item.id} className="flex items-center gap-3 rounded-2xl bg-white/55 p-3.5 ring-1 ring-white/60">
-            <span className="grid size-10 place-items-center rounded-xl bg-white/80 text-[13px] font-bold text-ink-soft ring-1 ring-white/60">{item.name.slice(0, 2)}</span>
-            <div className="min-w-0 flex-1"><p className="truncate text-[13px] font-bold text-ink">{item.name}</p><p className="text-[11px] text-ink-muted">{item.category} · {item.lastSync}</p></div>
-            {item.connected ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2 py-0.5 text-[10.5px] font-bold text-success"><Check className="size-3" /> Connected</span>
-            ) : (
-              <button type="button" onClick={() => toast({ tone: 'success', title: `${item.name} connecting`, body: 'Authorize in the popup to finish.' })} className="rounded-lg bg-brand px-2.5 py-1 text-[11px] font-bold text-white hover:brightness-110">Connect</button>
-            )}
-          </div>
-        ))}
-      </div>
-    </SettingsCard>
-  );
+      <SettingsCard title="Integrations" desc="Connect bank feeds, mobile money and accounting tools so data flows into Kora automatically.">
+        <div className="grid grid-cols-2 gap-3">
+          {items.map((item) => (
+            <div key={item.id} className="flex items-center gap-3 rounded-2xl bg-white/55 p-3.5 ring-1 ring-white/60">
+              <span className="grid size-10 place-items-center rounded-xl bg-white/80 text-[13px] font-bold text-ink-soft ring-1 ring-white/60">{item.name.slice(0, 2)}</span>
+              <div className="min-w-0 flex-1"><p className="truncate text-[13px] font-bold text-ink">{item.name}</p><p className="text-[11px] text-ink-muted">{item.category} · {item.lastSync}</p></div>
+              {item.connected ? (
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2 py-0.5 text-[10.5px] font-bold text-success"><Check className="size-3" /> Connected</span>
+                  <button
+                    type="button"
+                    disabled={actionMutation.isPending}
+                    onClick={() => void runIntegrationAction(item, 'disconnect')}
+                    className="rounded-lg bg-white/80 px-2.5 py-1 text-[11px] font-bold text-ink-soft ring-1 ring-white/70 hover:bg-white disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={actionMutation.isPending}
+                  onClick={() => void runIntegrationAction(item, 'connect')}
+                  className="rounded-lg bg-brand px-2.5 py-1 text-[11px] font-bold text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {actionMutation.isPending ? 'Working...' : item.status === 'error' ? 'Reconnect' : 'Connect'}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      </SettingsCard>
+    );
+
+  async function runIntegrationAction(item: IntegrationStatusItem, action: 'connect' | 'disconnect') {
+    if (!session?.token) return;
+    try {
+      await actionMutation.mutateAsync({ integrationID: item.id, action });
+      toast({
+        tone: action === 'connect' ? 'success' : 'info',
+        title: action === 'connect' ? 'Integration connected' : 'Integration disconnected',
+        body: action === 'connect' ? `${item.name} is now available to Kora.` : `${item.name} has been disconnected.`,
+      });
+    } catch (error) {
+      toast({
+        tone: 'warning',
+        title: action === 'connect' ? 'Connect failed' : 'Disconnect failed',
+        body: error instanceof Error ? error.message : `Could not ${action} ${item.name}.`,
+      });
+    }
+  }
 }
 
 export function SettingsBillingPage() {

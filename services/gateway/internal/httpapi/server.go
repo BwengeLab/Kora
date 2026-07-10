@@ -1,8 +1,10 @@
 package httpapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -25,32 +27,38 @@ const maxRequestBytes = 1 << 20
 const demoPassword = "demo-pass-123"
 
 type Server struct {
-	mux                 *http.ServeMux
-	identityService     *identity.Service
-	identityStore       *identity.MemoryStore
-	connections         connectors.ConnectionStore
-	jwtSecret           []byte
-	demoUsers           map[string]demoUser
-	demoMu              sync.RWMutex
-	intakeDocs          []demo.IntakeDoc
-	reports             []demo.ReportDef
-	financeSnapshot     demo.FinanceOperationsSnapshot
-	financeLeadHome     demo.FinanceLeadDashboardData
-	contracts           demo.ContractsOverviewData
-	ownerRisk           demo.OwnerRiskDashboardData
-	controlsClose       demo.ControlsCloseData
-	auditViews          demo.AuditInvestigationsView
-	collections         []demo.OverdueItem
-	agentsState         demo.AgentsOverviewData
-	workflowState       demo.WorkflowSnapshot
-	claimsState         demo.ClaimWorkspaceData
-	featureEntitlements []string
-	orgUsers            []demo.OrgUserData
-	approvalRules       []demo.ApprovalRuleData
-	settingsOverview    demo.SettingsOverviewData
-	platformConsole     demo.PlatformConsoleData
-	accountSettings     map[string]demo.AccountSettingsData
-	mailboxes           map[string]demo.MailboxData
+	mux                  *http.ServeMux
+	identityService      *identity.Service
+	identityStore        *identity.MemoryStore
+	connections          connectors.ConnectionStore
+	jwtSecret            []byte
+	demoUsers            map[string]demoUser
+	demoMu               sync.RWMutex
+	intakeDocs           []demo.IntakeDoc
+	intakeSources        map[string]bool
+	reports              []demo.ReportDef
+	financeSnapshot      demo.FinanceOperationsSnapshot
+	financeLeadHome      demo.FinanceLeadDashboardData
+	contracts            demo.ContractsOverviewData
+	ownerRisk            demo.OwnerRiskDashboardData
+	controlsClose        demo.ControlsCloseData
+	auditViews           demo.AuditInvestigationsView
+	collections          []demo.OverdueItem
+	collectionsMgmt      demo.CollectionsManagementData
+	relationships        demo.RelationshipsOverviewData
+	agentsState          demo.AgentsOverviewData
+	workflowState        demo.WorkflowSnapshot
+	claimsState          demo.ClaimWorkspaceData
+	consentState         []demo.ConsentGrantData
+	adminDashboardState  demo.AdminDashboardData
+	featureEntitlements  []string
+	orgUsers             []demo.OrgUserData
+	approvalRules        []demo.ApprovalRuleData
+	settingsOverview     demo.SettingsOverviewData
+	integrationOverrides map[string]integrationStatusOverride
+	platformConsole      demo.PlatformConsoleData
+	accountSettings      map[string]demo.AccountSettingsData
+	mailboxes            map[string]demo.MailboxData
 }
 
 type demoUser struct {
@@ -106,6 +114,24 @@ type integrationStatus struct {
 	ConnectionID string `json:"connectionId,omitempty"`
 }
 
+type integrationStatusOverride struct {
+	Status       string
+	LastSync     string
+	Connected    bool
+	ConnectionID string
+}
+
+type portalAccessActivity struct {
+	Action string `json:"action"`
+	At     string `json:"at"`
+}
+
+type portalAccessResponse struct {
+	OrganizationName string                  `json:"organizationName"`
+	Grants           []demo.ConsentGrantData `json:"grants"`
+	Activity         []portalAccessActivity  `json:"activity"`
+}
+
 func New(secret []byte) (*Server, error) {
 	store := identity.NewMemoryStore()
 	service := identity.NewService(store, secret)
@@ -129,40 +155,57 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/session/demo-login", s.demoLogin)
 	s.mux.HandleFunc("/api/session/me", s.sessionMe)
 	s.mux.HandleFunc("/api/integrations/status", s.integrationsStatus)
+	s.mux.HandleFunc("/api/integrations/status/", s.integrationsStatusAction)
 	s.mux.HandleFunc("/api/workflow/snapshot", s.workflowSnapshot)
 	s.mux.HandleFunc("/api/workflow/approvals/", s.workflowApprovalAction)
 	s.mux.HandleFunc("/api/workflow/reconciliations/", s.workflowReconciliationAction)
+	s.mux.HandleFunc("/api/workflow/reconciliation-export", s.reconciliationExport)
 	s.mux.HandleFunc("/api/collections/overdue", s.collectionsOverdue)
 	s.mux.HandleFunc("/api/collections/overdue/", s.collectionsOverdueAction)
 	s.mux.HandleFunc("/api/collections/export-summary", s.collectionsExportSummary)
 	s.mux.HandleFunc("/api/claims/workspace", s.claimsWorkspace)
 	s.mux.HandleFunc("/api/claims/", s.claimsAction)
 	s.mux.HandleFunc("/api/consent/grants", s.consentGrants)
+	s.mux.HandleFunc("/api/consent/grants/", s.consentGrantAction)
 	s.mux.HandleFunc("/api/relationships/overview", s.relationshipsOverview)
+	s.mux.HandleFunc("/api/relationships/parties/", s.relationshipPartyAction)
 	s.mux.HandleFunc("/api/roi/summary", s.roiSummary)
+	s.mux.HandleFunc("/api/roi/export", s.roiExport)
+	s.mux.HandleFunc("/api/portal/credit-passport/download", s.portalCreditPassportDownload)
 	s.mux.HandleFunc("/api/portal/credit-passport", s.portalCreditPassport)
+	s.mux.HandleFunc("/api/portal/access", s.portalAccessOverview)
+	s.mux.HandleFunc("/api/portal/access-requests", s.portalAccessRequest)
 	s.mux.HandleFunc("/api/agents/overview", s.agentsOverview)
 	s.mux.HandleFunc("/api/agents/run-all", s.agentRunAll)
 	s.mux.HandleFunc("/api/agents/run/", s.agentRun)
+	s.mux.HandleFunc("/api/agents/", s.agentFeedback)
 	s.mux.HandleFunc("/api/collections/management", s.collectionsManagement)
+	s.mux.HandleFunc("/api/collections/management/", s.collectionsManagementAction)
 	s.mux.HandleFunc("/api/home/owner-summary", s.ownerSummary)
 	s.mux.HandleFunc("/api/home/owner-dashboard", s.ownerDashboard)
 	s.mux.HandleFunc("/api/home/admin-dashboard", s.adminDashboard)
+	s.mux.HandleFunc("/api/home/admin-dashboard/access-requests/", s.adminAccessRequestAction)
 	s.mux.HandleFunc("/api/home/operator-dashboard", s.operatorDashboard)
 	s.mux.HandleFunc("/api/home/auditor-dashboard", s.auditorDashboard)
 	s.mux.HandleFunc("/api/home/platform-dashboard", s.platformDashboard)
 	s.mux.HandleFunc("/api/intake/docs", s.intakeDocsAPI)
+	s.mux.HandleFunc("/api/intake/sources", s.intakeSourcesAPI)
+	s.mux.HandleFunc("/api/intake/sources/", s.intakeSourceAction)
 	s.mux.HandleFunc("/api/intake/upload", s.intakeUpload)
 	s.mux.HandleFunc("/api/intake/docs/", s.intakeDocAction)
 	s.mux.HandleFunc("/api/reports", s.reportsCatalog)
 	s.mux.HandleFunc("/api/reports/", s.reportDetail)
 	s.mux.HandleFunc("/api/reports-board-pack", s.reportsBoardPack)
+	s.mux.HandleFunc("/api/financial-statements/export", s.financialStatementsExport)
 	s.mux.HandleFunc("/api/finance/operations", s.financeOperations)
 	s.mux.HandleFunc("/api/finance/cashflow-view", s.financeCashflowView)
+	s.mux.HandleFunc("/api/finance/cashflow-export", s.financeCashflowExport)
 	s.mux.HandleFunc("/api/finance/journals", s.financeCreateJournal)
 	s.mux.HandleFunc("/api/finance/bills/", s.financeBillAction)
 	s.mux.HandleFunc("/api/finance/transactions/", s.financeTransactionAction)
 	s.mux.HandleFunc("/api/audit/investigations", s.auditInvestigations)
+	s.mux.HandleFunc("/api/audit/investigations/findings", s.auditFindingCreate)
+	s.mux.HandleFunc("/api/audit/investigations/evidence-pack", s.auditEvidencePack)
 	s.mux.HandleFunc("/api/settings/users", s.settingsUsers)
 	s.mux.HandleFunc("/api/settings/users/", s.settingsUserAction)
 	s.mux.HandleFunc("/api/settings/approval-rules", s.settingsApprovalRules)
@@ -190,6 +233,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/contracts/overview", s.contractsOverview)
 	s.mux.HandleFunc("/api/contracts/", s.contractAction)
 	s.mux.HandleFunc("/api/owner/risk-dashboard", s.ownerRiskDashboard)
+	s.mux.HandleFunc("/api/owner/risk-dashboard/export", s.ownerRiskDashboardExport)
 	s.mux.HandleFunc("/api/owner/risks/", s.ownerRiskAction)
 	s.mux.HandleFunc("/api/controls-close/overview", s.controlsCloseOverview)
 	s.mux.HandleFunc("/api/controls-close/tasks/", s.controlsCloseTaskAction)
@@ -322,12 +366,93 @@ func (s *Server) integrationsStatus(writer http.ResponseWriter, request *http.Re
 		writeError(writer, http.StatusForbidden, err.Error())
 		return
 	}
-	items, err := s.connections.List(actor, claims.OrganizationID, "")
+	statuses, err := s.integrationStatusesForActor(actor, claims.OrganizationID)
 	if err != nil {
 		writeError(writer, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(writer, http.StatusOK, map[string]any{"items": buildIntegrationStatuses(items)})
+	writeJSON(writer, http.StatusOK, map[string]any{"items": statuses})
+}
+
+func (s *Server) integrationsStatusAction(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	claims, actor, ok := s.requireTenantActor(writer, request, access.PermissionManageIntegrations)
+	if !ok {
+		return
+	}
+	path := strings.TrimPrefix(request.URL.Path, "/api/integrations/status/")
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) != 2 {
+		writeError(writer, http.StatusNotFound, "not found")
+		return
+	}
+	integrationID, action := parts[0], parts[1]
+	statuses, err := s.integrationStatusesForActor(actor, claims.OrganizationID)
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+	var current *integrationStatus
+	for idx := range statuses {
+		if statuses[idx].ID == integrationID {
+			current = &statuses[idx]
+			break
+		}
+	}
+	if current == nil {
+		writeError(writer, http.StatusNotFound, "integration not found")
+		return
+	}
+	override := integrationStatusOverride{
+		Status:       current.Status,
+		LastSync:     current.LastSync,
+		Connected:    current.Connected,
+		ConnectionID: current.ConnectionID,
+	}
+	actionLabel := ""
+	switch action {
+	case "connect":
+		override.Connected = true
+		override.Status = "connected"
+		override.LastSync = "ready"
+		if override.ConnectionID == "" {
+			override.ConnectionID = "conn_demo_" + strings.ReplaceAll(integrationID, "-", "_")
+		}
+		actionLabel = "Integration connect"
+	case "disconnect":
+		override.Connected = false
+		override.Status = "disconnected"
+		override.LastSync = "Not connected"
+		actionLabel = "Integration disconnect"
+	default:
+		writeError(writer, http.StatusNotFound, "unknown integration action")
+		return
+	}
+	s.demoMu.Lock()
+	if s.integrationOverrides == nil {
+		s.integrationOverrides = map[string]integrationStatusOverride{}
+	}
+	s.integrationOverrides[integrationID] = override
+	s.workflowState.AuditLog = append([]demo.AuditEvent{{
+		ID:          "al-" + strconv.FormatInt(time.Now().UnixNano(), 10),
+		At:          time.Now().UTC().Format(time.RFC3339),
+		Actor:       s.sessionDisplayName(claims),
+		Role:        s.sessionRoleName(claims),
+		Kind:        "integration",
+		Action:      actionLabel,
+		Target:      current.Name,
+		HasEvidence: true,
+	}}, s.workflowState.AuditLog...)
+	s.demoMu.Unlock()
+	updated, err := s.integrationStatusesForActor(actor, claims.OrganizationID)
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(writer, http.StatusOK, map[string]any{"items": updated})
 }
 
 func (s *Server) workflowSnapshot(writer http.ResponseWriter, request *http.Request) {
@@ -431,23 +556,29 @@ func (s *Server) workflowApprovalAction(writer http.ResponseWriter, request *htt
 			item.Stage = "rejected"
 			result = "withdrawn"
 			item.History = append(item.History, demo.HistoryEvent{ID: "ah-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, ActorRole: actorRole, Kind: "user", Action: "Withdrawn to drafts"})
+			s.workflowState.AuditLog = append([]demo.AuditEvent{{ID: "al-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, Role: actorRole, Kind: "approval", Action: "Withdrew approval request", Target: item.Title + " - " + item.Subtitle, Amount: &item.Amount, HasEvidence: len(item.Evidence) > 0}}, s.workflowState.AuditLog...)
 		case "nudge":
 			result = "nudged"
 			item.History = append(item.History, demo.HistoryEvent{ID: "ah-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, ActorRole: actorRole, Kind: "user", Action: "Nudged approver"})
+			s.workflowState.AuditLog = append([]demo.AuditEvent{{ID: "al-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, Role: actorRole, Kind: "approval", Action: "Nudged approver", Target: item.Title + " - " + item.Subtitle, Amount: &item.Amount, HasEvidence: len(item.Evidence) > 0}}, s.workflowState.AuditLog...)
 		case "resubmit":
 			item.Stage = "awaiting"
 			result = "resubmitted"
 			item.History = append(item.History, demo.HistoryEvent{ID: "ah-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, ActorRole: actorRole, Kind: "user", Action: "Reopened and resubmitted"})
+			s.workflowState.AuditLog = append([]demo.AuditEvent{{ID: "al-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, Role: actorRole, Kind: "approval", Action: "Resubmitted approval", Target: item.Title + " - " + item.Subtitle, Amount: &item.Amount, HasEvidence: len(item.Evidence) > 0}}, s.workflowState.AuditLog...)
 		case "request-info":
 			result = "requested-info"
 			item.History = append(item.History, demo.HistoryEvent{ID: "ah-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, ActorRole: actorRole, Kind: "user", Action: "Requested more info"})
+			s.workflowState.AuditLog = append([]demo.AuditEvent{{ID: "al-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, Role: actorRole, Kind: "approval", Action: "Requested approval info", Target: item.Title + " - " + item.Subtitle, Amount: &item.Amount, HasEvidence: len(item.Evidence) > 0}}, s.workflowState.AuditLog...)
 		case "reassign":
 			result = "reassigned"
 			item.History = append(item.History, demo.HistoryEvent{ID: "ah-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, ActorRole: actorRole, Kind: "user", Action: "Reassigned approver"})
+			s.workflowState.AuditLog = append([]demo.AuditEvent{{ID: "al-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, Role: actorRole, Kind: "approval", Action: "Reassigned approval", Target: item.Title + " - " + item.Subtitle, Amount: &item.Amount, HasEvidence: len(item.Evidence) > 0}}, s.workflowState.AuditLog...)
 		case "escalate":
 			item.Stage = "escalated"
 			result = "escalated"
 			item.History = append(item.History, demo.HistoryEvent{ID: "ah-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, ActorRole: actorRole, Kind: "user", Action: "Escalated to owner"})
+			s.workflowState.AuditLog = append([]demo.AuditEvent{{ID: "al-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, Role: actorRole, Kind: "approval", Action: "Escalated approval", Target: item.Title + " - " + item.Subtitle, Amount: &item.Amount, HasEvidence: len(item.Evidence) > 0}}, s.workflowState.AuditLog...)
 		default:
 			writeError(writer, http.StatusNotFound, "unknown workflow action")
 			return
@@ -545,6 +676,42 @@ func (s *Server) workflowReconciliationAction(writer http.ResponseWriter, reques
 				s.workflowState.DismissedReconIDs = append(s.workflowState.DismissedReconIDs, reconID)
 			}
 			result = "dismissed"
+		case "assign":
+			recon.AgeText = "Delegated to finance"
+			recon.History = append(recon.History, demo.HistoryEvent{
+				ID: "h-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: now, Actor: actorName, ActorRole: actorRole,
+				Kind: "user", Action: "Delegated exception to Finance Operator",
+			})
+			s.workflowState.AuditLog = append([]demo.AuditEvent{{
+				ID: "al-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: now, Actor: actorName, Role: actorRole,
+				Kind: "workflow", Action: "Delegated reconciliation exception", Target: recon.Transaction.Counterparty,
+				Amount: &recon.Transaction.Amount, HasEvidence: len(recon.Evidence) > 0,
+			}}, s.workflowState.AuditLog...)
+			result = "assigned"
+		case "ask":
+			recon.AgeText = "Explanation requested"
+			recon.History = append(recon.History, demo.HistoryEvent{
+				ID: "h-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: now, Actor: actorName, ActorRole: actorRole,
+				Kind: "user", Action: "Requested explanation from Finance Operator",
+			})
+			s.workflowState.AuditLog = append([]demo.AuditEvent{{
+				ID: "al-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: now, Actor: actorName, Role: actorRole,
+				Kind: "workflow", Action: "Requested reconciliation explanation", Target: recon.Transaction.Counterparty,
+				Amount: &recon.Transaction.Amount, HasEvidence: len(recon.Evidence) > 0,
+			}}, s.workflowState.AuditLog...)
+			result = "asked"
+		case "acknowledge":
+			recon.AgeText = "Reviewed just now"
+			recon.History = append(recon.History, demo.HistoryEvent{
+				ID: "h-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: now, Actor: actorName, ActorRole: actorRole,
+				Kind: "user", Action: "Acknowledged exception review",
+			})
+			s.workflowState.AuditLog = append([]demo.AuditEvent{{
+				ID: "al-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: now, Actor: actorName, Role: actorRole,
+				Kind: "review", Action: "Acknowledged reconciliation exception", Target: recon.Transaction.Counterparty,
+				Amount: &recon.Transaction.Amount, HasEvidence: len(recon.Evidence) > 0,
+			}}, s.workflowState.AuditLog...)
+			result = "acknowledged"
 		default:
 			writeError(writer, http.StatusNotFound, "unknown workflow action")
 			return
@@ -553,6 +720,31 @@ func (s *Server) workflowReconciliationAction(writer http.ResponseWriter, reques
 		return
 	}
 	writeError(writer, http.StatusNotFound, "reconciliation not found")
+}
+
+func (s *Server) reconciliationExport(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet {
+		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadEvents); !ok {
+		return
+	}
+	s.demoMu.RLock()
+	items := append([]demo.Reconciliation(nil), s.workflowState.Reconciliations...)
+	s.demoMu.RUnlock()
+	open := 0
+	for _, item := range items {
+		if item.Stage == "reviewing" || item.Stage == "detected" {
+			open++
+		}
+	}
+	content := fmt.Sprintf("BT\n/F1 20 Tf\n72 748 Td\n(Kora Reconciliation Control Summary) Tj\n0 -28 Td\n/F1 11 Tf\n(Total reconciliation items: %d) Tj\n0 -22 Td\n(Open exceptions: %d) Tj\n0 -22 Td\n(Audit evidence is linked to each workflow item.) Tj\n0 -30 Td\n/F1 9 Tf\n(Generated from the tenant-scoped reconciliation workflow.) Tj\nET\n", len(items), open)
+	pdf := "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Resources<</Font<</F1 4 0 R>>>>/Contents 5 0 R>>endobj\n4 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n5 0 obj<</Length " + strconv.Itoa(len(content)) + ">>stream\n" + content + "endstream\nendobj\ntrailer<</Root 1 0 R>>\n%%EOF\n"
+	writer.Header().Set("Content-Type", "application/pdf")
+	writer.Header().Set("Content-Disposition", "attachment; filename=\"kora-reconciliation-summary.pdf\"")
+	writer.WriteHeader(http.StatusOK)
+	_, _ = writer.Write([]byte(pdf))
 }
 
 func (s *Server) ensurePreparedApprovalLocked(recon demo.Reconciliation, actorName, actorRole, now string) {
@@ -756,7 +948,7 @@ func (s *Server) collectionsOverdue(writer http.ResponseWriter, request *http.Re
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadEvents); !ok {
+	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionManageIntegrations); !ok {
 		return
 	}
 	s.demoMu.RLock()
@@ -859,6 +1051,7 @@ func (s *Server) claimsAction(writer http.ResponseWriter, request *http.Request)
 	}
 	claimID, action := parts[0], parts[1]
 	actorName := s.sessionDisplayName(claims)
+	actorRole := s.sessionRoleName(claims)
 
 	s.demoMu.Lock()
 	defer s.demoMu.Unlock()
@@ -867,6 +1060,16 @@ func (s *Server) claimsAction(writer http.ResponseWriter, request *http.Request)
 		if claim.ID != claimID {
 			continue
 		}
+		actionLabel := map[string]string{"advance": "Advanced claim workflow", "refer-siu": "Referred claim to SIU", "request-docs": "Requested claim documents"}[action]
+		if actionLabel == "" {
+			writeError(writer, http.StatusNotFound, "unknown claim action")
+			return
+		}
+		s.workflowState.AuditLog = append([]demo.AuditEvent{{
+			ID: "al-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339),
+			Actor: actorName, Role: actorRole, Kind: "claim", Action: actionLabel,
+			Target: claim.ID + " · " + claim.Claimant, Amount: &claim.ClaimedAmount, HasEvidence: len(claim.Evidence) > 0,
+		}}, s.workflowState.AuditLog...)
 		switch action {
 		case "advance":
 			next, changed := advanceClaimStage(claim)
@@ -896,23 +1099,138 @@ func (s *Server) claimsAction(writer http.ResponseWriter, request *http.Request)
 			s.claimsState.Stats = deriveClaimStats(s.claimsState.Claims)
 			writeJSON(writer, http.StatusOK, map[string]any{"result": "requested-docs", "payload": s.claimsState})
 			return
-		default:
-			writeError(writer, http.StatusNotFound, "unknown claim action")
-			return
 		}
 	}
 	writeError(writer, http.StatusNotFound, "claim not found")
 }
 
 func (s *Server) consentGrants(writer http.ResponseWriter, request *http.Request) {
-	if request.Method != http.MethodGet {
+	if request.Method != http.MethodGet && request.Method != http.MethodPost {
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionManageConsent); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionManageConsent)
+	if !ok {
 		return
 	}
-	writeJSON(writer, http.StatusOK, map[string]any{"items": demo.ConsentGrantsDemoData()})
+	if request.Method == http.MethodPost {
+		var body struct {
+			Grantee     string   `json:"grantee"`
+			GranteeType string   `json:"granteeType"`
+			Purpose     string   `json:"purpose"`
+			Scopes      []string `json:"scopes"`
+			ExpiresAt   string   `json:"expiresAt"`
+			Basis       string   `json:"basis"`
+		}
+		if err := decode(request, writer, &body); err != nil {
+			writeError(writer, http.StatusBadRequest, err.Error())
+			return
+		}
+		grantee := strings.TrimSpace(body.Grantee)
+		purpose := strings.TrimSpace(body.Purpose)
+		expiresAt := strings.TrimSpace(body.ExpiresAt)
+		basis := strings.TrimSpace(body.Basis)
+		if grantee == "" || purpose == "" || expiresAt == "" || len(body.Scopes) == 0 {
+			writeError(writer, http.StatusBadRequest, "missing required consent fields")
+			return
+		}
+		if _, err := time.Parse("2006-01-02", expiresAt); err != nil {
+			writeError(writer, http.StatusBadRequest, "expiresAt must be YYYY-MM-DD")
+			return
+		}
+		if basis == "" {
+			basis = "Explicit consent - manual grant"
+		}
+		granteeType := strings.TrimSpace(body.GranteeType)
+		if granteeType == "" {
+			granteeType = "partner"
+		}
+		s.demoMu.Lock()
+		defer s.demoMu.Unlock()
+		item := demo.ConsentGrantData{
+			ID:          "cs-" + strconv.FormatInt(time.Now().UnixNano(), 10),
+			Grantee:     grantee,
+			GranteeType: granteeType,
+			Purpose:     purpose,
+			Scopes:      append([]string(nil), body.Scopes...),
+			Status:      "active",
+			Basis:       basis,
+			GrantedBy:   s.sessionDisplayName(claims),
+			GrantedAt:   time.Now().UTC().Format("2006-01-02"),
+			ExpiresAt:   expiresAt,
+		}
+		s.consentState = append([]demo.ConsentGrantData{item}, s.consentState...)
+		s.workflowState.AuditLog = append([]demo.AuditEvent{{
+			ID:          "al-" + strconv.FormatInt(time.Now().UnixNano(), 10),
+			At:          time.Now().UTC().Format(time.RFC3339),
+			Actor:       s.sessionDisplayName(claims),
+			Role:        s.sessionRoleName(claims),
+			Kind:        "consent",
+			Action:      "Consent create",
+			Target:      item.Grantee + " Â· " + item.Purpose,
+			HasEvidence: true,
+		}}, s.workflowState.AuditLog...)
+		writeJSON(writer, http.StatusOK, map[string]any{"items": append([]demo.ConsentGrantData(nil), s.consentState...)})
+		return
+	}
+	s.demoMu.RLock()
+	items := append([]demo.ConsentGrantData(nil), s.consentState...)
+	s.demoMu.RUnlock()
+	writeJSON(writer, http.StatusOK, map[string]any{"items": items})
+}
+
+func (s *Server) consentGrantAction(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionManageConsent)
+	if !ok {
+		return
+	}
+	path := strings.Trim(strings.TrimPrefix(request.URL.Path, "/api/consent/grants/"), "/")
+	parts := strings.Split(path, "/")
+	if len(parts) != 2 {
+		writeError(writer, http.StatusNotFound, "consent grant not found")
+		return
+	}
+	grantID := parts[0]
+	action := parts[1]
+
+	s.demoMu.Lock()
+	defer s.demoMu.Unlock()
+	for idx := range s.consentState {
+		grant := &s.consentState[idx]
+		if grant.ID != grantID {
+			continue
+		}
+		switch action {
+		case "approve":
+			grant.Status = "active"
+			if grant.Basis == "Awaiting authorisation" {
+				grant.Basis = "Explicit consent - approved"
+			}
+		case "revoke":
+			grant.Status = "revoked"
+			grant.Basis = "Consent withdrawn"
+		default:
+			writeError(writer, http.StatusNotFound, "action not found")
+			return
+		}
+		s.workflowState.AuditLog = append([]demo.AuditEvent{{
+			ID:          "al-" + strconv.FormatInt(time.Now().UnixNano(), 10),
+			At:          time.Now().UTC().Format(time.RFC3339),
+			Actor:       s.sessionDisplayName(claims),
+			Role:        s.sessionRoleName(claims),
+			Kind:        "consent",
+			Action:      "Consent " + action,
+			Target:      grant.Grantee + " · " + grant.Purpose,
+			HasEvidence: true,
+		}}, s.workflowState.AuditLog...)
+		writeJSON(writer, http.StatusOK, map[string]any{"items": append([]demo.ConsentGrantData(nil), s.consentState...)})
+		return
+	}
+	writeError(writer, http.StatusNotFound, "consent grant not found")
 }
 
 func (s *Server) relationshipsOverview(writer http.ResponseWriter, request *http.Request) {
@@ -923,7 +1241,84 @@ func (s *Server) relationshipsOverview(writer http.ResponseWriter, request *http
 	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant); !ok {
 		return
 	}
-	writeJSON(writer, http.StatusOK, demo.RelationshipsOverviewDemoData())
+	s.demoMu.RLock()
+	payload := s.relationships
+	s.demoMu.RUnlock()
+	writeJSON(writer, http.StatusOK, payload)
+}
+
+func (s *Server) relationshipPartyAction(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant)
+	if !ok {
+		return
+	}
+	path := strings.TrimPrefix(request.URL.Path, "/api/relationships/parties/")
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) != 2 {
+		writeError(writer, http.StatusNotFound, "not found")
+		return
+	}
+	partyID, action := parts[0], parts[1]
+	if action != "email-contact" && action != "review-terms" && action != "send-statement" && action != "schedule-payment" {
+		writeError(writer, http.StatusNotFound, "unknown relationship action")
+		return
+	}
+	if action != "email-contact" {
+		if _, _, ok := s.requireTenantActor(writer, request, access.PermissionManageRelationships); !ok {
+			return
+		}
+	}
+
+	now := time.Now().UTC()
+	actorName := s.sessionDisplayName(claims)
+	actorRole := s.sessionRoleName(claims)
+
+	s.demoMu.Lock()
+	defer s.demoMu.Unlock()
+	for idx := range s.relationships.Parties {
+		party := &s.relationships.Parties[idx]
+		if party.ID != partyID {
+			continue
+		}
+		activityText := ""
+		auditAction := ""
+		switch action {
+		case "email-contact":
+			activityText = "Contact email drafted for " + party.Contact
+			auditAction = "Relationship email contact"
+		case "review-terms":
+			activityText = "Credit terms review requested"
+			auditAction = "Relationship review terms"
+		case "send-statement":
+			activityText = "Account statement sent to " + party.Contact
+			auditAction = "Relationship send statement"
+		case "schedule-payment":
+			activityText = "Payment scheduled for next run"
+			auditAction = "Relationship schedule payment"
+			party.Overdue = false
+		}
+		party.Activity = append([]demo.PartyActivityData{{
+			Date: now.Format("2006-01-02"),
+			Text: activityText,
+		}}, party.Activity...)
+		s.workflowState.AuditLog = append([]demo.AuditEvent{{
+			ID:          "al-" + strconv.FormatInt(time.Now().UnixNano(), 10),
+			At:          now.Format(time.RFC3339),
+			Actor:       actorName,
+			Role:        actorRole,
+			Kind:        "relationship",
+			Action:      auditAction,
+			Target:      party.Name,
+			HasEvidence: true,
+		}}, s.workflowState.AuditLog...)
+		writeJSON(writer, http.StatusOK, s.relationships)
+		return
+	}
+	writeError(writer, http.StatusNotFound, "party not found")
 }
 
 func (s *Server) roiSummary(writer http.ResponseWriter, request *http.Request) {
@@ -937,15 +1332,140 @@ func (s *Server) roiSummary(writer http.ResponseWriter, request *http.Request) {
 	writeJSON(writer, http.StatusOK, demo.ROISummaryDemoData())
 }
 
+func (s *Server) roiExport(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet {
+		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadROI); !ok {
+		return
+	}
+	data := demo.ROISummaryDemoData()
+	content := fmt.Sprintf("BT\n/F1 20 Tf\n72 748 Td\n(Kora ROI Summary) Tj\n0 -28 Td\n/F1 12 Tf\n(Total value delivered: %s %s) Tj\n0 -22 Td\n(Subscription cost: %s %s) Tj\n0 -22 Td\n(ROI multiple: %.1fx) Tj\n0 -22 Td\n(Hours saved: %d) Tj\n0 -30 Td\n/F1 9 Tf\n(Generated from tenant-scoped, evidence-backed ROI records.) Tj\nET\n", data.TotalValue.AmountMinor, data.TotalValue.Currency, data.SubscriptionCost.AmountMinor, data.SubscriptionCost.Currency, data.ROIMultiple, data.HoursSaved)
+	pdf := "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Resources<</Font<</F1 4 0 R>>>>/Contents 5 0 R>>endobj\n4 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n5 0 obj<</Length " + strconv.Itoa(len(content)) + ">>stream\n" + content + "endstream\nendobj\ntrailer<</Root 1 0 R>>\n%%EOF\n"
+	writer.Header().Set("Content-Type", "application/pdf")
+	writer.Header().Set("Content-Disposition", "attachment; filename=\"kora-roi-summary.pdf\"")
+	writer.WriteHeader(http.StatusOK)
+	_, _ = writer.Write([]byte(pdf))
+}
+
 func (s *Server) portalCreditPassport(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet {
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requirePortalPassportAccess(writer, request); !ok {
+	claims, _, ok := s.requirePortalPassportAccess(writer, request)
+	if !ok {
 		return
 	}
+	s.recordExternalPassportAccess(claims, "External Credit Passport accessed")
 	writeJSON(writer, http.StatusOK, demo.CreditPassportPortalDemoData())
+}
+
+func (s *Server) portalCreditPassportDownload(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet {
+		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	claims, _, ok := s.requirePortalPassportAccess(writer, request)
+	if !ok {
+		return
+	}
+	s.recordExternalPassportAccess(claims, "External Credit Passport downloaded")
+	writer.Header().Set("Content-Type", "application/pdf")
+	writer.Header().Set("Content-Disposition", `attachment; filename="kora-credit-passport.pdf"`)
+	writer.WriteHeader(http.StatusOK)
+	_, _ = writer.Write(creditPassportPDF())
+}
+
+func (s *Server) portalAccessOverview(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet {
+		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	claims, _, ok := s.requirePortalPassportAccess(writer, request)
+	if !ok {
+		return
+	}
+	organization, err := s.organizationByID(claims.OrganizationID)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, "organization not found")
+		return
+	}
+	grants := s.activePortalGrants(claims.Subject, time.Now().UTC())
+	activity := s.portalActivity(claims)
+	writeJSON(writer, http.StatusOK, portalAccessResponse{
+		OrganizationName: organization.Name,
+		Grants:           grants,
+		Activity:         activity,
+	})
+}
+
+func (s *Server) portalAccessRequest(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	claims, _, ok := s.requirePortalPassportAccess(writer, request)
+	if !ok {
+		return
+	}
+	if !slices.Contains(claims.Roles, string(access.RoleExternalCollaborator)) {
+		writeError(writer, http.StatusForbidden, "only external collaborators can request additional access")
+		return
+	}
+	var body struct {
+		Scope string `json:"scope"`
+	}
+	if err := decode(request, writer, &body); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+	scope := strings.TrimSpace(body.Scope)
+	if !slices.Contains([]string{"transactions", "contracts", "financials", "bank-statements"}, scope) {
+		writeError(writer, http.StatusBadRequest, "unsupported access scope")
+		return
+	}
+	for _, grant := range s.activePortalGrants(claims.Subject, time.Now().UTC()) {
+		if slices.Contains(grant.Scopes, scope) {
+			writeError(writer, http.StatusBadRequest, "scope is already granted")
+			return
+		}
+	}
+
+	user, err := s.identityStore.FindUserByID(claims.Subject)
+	if err != nil {
+		writeError(writer, http.StatusUnauthorized, "external user not found")
+		return
+	}
+	now := time.Now().UTC()
+	item := demo.ConsentGrantData{
+		ID:              "cs-" + strconv.FormatInt(now.UnixNano(), 10),
+		Grantee:         user.DisplayName,
+		GranteeType:     "lender",
+		RecipientUserID: claims.Subject,
+		Purpose:         "Additional portal access requested by external collaborator",
+		Scopes:          []string{scope},
+		Status:          "pending",
+		Basis:           "Awaiting authorisation",
+		GrantedBy:       user.DisplayName,
+		GrantedAt:       now.Format("2006-01-02"),
+		ExpiresAt:       now.AddDate(0, 6, 0).Format("2006-01-02"),
+	}
+	s.demoMu.Lock()
+	s.consentState = append([]demo.ConsentGrantData{item}, s.consentState...)
+	s.workflowState.AuditLog = append([]demo.AuditEvent{{
+		ID:          "al-" + strconv.FormatInt(now.UnixNano(), 10),
+		At:          now.Format(time.RFC3339),
+		Actor:       user.DisplayName,
+		Role:        s.sessionRoleName(claims),
+		Kind:        "consent",
+		Action:      "External access scope requested",
+		Target:      scope,
+		HasEvidence: true,
+	}}, s.workflowState.AuditLog...)
+	s.demoMu.Unlock()
+	writeJSON(writer, http.StatusAccepted, map[string]demo.ConsentGrantData{"item": item})
 }
 
 func (s *Server) agentsOverview(writer http.ResponseWriter, request *http.Request) {
@@ -1003,6 +1523,86 @@ func (s *Server) agentRunAll(writer http.ResponseWriter, request *http.Request) 
 	writeJSON(writer, http.StatusOK, s.agentsState)
 }
 
+func (s *Server) agentFeedback(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant)
+	if !ok {
+		return
+	}
+	path := strings.Trim(strings.TrimPrefix(request.URL.Path, "/api/agents/"), "/")
+	parts := strings.Split(path, "/")
+	if len(parts) != 2 || parts[1] != "feedback" || parts[0] == "" {
+		writeError(writer, http.StatusNotFound, "agent feedback route not found")
+		return
+	}
+	var body struct {
+		Rating string `json:"rating"`
+	}
+	if err := decode(request, writer, &body); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+	rating := strings.TrimSpace(body.Rating)
+	if rating != "helpful" && rating != "not_helpful" {
+		writeError(writer, http.StatusBadRequest, "rating must be helpful or not_helpful")
+		return
+	}
+
+	agentID := parts[0]
+	now := time.Now().UTC()
+	actorName := s.sessionDisplayName(claims)
+	s.demoMu.Lock()
+	defer s.demoMu.Unlock()
+	var agentName string
+	for _, agent := range s.agentsState.Agents {
+		if agent.ID == agentID {
+			agentName = agent.Name
+			break
+		}
+	}
+	if agentName == "" {
+		writeError(writer, http.StatusNotFound, "agent not found")
+		return
+	}
+	updated := false
+	for idx := range s.agentsState.Feedback {
+		feedback := &s.agentsState.Feedback[idx]
+		if feedback.AgentID == agentID && feedback.SubmittedBy == actorName {
+			feedback.Rating = rating
+			feedback.SubmittedAt = now.Format(time.RFC3339)
+			updated = true
+			break
+		}
+	}
+	if !updated {
+		s.agentsState.Feedback = append(s.agentsState.Feedback, demo.AgentFeedbackData{
+			ID:          "af-" + strconv.FormatInt(now.UnixNano(), 10),
+			AgentID:     agentID,
+			Rating:      rating,
+			SubmittedAt: now.Format(time.RFC3339),
+			SubmittedBy: actorName,
+		})
+	}
+	action := "Agent feedback recorded"
+	if updated {
+		action = "Agent feedback updated"
+	}
+	s.workflowState.AuditLog = append([]demo.AuditEvent{{
+		ID:          "al-" + strconv.FormatInt(now.UnixNano(), 10),
+		At:          now.Format(time.RFC3339),
+		Actor:       actorName,
+		Role:        s.sessionRoleName(claims),
+		Kind:        "agent",
+		Action:      action,
+		Target:      agentName + " - " + rating,
+		HasEvidence: true,
+	}}, s.workflowState.AuditLog...)
+	writeJSON(writer, http.StatusOK, s.agentsState)
+}
+
 func (s *Server) collectionsManagement(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet {
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
@@ -1011,7 +1611,83 @@ func (s *Server) collectionsManagement(writer http.ResponseWriter, request *http
 	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionSendCollections); !ok {
 		return
 	}
-	writeJSON(writer, http.StatusOK, demo.CollectionsManagementDemoData())
+	s.demoMu.RLock()
+	payload := s.collectionsMgmt
+	s.demoMu.RUnlock()
+	writeJSON(writer, http.StatusOK, payload)
+}
+
+func (s *Server) collectionsManagementAction(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionSendCollections)
+	if !ok {
+		return
+	}
+	path := strings.Trim(strings.TrimPrefix(request.URL.Path, "/api/collections/management/"), "/")
+	parts := strings.Split(path, "/")
+	if len(parts) == 2 && parts[0] == "policy" && parts[1] == "update" {
+		s.demoMu.Lock()
+		defer s.demoMu.Unlock()
+		s.workflowState.AuditLog = append([]demo.AuditEvent{{
+			ID:          "al-" + strconv.FormatInt(time.Now().UnixNano(), 10),
+			At:          time.Now().UTC().Format(time.RFC3339),
+			Actor:       s.sessionDisplayName(claims),
+			Role:        s.sessionRoleName(claims),
+			Kind:        "config",
+			Action:      "Updated collections policy",
+			Target:      s.collectionsMgmt.Policy.ReminderCadence + " · auto-escalate " + s.collectionsMgmt.Policy.AutoEscalateAt,
+			HasEvidence: true,
+		}}, s.workflowState.AuditLog...)
+		writeJSON(writer, http.StatusOK, s.collectionsMgmt)
+		return
+	}
+	if len(parts) != 3 || parts[0] != "escalations" || parts[2] != "decision" {
+		writeError(writer, http.StatusNotFound, "collections action not found")
+		return
+	}
+	var body struct {
+		Decision string `json:"decision"`
+	}
+	if err := decode(request, writer, &body); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+	decision := strings.TrimSpace(body.Decision)
+	if decision != "approved" && decision != "declined" {
+		writeError(writer, http.StatusBadRequest, "invalid decision")
+		return
+	}
+	escalationID := parts[1]
+	s.demoMu.Lock()
+	defer s.demoMu.Unlock()
+	for idx := range s.collectionsMgmt.Escalations {
+		item := s.collectionsMgmt.Escalations[idx]
+		if item.ID != escalationID {
+			continue
+		}
+		s.collectionsMgmt.Escalations = append(s.collectionsMgmt.Escalations[:idx], s.collectionsMgmt.Escalations[idx+1:]...)
+		action := map[string]string{
+			"approved": "Approved collections escalation",
+			"declined": "Declined collections escalation",
+		}[decision]
+		s.workflowState.AuditLog = append([]demo.AuditEvent{{
+			ID:          "al-" + strconv.FormatInt(time.Now().UnixNano(), 10),
+			At:          time.Now().UTC().Format(time.RFC3339),
+			Actor:       s.sessionDisplayName(claims),
+			Role:        s.sessionRoleName(claims),
+			Kind:        "approval",
+			Action:      action,
+			Target:      item.Customer + " · " + item.Invoice,
+			Amount:      &item.Amount,
+			HasEvidence: true,
+		}}, s.workflowState.AuditLog...)
+		writeJSON(writer, http.StatusOK, s.collectionsMgmt)
+		return
+	}
+	writeError(writer, http.StatusNotFound, "escalation not found")
 }
 
 func (s *Server) ownerSummary(writer http.ResponseWriter, request *http.Request) {
@@ -1044,7 +1720,65 @@ func (s *Server) adminDashboard(writer http.ResponseWriter, request *http.Reques
 	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionManageUsers); !ok {
 		return
 	}
-	writeJSON(writer, http.StatusOK, demo.AdminDashboardCardsData())
+	s.demoMu.RLock()
+	payload := s.adminDashboardState
+	s.demoMu.RUnlock()
+	writeJSON(writer, http.StatusOK, payload)
+}
+
+func (s *Server) adminAccessRequestAction(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionManageUsers)
+	if !ok {
+		return
+	}
+	path := strings.TrimPrefix(request.URL.Path, "/api/home/admin-dashboard/access-requests/")
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) != 2 {
+		writeError(writer, http.StatusNotFound, "not found")
+		return
+	}
+	requestID, action := parts[0], parts[1]
+	if action != "grant" && action != "deny" {
+		writeError(writer, http.StatusNotFound, "unknown access request action")
+		return
+	}
+	s.demoMu.Lock()
+	defer s.demoMu.Unlock()
+	index := -1
+	var item demo.AccessRequest
+	for idx := range s.adminDashboardState.AccessRequests {
+		if s.adminDashboardState.AccessRequests[idx].ID == requestID {
+			index = idx
+			item = s.adminDashboardState.AccessRequests[idx]
+			break
+		}
+	}
+	if index == -1 {
+		writeError(writer, http.StatusNotFound, "access request not found")
+		return
+	}
+	s.adminDashboardState.AccessRequests = append(s.adminDashboardState.AccessRequests[:index], s.adminDashboardState.AccessRequests[index+1:]...)
+	s.adminDashboardState.Stats.PendingRequests = len(s.adminDashboardState.AccessRequests)
+	now := time.Now().UTC().Format(time.RFC3339)
+	actionLabel := "Access request denied"
+	if action == "grant" {
+		actionLabel = "Access request granted"
+	}
+	s.workflowState.AuditLog = append([]demo.AuditEvent{{
+		ID:          "al-" + strconv.FormatInt(time.Now().UnixNano(), 10),
+		At:          now,
+		Actor:       s.sessionDisplayName(claims),
+		Role:        s.sessionRoleName(claims),
+		Kind:        "access",
+		Action:      actionLabel,
+		Target:      item.Name + " · " + item.RequestedRole,
+		HasEvidence: true,
+	}}, s.workflowState.AuditLog...)
+	writeJSON(writer, http.StatusOK, s.adminDashboardState)
 }
 
 func (s *Server) operatorDashboard(writer http.ResponseWriter, request *http.Request) {
@@ -1092,6 +1826,53 @@ func (s *Server) intakeDocsAPI(writer http.ResponseWriter, request *http.Request
 	items := append([]demo.IntakeDoc(nil), s.intakeDocs...)
 	s.demoMu.RUnlock()
 	writeJSON(writer, http.StatusOK, map[string]any{"items": items})
+}
+
+func (s *Server) intakeSourcesAPI(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet {
+		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionManageIntegrations); !ok {
+		return
+	}
+	s.demoMu.RLock()
+	sources := map[string]bool{}
+	for key, connected := range s.intakeSources {
+		sources[key] = connected
+	}
+	s.demoMu.RUnlock()
+	writeJSON(writer, http.StatusOK, map[string]any{"sources": sources})
+}
+
+func (s *Server) intakeSourceAction(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionManageIntegrations)
+	if !ok {
+		return
+	}
+	path := strings.TrimPrefix(request.URL.Path, "/api/intake/sources/")
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) != 2 || !slices.Contains([]string{"bank-feed", "email", "scan"}, parts[0]) || parts[1] != "connect" {
+		writeError(writer, http.StatusNotFound, "unknown intake source action")
+		return
+	}
+	s.demoMu.Lock()
+	if s.intakeSources == nil {
+		s.intakeSources = map[string]bool{}
+	}
+	s.intakeSources[parts[0]] = true
+	now := time.Now().UTC().Format(time.RFC3339)
+	s.workflowState.AuditLog = append([]demo.AuditEvent{{
+		ID: "al-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: now,
+		Actor: s.sessionDisplayName(claims), Role: s.sessionRoleName(claims), Kind: "integration",
+		Action: "Connected intake source", Target: parts[0], HasEvidence: true,
+	}}, s.workflowState.AuditLog...)
+	s.demoMu.Unlock()
+	writeJSON(writer, http.StatusOK, map[string]any{"source": parts[0], "connected": true})
 }
 
 func (s *Server) intakeUpload(writer http.ResponseWriter, request *http.Request) {
@@ -1280,6 +2061,31 @@ func (s *Server) reportsBoardPack(writer http.ResponseWriter, request *http.Requ
 	})
 }
 
+func (s *Server) financialStatementsExport(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet {
+		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadReports); !ok {
+		return
+	}
+	s.demoMu.RLock()
+	journals := append([]demo.FinanceJournalEntry(nil), s.financeSnapshot.Journals...)
+	s.demoMu.RUnlock()
+	posted := 0
+	for _, journal := range journals {
+		if journal.Status == "posted" {
+			posted++
+		}
+	}
+	content := fmt.Sprintf("BT\n/F1 20 Tf\n72 748 Td\n(Kora Financial Statement Pack) Tj\n0 -28 Td\n/F1 11 Tf\n(Period: May 2025) Tj\n0 -22 Td\n(Posted journals included: %d) Tj\n0 -22 Td\n(Statements: Income statement, balance sheet, cash flow) Tj\n0 -22 Td\n(Source: tenant-scoped general ledger) Tj\n0 -30 Td\n/F1 9 Tf\n(Generated from ledger records and permission-checked report access.) Tj\nET\n", posted)
+	pdf := "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Resources<</Font<</F1 4 0 R>>>>/Contents 5 0 R>>endobj\n4 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n5 0 obj<</Length " + strconv.Itoa(len(content)) + ">>stream\n" + content + "endstream\nendobj\ntrailer<</Root 1 0 R>>\n%%EOF\n"
+	writer.Header().Set("Content-Type", "application/pdf")
+	writer.Header().Set("Content-Disposition", "attachment; filename=\"kora-financial-statements.pdf\"")
+	writer.WriteHeader(http.StatusOK)
+	_, _ = writer.Write([]byte(pdf))
+}
+
 func (s *Server) financeOperations(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodGet {
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
@@ -1307,6 +2113,26 @@ func (s *Server) financeCashflowView(writer http.ResponseWriter, request *http.R
 	view.Movements = append([]demo.FinanceTransaction(nil), s.financeSnapshot.Transactions...)
 	s.demoMu.RUnlock()
 	writeJSON(writer, http.StatusOK, view)
+}
+
+func (s *Server) financeCashflowExport(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet {
+		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant); !ok {
+		return
+	}
+	s.demoMu.RLock()
+	view := demo.LedgerCashflowStaticData()
+	view.Movements = append([]demo.FinanceTransaction(nil), s.financeSnapshot.Transactions...)
+	s.demoMu.RUnlock()
+	content := fmt.Sprintf("BT\n/F1 20 Tf\n72 748 Td\n(Kora Cash Flow Summary) Tj\n0 -28 Td\n/F1 11 Tf\n(Opening balance: %s %s) Tj\n0 -22 Td\n(Current cash: %s %s) Tj\n0 -22 Td\n(Projected cash: %s %s) Tj\n0 -22 Td\n(Movements included: %d) Tj\n0 -30 Td\n/F1 9 Tf\n(Generated from the tenant-scoped ledger cashflow view.) Tj\nET\n", view.OpeningBalance.AmountMinor, view.OpeningBalance.Currency, view.Forecast.Current.AmountMinor, view.Forecast.Current.Currency, view.Forecast.Projected.AmountMinor, view.Forecast.Projected.Currency, len(view.Movements))
+	pdf := "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Resources<</Font<</F1 4 0 R>>>>/Contents 5 0 R>>endobj\n4 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n5 0 obj<</Length " + strconv.Itoa(len(content)) + ">>stream\n" + content + "endstream\nendobj\ntrailer<</Root 1 0 R>>\n%%EOF\n"
+	writer.Header().Set("Content-Type", "application/pdf")
+	writer.Header().Set("Content-Disposition", "attachment; filename=\"kora-cashflow-summary.pdf\"")
+	writer.WriteHeader(http.StatusOK)
+	_, _ = writer.Write([]byte(pdf))
 }
 
 func (s *Server) financeCreateJournal(writer http.ResponseWriter, request *http.Request) {
@@ -1542,8 +2368,72 @@ func (s *Server) auditInvestigations(writer http.ResponseWriter, request *http.R
 	}
 	s.demoMu.RLock()
 	view := s.auditViews
-	view.AuditLog = demo.WorkflowSnapshotData().AuditLog
+	view.AuditLog = append([]demo.AuditEvent(nil), s.workflowState.AuditLog...)
 	s.demoMu.RUnlock()
+	writeJSON(writer, http.StatusOK, view)
+}
+
+func (s *Server) auditEvidencePack(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadAudit); !ok {
+		return
+	}
+	writeJSON(writer, http.StatusOK, map[string]any{
+		"status":   "ready",
+		"fileName": "kora-audit-evidence-pack.pdf",
+	})
+}
+
+func (s *Server) auditFindingCreate(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadAudit)
+	if !ok {
+		return
+	}
+	var body struct {
+		EventID string `json:"eventId"`
+	}
+	if err := decode(request, writer, &body); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+	if strings.TrimSpace(body.EventID) == "" {
+		writeError(writer, http.StatusBadRequest, "eventId is required")
+		return
+	}
+
+	s.demoMu.Lock()
+	defer s.demoMu.Unlock()
+	var target *demo.AuditEvent
+	for idx := range s.workflowState.AuditLog {
+		if s.workflowState.AuditLog[idx].ID == body.EventID {
+			target = &s.workflowState.AuditLog[idx]
+			break
+		}
+	}
+	if target == nil {
+		writeError(writer, http.StatusNotFound, "audit event not found")
+		return
+	}
+	now := time.Now().UTC()
+	s.workflowState.AuditLog = append([]demo.AuditEvent{{
+		ID:          "al-" + strconv.FormatInt(time.Now().UnixNano(), 10),
+		At:          now.Format(time.RFC3339),
+		Actor:       s.sessionDisplayName(claims),
+		Role:        s.sessionRoleName(claims),
+		Kind:        "audit",
+		Action:      "Audit finding raised",
+		Target:      target.Action + " · " + target.Target,
+		HasEvidence: true,
+	}}, s.workflowState.AuditLog...)
+	view := s.auditViews
+	view.AuditLog = append([]demo.AuditEvent(nil), s.workflowState.AuditLog...)
 	writeJSON(writer, http.StatusOK, view)
 }
 
@@ -2248,7 +3138,8 @@ func (s *Server) contractAction(writer http.ResponseWriter, request *http.Reques
 	if action == "flag-renewal" {
 		permission = access.PermissionApproveFinancial
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, permission); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, permission)
+	if !ok {
 		return
 	}
 	s.demoMu.Lock()
@@ -2258,6 +3149,7 @@ func (s *Server) contractAction(writer http.ResponseWriter, request *http.Reques
 		if item.ID != contractID {
 			continue
 		}
+		auditAction := ""
 		switch action {
 		case "renew":
 			endDate, err := time.Parse("2006-01-02", item.EndDate)
@@ -2268,14 +3160,33 @@ func (s *Server) contractAction(writer http.ResponseWriter, request *http.Reques
 			item.Status = "active"
 			item.StartDate = item.EndDate
 			item.EndDate = endDate.AddDate(1, 0, 0).Format("2006-01-02")
+			auditAction = "Contract renewed"
 		case "flag-renewal":
 			if item.Status == "active" {
 				item.Status = "renewal-due"
 			}
+			auditAction = "Contract renewal flagged"
+		case "set-reminder":
+			auditAction = "Contract renewal reminder set"
 		default:
 			writeError(writer, http.StatusNotFound, "unknown contract action")
 			return
 		}
+		now := time.Now().UTC()
+		target := item.Title + " - " + item.Reference
+		if action == "set-reminder" {
+			target += " - 30 days before expiry"
+		}
+		s.workflowState.AuditLog = append([]demo.AuditEvent{{
+			ID:          "al-" + strconv.FormatInt(now.UnixNano(), 10),
+			At:          now.Format(time.RFC3339),
+			Actor:       s.sessionDisplayName(claims),
+			Role:        s.sessionRoleName(claims),
+			Kind:        "contract",
+			Action:      auditAction,
+			Target:      target,
+			HasEvidence: true,
+		}}, s.workflowState.AuditLog...)
 		writeJSON(writer, http.StatusOK, s.contracts)
 		return
 	}
@@ -2294,6 +3205,31 @@ func (s *Server) ownerRiskDashboard(writer http.ResponseWriter, request *http.Re
 	payload := s.ownerRisk
 	s.demoMu.RUnlock()
 	writeJSON(writer, http.StatusOK, payload)
+}
+
+func (s *Server) ownerRiskDashboardExport(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet {
+		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadAudit); !ok {
+		return
+	}
+	s.demoMu.RLock()
+	payload := s.ownerRisk
+	s.demoMu.RUnlock()
+	highRisks := 0
+	for _, risk := range payload.Risks {
+		if risk.Severity == "high" {
+			highRisks++
+		}
+	}
+	content := fmt.Sprintf("BT\n/F1 20 Tf\n72 748 Td\n(Kora Board Risk Pack) Tj\n0 -28 Td\n/F1 11 Tf\n(Control health: %d) Tj\n0 -22 Td\n(Open risks: %d) Tj\n0 -22 Td\n(High severity risks: %d) Tj\n0 -22 Td\n(Compliance checks: %d) Tj\n0 -30 Td\n/F1 9 Tf\n(Generated from tenant-scoped audit and risk records.) Tj\nET\n", payload.ControlPosture.ControlHealth, payload.ControlPosture.OpenRisks, highRisks, len(payload.Compliance))
+	pdf := "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Resources<</Font<</F1 4 0 R>>>>/Contents 5 0 R>>endobj\n4 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n5 0 obj<</Length " + strconv.Itoa(len(content)) + ">>stream\n" + content + "endstream\nendobj\ntrailer<</Root 1 0 R>>\n%%EOF\n"
+	writer.Header().Set("Content-Type", "application/pdf")
+	writer.Header().Set("Content-Disposition", "attachment; filename=\"kora-board-risk-pack.pdf\"")
+	writer.WriteHeader(http.StatusOK)
+	_, _ = writer.Write([]byte(pdf))
 }
 
 func (s *Server) ownerRiskAction(writer http.ResponseWriter, request *http.Request) {
@@ -2368,7 +3304,8 @@ func (s *Server) controlsCloseTaskAction(writer http.ResponseWriter, request *ht
 		writeError(writer, http.StatusNotFound, "unknown task action")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReviewDataQuality); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReviewDataQuality)
+	if !ok {
 		return
 	}
 	s.demoMu.Lock()
@@ -2384,6 +3321,20 @@ func (s *Server) controlsCloseTaskAction(writer http.ResponseWriter, request *ht
 		}
 		task.Done = !task.Done
 		s.syncCloseTasksLocked()
+		status := "reopened"
+		if task.Done {
+			status = "completed"
+		}
+		s.workflowState.AuditLog = append([]demo.AuditEvent{{
+			ID:          "al-" + strconv.FormatInt(time.Now().UnixNano(), 10),
+			At:          time.Now().UTC().Format(time.RFC3339),
+			Actor:       s.sessionDisplayName(claims),
+			Role:        s.sessionRoleName(claims),
+			Kind:        "control",
+			Action:      "Close task " + status,
+			Target:      task.Label + " - " + task.Owner,
+			HasEvidence: true,
+		}}, s.workflowState.AuditLog...)
 		writeJSON(writer, http.StatusOK, s.controlsClose)
 		return
 	}
@@ -2406,7 +3357,8 @@ func (s *Server) controlsCloseEvidenceGapAction(writer http.ResponseWriter, requ
 		writeError(writer, http.StatusNotFound, "unknown evidence-gap action")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReviewDataQuality); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReviewDataQuality)
+	if !ok {
 		return
 	}
 	s.demoMu.Lock()
@@ -2417,6 +3369,16 @@ func (s *Server) controlsCloseEvidenceGapAction(writer http.ResponseWriter, requ
 			continue
 		}
 		gap.Requested = true
+		s.workflowState.AuditLog = append([]demo.AuditEvent{{
+			ID:          "al-" + strconv.FormatInt(time.Now().UnixNano(), 10),
+			At:          time.Now().UTC().Format(time.RFC3339),
+			Actor:       s.sessionDisplayName(claims),
+			Role:        s.sessionRoleName(claims),
+			Kind:        "control",
+			Action:      "Requested close evidence",
+			Target:      gap.Reference + " - " + gap.Party,
+			HasEvidence: false,
+		}}, s.workflowState.AuditLog...)
 		writeJSON(writer, http.StatusOK, s.controlsClose)
 		return
 	}
@@ -2428,7 +3390,8 @@ func (s *Server) controlsCloseLock(writer http.ResponseWriter, request *http.Req
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionPostLedger); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionPostLedger)
+	if !ok {
 		return
 	}
 	s.demoMu.Lock()
@@ -2457,6 +3420,16 @@ func (s *Server) controlsCloseLock(writer http.ResponseWriter, request *http.Req
 		}
 	}
 	s.syncCloseTasksLocked()
+	s.workflowState.AuditLog = append([]demo.AuditEvent{{
+		ID:          "al-" + strconv.FormatInt(time.Now().UnixNano(), 10),
+		At:          time.Now().UTC().Format(time.RFC3339),
+		Actor:       s.sessionDisplayName(claims),
+		Role:        s.sessionRoleName(claims),
+		Kind:        "posting",
+		Action:      "Locked close period",
+		Target:      "May 2025 close",
+		HasEvidence: true,
+	}}, s.workflowState.AuditLog...)
 	writeJSON(writer, http.StatusOK, s.controlsClose)
 }
 
@@ -2537,6 +3510,7 @@ func (s *Server) seedDemoData() error {
 		}
 	}
 	s.intakeDocs = demo.IntakeDocsData()
+	s.intakeSources = map[string]bool{"bank-feed": false, "email": false, "scan": false}
 	s.reports = demo.ReportsCatalogData()
 	s.financeSnapshot = demo.FinanceOperationsDemoData()
 	s.financeLeadHome = demo.FinanceLeadDashboardDemoData()
@@ -2545,9 +3519,23 @@ func (s *Server) seedDemoData() error {
 	s.controlsClose = demo.ControlsCloseDemoData()
 	s.auditViews = demo.AuditInvestigationsDemoData()
 	s.collections = demo.CollectionsData()
+	s.collectionsMgmt = demo.CollectionsManagementDemoData()
+	s.relationships = demo.RelationshipsOverviewDemoData()
+	s.adminDashboardState = demo.AdminDashboardCardsData()
 	s.agentsState = demo.AgentsOverviewDemoData()
 	s.workflowState = demo.WorkflowSnapshotData()
 	s.claimsState = demo.ClaimsWorkspaceDemoData()
+	s.consentState = demo.ConsentGrantsDemoData()
+	externalUser, err := s.identityStore.FindUserByEmail(s.demoUsers[roleIDExternalCollaborator].Email)
+	if err != nil {
+		return err
+	}
+	for idx := range s.consentState {
+		if s.consentState[idx].ID == "cs-1" {
+			s.consentState[idx].RecipientUserID = externalUser.ID
+			break
+		}
+	}
 	s.featureEntitlements = []string{}
 	s.orgUsers = demo.OrgUsersDemoData()
 	s.approvalRules = demo.ApprovalRulesDemoData()
@@ -2902,6 +3890,21 @@ func (s *Server) requirePortalPassportAccess(writer http.ResponseWriter, request
 		return auth.Claims{}, access.Actor{}, false
 	}
 	if slices.Contains(claims.Roles, string(access.RoleExternalCollaborator)) {
+		grant, expiresAt, found := s.activePortalConsent(claims.Subject, time.Now().UTC())
+		if !found {
+			writeError(writer, http.StatusForbidden, "no active consent grant allows Credit Passport access")
+			return auth.Claims{}, access.Actor{}, false
+		}
+		actor.Consent = &access.ConsentScope{
+			GrantID:            grant.ID,
+			OrganizationID:     claims.OrganizationID,
+			AllowedPermissions: []access.Permission{access.PermissionReadCreditPassport},
+			ExpiresAt:          expiresAt,
+		}
+		if err := access.AuthorizeAt(actor, access.Resource{OrganizationID: claims.OrganizationID}, access.PermissionReadCreditPassport, time.Now().UTC()); err != nil {
+			writeError(writer, http.StatusForbidden, err.Error())
+			return auth.Claims{}, access.Actor{}, false
+		}
 		return claims, actor, true
 	}
 	if err := access.Authorize(actor, access.Resource{OrganizationID: claims.OrganizationID}, access.PermissionReadCreditPassport); err != nil {
@@ -2909,6 +3912,106 @@ func (s *Server) requirePortalPassportAccess(writer http.ResponseWriter, request
 		return auth.Claims{}, access.Actor{}, false
 	}
 	return claims, actor, true
+}
+
+func (s *Server) activePortalConsent(userID string, now time.Time) (demo.ConsentGrantData, time.Time, bool) {
+	s.demoMu.RLock()
+	defer s.demoMu.RUnlock()
+	for _, grant := range s.consentState {
+		if grant.RecipientUserID != userID || grant.Status != "active" || !slices.Contains(grant.Scopes, "credit-passport") {
+			continue
+		}
+		expiresAt, err := time.Parse("2006-01-02", grant.ExpiresAt)
+		if err != nil {
+			continue
+		}
+		expiresAt = expiresAt.AddDate(0, 0, 1)
+		if !expiresAt.After(now) {
+			continue
+		}
+		return grant, expiresAt, true
+	}
+	return demo.ConsentGrantData{}, time.Time{}, false
+}
+
+func (s *Server) activePortalGrants(userID string, now time.Time) []demo.ConsentGrantData {
+	s.demoMu.RLock()
+	defer s.demoMu.RUnlock()
+	grants := make([]demo.ConsentGrantData, 0)
+	for _, grant := range s.consentState {
+		if grant.RecipientUserID != userID || grant.Status != "active" {
+			continue
+		}
+		expiresAt, err := time.Parse("2006-01-02", grant.ExpiresAt)
+		if err != nil || !expiresAt.AddDate(0, 0, 1).After(now) {
+			continue
+		}
+		grant.Scopes = append([]string(nil), grant.Scopes...)
+		grants = append(grants, grant)
+	}
+	return grants
+}
+
+func (s *Server) portalActivity(claims auth.Claims) []portalAccessActivity {
+	s.demoMu.RLock()
+	defer s.demoMu.RUnlock()
+	actorName := s.sessionDisplayName(claims)
+	activity := make([]portalAccessActivity, 0, 5)
+	for _, event := range s.workflowState.AuditLog {
+		if event.Actor != actorName || event.Kind != "consent" {
+			continue
+		}
+		activity = append(activity, portalAccessActivity{Action: event.Action, At: event.At})
+		if len(activity) == 5 {
+			break
+		}
+	}
+	return activity
+}
+
+func (s *Server) recordExternalPassportAccess(claims auth.Claims, action string) {
+	if !slices.Contains(claims.Roles, string(access.RoleExternalCollaborator)) {
+		return
+	}
+	now := time.Now().UTC()
+	s.demoMu.Lock()
+	s.workflowState.AuditLog = append([]demo.AuditEvent{{
+		ID:          "al-" + strconv.FormatInt(now.UnixNano(), 10),
+		At:          now.Format(time.RFC3339),
+		Actor:       s.sessionDisplayName(claims),
+		Role:        s.sessionRoleName(claims),
+		Kind:        "consent",
+		Action:      action,
+		Target:      "Credit Passport - consent-scoped read",
+		HasEvidence: true,
+	}}, s.workflowState.AuditLog...)
+	s.demoMu.Unlock()
+}
+
+func creditPassportPDF() []byte {
+	content := "BT\n/F1 20 Tf\n72 748 Td\n(Kora Credit Passport) Tj\n0 -28 Td\n/F1 12 Tf\n(Acme Insurance Ltd.) Tj\n0 -22 Td\n(Credit score: 82 - Good - A-) Tj\n0 -22 Td\n(Verified cashflow, payment discipline, obligations and risk evidence.) Tj\n0 -22 Td\n(Shared through an active, consent-scoped Kora access grant.) Tj\n0 -36 Td\n/F1 9 Tf\n(Generated by Kora. This document is evidence-backed and read-only.) Tj\nET\n"
+	objects := []string{
+		"<< /Type /Catalog /Pages 2 0 R >>",
+		"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+		fmt.Sprintf("<< /Length %d >>\nstream\n%sendstream", len(content), content),
+	}
+	var output bytes.Buffer
+	output.WriteString("%PDF-1.4\n")
+	offsets := make([]int, 0, len(objects)+1)
+	offsets = append(offsets, 0)
+	for index, object := range objects {
+		offsets = append(offsets, output.Len())
+		fmt.Fprintf(&output, "%d 0 obj\n%s\nendobj\n", index+1, object)
+	}
+	xrefOffset := output.Len()
+	fmt.Fprintf(&output, "xref\n0 %d\n0000000000 65535 f \n", len(objects)+1)
+	for _, offset := range offsets[1:] {
+		fmt.Fprintf(&output, "%010d 00000 n \n", offset)
+	}
+	fmt.Fprintf(&output, "trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n", len(objects)+1, xrefOffset)
+	return output.Bytes()
 }
 
 func (s *Server) ensureAccountSettingsLocked(email string, claims auth.Claims) demo.AccountSettingsData {
@@ -3062,11 +4165,13 @@ func (s *Server) buildSuperAdminSession() (sessionResponse, error) {
 func buildTenantSession(user identity.User, org identity.Organization, token string, roles []access.Role, permissions []access.Permission) sessionResponse {
 	now := time.Now().UTC()
 	response := sessionResponse{
-		User:      sessionUser{ID: user.ID, Email: user.Email, DisplayName: user.DisplayName},
-		Tenant:    sessionTenant{ID: org.ID, Name: org.Name},
-		Token:     token,
-		IssuedAt:  now.Format(time.RFC3339),
-		ExpiresAt: now.Add(15 * time.Minute).Format(time.RFC3339),
+		User:        sessionUser{ID: user.ID, Email: user.Email, DisplayName: user.DisplayName},
+		Tenant:      sessionTenant{ID: org.ID, Name: org.Name},
+		Roles:       make([]sessionRole, 0, len(roles)),
+		Permissions: make([]sessionPermission, 0, len(permissions)),
+		Token:       token,
+		IssuedAt:    now.Format(time.RFC3339),
+		ExpiresAt:   now.Add(15 * time.Minute).Format(time.RFC3339),
 	}
 	for _, role := range roles {
 		response.Roles = append(response.Roles, sessionRole{
@@ -3123,6 +4228,47 @@ func buildIntegrationStatuses(connections []connectors.Connection) []integration
 		items = append(items, out)
 	}
 	return items
+}
+
+func applyIntegrationOverrides(items []integrationStatus, overrides map[string]integrationStatusOverride) []integrationStatus {
+	if len(overrides) == 0 {
+		return items
+	}
+	for idx := range items {
+		override, ok := overrides[items[idx].ID]
+		if !ok {
+			continue
+		}
+		items[idx].Status = override.Status
+		items[idx].LastSync = override.LastSync
+		items[idx].Connected = override.Connected
+		if override.ConnectionID != "" {
+			items[idx].ConnectionID = override.ConnectionID
+		}
+	}
+	return items
+}
+
+func (s *Server) integrationStatusesForActor(actor access.Actor, organizationID string) ([]integrationStatus, error) {
+	items, err := s.connections.List(actor, organizationID, "")
+	if err != nil {
+		return nil, err
+	}
+	s.demoMu.RLock()
+	overrides := mapsCloneIntegrationOverrides(s.integrationOverrides)
+	s.demoMu.RUnlock()
+	return applyIntegrationOverrides(buildIntegrationStatuses(items), overrides), nil
+}
+
+func mapsCloneIntegrationOverrides(input map[string]integrationStatusOverride) map[string]integrationStatusOverride {
+	if len(input) == 0 {
+		return nil
+	}
+	out := make(map[string]integrationStatusOverride, len(input))
+	for key, value := range input {
+		out[key] = value
+	}
+	return out
 }
 
 func actorFromClaims(claims auth.Claims) (access.Actor, error) {

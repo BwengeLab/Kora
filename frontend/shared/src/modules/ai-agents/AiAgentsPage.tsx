@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { DateRangePill, PageHeader } from '../../app/shell';
-import { fetchAgentsOverview, runAgent, runAllAgents, type AgentActivityEvent } from '../../api/agents';
+import { fetchAgentsOverview, runAgent, runAllAgents, submitAgentFeedback, type AgentActivityEvent } from '../../api/agents';
 import { getApiBaseUrl } from '../../api/client';
 import { GlassSurface, cn } from '../../design-system';
 import { seedAgentStats, seedAgents, type AgentCard } from '../../seed/agents';
@@ -77,6 +77,13 @@ export function AiAgentsPage() {
     },
   });
 
+  const feedbackMutation = useMutation({
+    mutationFn: ({ agentID, rating }: { agentID: string; rating: 'helpful' | 'not_helpful' }) => submitAgentFeedback(apiBaseUrl, token, agentID, rating),
+    onSuccess: (response) => {
+      queryClient.setQueryData(['agents-overview', token], response);
+    },
+  });
+
   const stats = data?.stats ?? seedAgentStats;
   const agents = data?.agents ?? seedAgents;
   const activity = data?.activity ?? [];
@@ -101,6 +108,19 @@ export function AiAgentsPage() {
       toast({ tone: 'danger', title: 'Agent run failed', body: error instanceof Error ? error.message : 'Could not run all agents.' });
     } finally {
       setRunningId(null);
+    }
+  }
+
+  async function handleFeedback(agentID: string, agentName: string, rating: 'helpful' | 'not_helpful') {
+    try {
+      await feedbackMutation.mutateAsync({ agentID, rating });
+      toast({
+        tone: rating === 'helpful' ? 'success' : 'info',
+        title: 'Feedback recorded',
+        body: `${agentName} Agent was marked ${rating === 'helpful' ? 'helpful' : 'not helpful'}.`,
+      });
+    } catch (error) {
+      toast({ tone: 'warning', title: 'Feedback failed', body: error instanceof Error ? error.message : 'Could not record this feedback.' });
     }
   }
 
@@ -144,6 +164,7 @@ export function AiAgentsPage() {
                 running={activeRun === agent.id || activeRun === 'all'}
                 disabled={!!activeRun}
                 onRun={() => handleRun(agent.id)}
+                onFeedback={(rating) => void handleFeedback(agent.id, agent.name, rating)}
               />
             ))}
           </div>
@@ -200,7 +221,7 @@ export function AiAgentsPage() {
   );
 }
 
-function AgentTile({ agent, running, disabled, onRun }: { agent: AgentCard; running: boolean; disabled: boolean; onRun: () => void }) {
+function AgentTile({ agent, running, disabled, onRun, onFeedback }: { agent: AgentCard; running: boolean; disabled: boolean; onRun: () => void; onFeedback: (rating: 'helpful' | 'not_helpful') => void }) {
   const Icon = ICON[agent.icon];
 
   return (
@@ -242,7 +263,7 @@ function AgentTile({ agent, running, disabled, onRun }: { agent: AgentCard; runn
           <button
             type="button"
             aria-label="Helpful"
-            onClick={() => toast({ tone: 'success', title: 'Feedback noted', body: `${agent.name} Agent - marked helpful.` })}
+            onClick={() => onFeedback('helpful')}
             className="grid size-7 place-items-center rounded-lg text-ink-muted hover:bg-success-soft hover:text-success"
           >
             <ThumbsUp className="size-3.5" />
@@ -250,7 +271,7 @@ function AgentTile({ agent, running, disabled, onRun }: { agent: AgentCard; runn
           <button
             type="button"
             aria-label="Not helpful"
-            onClick={() => toast({ tone: 'info', title: 'Feedback noted', body: `${agent.name} Agent - we'll improve.` })}
+            onClick={() => onFeedback('not_helpful')}
             className="grid size-7 place-items-center rounded-lg text-ink-muted hover:bg-danger-soft hover:text-danger"
           >
             <ThumbsDown className="size-3.5" />

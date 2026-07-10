@@ -4,6 +4,8 @@ import path from 'node:path';
 export default defineConfig({
     plugins: [react()],
     resolve: {
+        // Prefer editable TypeScript sources when stale JavaScript siblings exist.
+        extensions: ['.ts', '.tsx', '.js', '.jsx', '.json'],
         alias: {
             '@shared': path.resolve(__dirname, '../shared/src'),
         },

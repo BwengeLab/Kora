@@ -129,6 +129,15 @@ export async function fetchFinanceCashflowView(apiBaseUrl: string, token: string
   };
 }
 
+export async function downloadCashflowSummary(apiBaseUrl: string, token: string): Promise<Blob> {
+  const response = await fetch(`${apiBaseUrl}/api/finance/cashflow-export`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error((await safePayload(response)) || `${response.status} ${response.statusText}`);
+  return response.blob();
+}
+
 export async function reconcileCashMovement(apiBaseUrl: string, token: string, movementID: string): Promise<FinanceCashflowViewPayload> {
   await postJson(`${apiBaseUrl}/api/finance/transactions/${movementID}/reconcile`, token);
   return fetchFinanceCashflowView(apiBaseUrl, token);
@@ -157,6 +166,60 @@ export async function fetchAuditInvestigations(apiBaseUrl: string, token: string
     sodViolations: SodViolation[];
     missingDocs: RawMissingDoc[];
   }>(`${apiBaseUrl}/api/audit/investigations`, token, signal);
+  return {
+    controlHealth: data.controlHealth,
+    riskStats: data.riskStats,
+    auditLog: (data.auditLog ?? []).map((item) => {
+      const base = {
+        id: item.id,
+        at: item.at,
+        actor: item.actor,
+        role: item.role,
+        kind: item.kind,
+        action: item.action,
+        target: item.target,
+        hasEvidence: item.hasEvidence,
+      };
+      return item.amount ? { ...base, amount: reviveMoney(item.amount) } : base;
+    }),
+    sodViolations: data.sodViolations ?? [],
+    missingDocs: (data.missingDocs ?? []).map((item) => ({
+      ...item,
+      amount: reviveMoney(item.amount),
+    })),
+  };
+}
+
+export async function exportAuditEvidencePack(apiBaseUrl: string, token: string): Promise<{ status: string; fileName: string }> {
+  const response = await fetch(`${apiBaseUrl}/api/audit/investigations/evidence-pack`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw new Error((await safePayload(response)) || `${response.status} ${response.statusText}`);
+  }
+  return (await response.json()) as { status: string; fileName: string };
+}
+
+export async function createAuditFinding(apiBaseUrl: string, token: string, eventID: string): Promise<AuditInvestigationsPayload> {
+  const response = await fetch(`${apiBaseUrl}/api/audit/investigations/findings`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ eventId: eventID }),
+  });
+  if (!response.ok) {
+    throw new Error((await safePayload(response)) || `${response.status} ${response.statusText}`);
+  }
+  const data = (await response.json()) as {
+    controlHealth: AuditInvestigationsPayload['controlHealth'];
+    riskStats: AuditInvestigationsPayload['riskStats'];
+    auditLog: RawAuditEvent[];
+    sodViolations: SodViolation[];
+    missingDocs: RawMissingDoc[];
+  };
   return {
     controlHealth: data.controlHealth,
     riskStats: data.riskStats,

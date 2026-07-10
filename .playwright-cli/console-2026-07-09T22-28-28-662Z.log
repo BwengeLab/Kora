@@ -1,0 +1,83 @@
+[    3089ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/chunk-EM65CKQS.js?v=9c95c1ad:21550
+[    4617ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:19158/api/portal/credit-passport:0
+[    4621ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:19158/api/mailbox:0
+[    4869ms] TypeError: Cannot read properties of null (reading 'some')
+    at can (http://localhost:5173/@fs/C:/Users/Lamelo/projects/project/Kora/frontend/shared/src/auth/permissions.js:19:32)
+    at http://localhost:5173/@fs/C:/Users/Lamelo/projects/project/Kora/frontend/shared/src/auth/permissions.js:22:36
+    at Array.some (<anonymous>)
+    at canAny (http://localhost:5173/@fs/C:/Users/Lamelo/projects/project/Kora/frontend/shared/src/auth/permissions.js:22:24)
+    at http://localhost:5173/@fs/C:/Users/Lamelo/projects/project/Kora/frontend/shared/src/auth/hooks.js:14:39
+    at matchesReqs (http://localhost:5173/@fs/C:/Users/Lamelo/projects/project/Kora/frontend/shared/src/blueprints/renderer.js:21:60)
+    at http://localhost:5173/@fs/C:/Users/Lamelo/projects/project/Kora/frontend/shared/src/blueprints/renderer.js:23:28
+    at Array.filter (<anonymous>)
+    at filterNav (http://localhost:5173/@fs/C:/Users/Lamelo/projects/project/Kora/frontend/shared/src/blueprints/renderer.js:23:14)
+    at http://localhost:5173/@fs/C:/Users/Lamelo/projects/project/Kora/frontend/shared/src/blueprints/renderer.js:32:18
+[    4947ms] TypeError: Cannot read properties of null (reading 'some')
+    at can (http://localhost:5173/@fs/C:/Users/Lamelo/projects/project/Kora/frontend/shared/src/auth/permissions.js:19:32)
+    at http://localhost:5173/@fs/C:/Users/Lamelo/projects/project/Kora/frontend/shared/src/auth/permissions.js:22:36
+    at Array.some (<anonymous>)
+    at canAny (http://localhost:5173/@fs/C:/Users/Lamelo/projects/project/Kora/frontend/shared/src/auth/permissions.js:22:24)
+    at http://localhost:5173/@fs/C:/Users/Lamelo/projects/project/Kora/frontend/shared/src/auth/hooks.js:14:39
+    at matchesReqs (http://localhost:5173/@fs/C:/Users/Lamelo/projects/project/Kora/frontend/shared/src/blueprints/renderer.js:21:60)
+    at http://localhost:5173/@fs/C:/Users/Lamelo/projects/project/Kora/frontend/shared/src/blueprints/renderer.js:23:28
+    at Array.filter (<anonymous>)
+    at filterNav (http://localhost:5173/@fs/C:/Users/Lamelo/projects/project/Kora/frontend/shared/src/blueprints/renderer.js:23:14)
+    at http://localhost:5173/@fs/C:/Users/Lamelo/projects/project/Kora/frontend/shared/src/blueprints/renderer.js:32:18
+[    4959ms] [ERROR] The above error occurred in the <Sidebar> component:
+
+    at Sidebar (http://localhost:5173/@fs/C:/Users/Lamelo/projects/project/Kora/frontend/shared/src/app/shell/Sidebar.js:38:7)
+    at div
+    at div
+    at AppShell (http://localhost:5173/@fs/C:/Users/Lamelo/projects/project/Kora/frontend/shared/src/app/shell/AppShell.js:32:3)
+    at component
+    at MatchInnerImpl (http://localhost:5173/node_modules/.vite/deps/@tanstack_react-router.js?v=9c95c1ad:7222:59)
+    at SafeFragment (http://localhost:5173/node_modules/.vite/deps/@tanstack_react-router.js?v=9c95c1ad:7076:87)
+    at CatchBoundaryImpl (http://localhost:5173/node_modules/.vite/deps/@tanstack_react-router.js?v=9c95c1ad:5572:5)
+    at CatchBoundary (http://localhost:5173/node_modules/.vite/deps/@tanstack_react-router.js?v=9c95c1ad:5557:32)
+    at SafeFragment (http://localhost:5173/node_modules/.vite/deps/@tanstack_react-router.js?v=9c95c1ad:7076:87)
+    at SafeFragment (http://localhost:5173/node_modules/.vite/deps/@tanstack_react-router.js?v=9c95c1ad:7076:87)
+    at MatchView (http://localhost:5173/node_modules/.vite/deps/@tanstack_react-router.js?v=9c95c1ad:7165:22)
+    at MatchImpl (http://localhost:5173/node_modules/.vite/deps/@tanstack_react-router.js?v=9c95c1ad:7113:49)
+    at CatchBoundaryImpl (http://localhost:5173/node_modules/.vite/deps/@tanstack_react-router.js?v=9c95c1ad:5572:5)
+    at CatchBoundary (http://localhost:5173/node_modules/.vite/deps/@tanstack_react-router.js?v=9c95c1ad:5557:32)
+    at MatchesInner (http://localhost:5173/node_modules/.vite/deps/@tanstack_react-router.js?v=9c95c1ad:7496:18)
+    at Suspense
+    at Matches (http://localhost:5173/node_modules/.vite/deps/@tanstack_react-router.js?v=9c95c1ad:7486:18)
+    at RouterContextProvider (http://localhost:5173/node_modules/.vite/deps/@tanstack_react-router.js?v=9c95c1ad:7588:34)
+    at RouterProvider (http://localhost:5173/node_modules/.vite/deps/@tanstack_react-router.js?v=9c95c1ad:7604:27)
+    at AppErrorBoundary (http://localhost:5173/@fs/C:/Users/Lamelo/projects/project/Kora/frontend/shared/src/app/shell/Fallbacks.js:102:8)
+    at AppRouter
+    at QueryClientProvider (http://localhost:5173/node_modules/.vite/deps/@tanstack_react-query.js?v=9c95c1ad:3235:3)
+    at PlatformProvider (http://localhost:5173/@fs/C:/Users/Lamelo/projects/project/Kora/frontend/shared/src/platform/context.js:25:3)
+    at AppProviders (http://localhost:5173/@fs/C:/Users/Lamelo/projects/project/Kora/frontend/shared/src/app/providers.js:41:3)
+    at App (http://localhost:5173/@fs/C:/Users/Lamelo/projects/project/Kora/frontend/shared/src/app/App.js:27:3)
+
+React will try to recreate this component tree from scratch using the error boundary you provided, CatchBoundaryImpl. @ http://localhost:5173/node_modules/.vite/deps/chunk-EM65CKQS.js?v=9c95c1ad:14031
+[    4960ms] [WARNING] Warning: Error in route match: __root__/ @ http://localhost:5173/node_modules/.vite/deps/@tanstack_react-router.js?v=9c95c1ad:7188
+[    4980ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:5173/favicon.ico:0
+[    5056ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://127.0.0.1:19158/api/workflow/snapshot:0
+[    5134ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://127.0.0.1:19158/api/finance/operations:0
+[  213916ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/chunk-EM65CKQS.js?v=9c95c1ad:21550
+[  214890ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:19158/api/mailbox:0
+[  214894ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:19158/api/portal/credit-passport:0
+[  215139ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://127.0.0.1:19158/api/workflow/snapshot:0
+[  215211ms] [ERROR] Failed to load resource: the server responded with a status of 403 (Forbidden) @ http://127.0.0.1:19158/api/finance/operations:0
+[  302548ms] [LOG] [vite] server connection lost. Polling for restart... @ http://localhost:5173/@vite/client:559
+[  305104ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[  308484ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[  311857ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[  315226ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[  318574ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[  321940ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[  325323ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[  328714ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[  332097ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[  335528ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[  338909ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[  342286ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[  345647ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[  349024ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[  352408ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[  355797ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[  359219ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0
+[  362620ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/:0

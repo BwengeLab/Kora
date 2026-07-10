@@ -44,6 +44,22 @@ export async function fetchAdminDashboard(apiBaseUrl: string, token: string, sig
   return getJson<AdminDashboardPayload>(`${apiBaseUrl}/api/home/admin-dashboard`, token, signal);
 }
 
+export async function resolveAdminAccessRequest(
+  apiBaseUrl: string,
+  token: string,
+  requestID: string,
+  action: 'grant' | 'deny',
+): Promise<AdminDashboardPayload> {
+  const response = await fetch(`${apiBaseUrl}/api/home/admin-dashboard/access-requests/${encodeURIComponent(requestID)}/${action}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw new Error((await safePayload(response)) || `${response.status} ${response.statusText}`);
+  }
+  return (await response.json()) as AdminDashboardPayload;
+}
+
 async function getJson<T>(url: string, token: string, signal?: AbortSignal): Promise<T> {
   const init: RequestInit = {
     method: 'GET',

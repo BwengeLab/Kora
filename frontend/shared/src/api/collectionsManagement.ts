@@ -40,6 +40,32 @@ export async function fetchCollectionsManagement(apiBaseUrl: string, token: stri
   return reviveBigInts((await response.json()) as CollectionsManagementPayload) as CollectionsManagementPayload;
 }
 
+export async function decideCollectionsEscalation(apiBaseUrl: string, token: string, escalationID: string, decision: 'approved' | 'declined'): Promise<CollectionsManagementPayload> {
+  const response = await fetch(`${apiBaseUrl}/api/collections/management/escalations/${escalationID}/decision`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ decision }),
+  });
+  if (!response.ok) {
+    throw new Error((await safePayload(response)) || `${response.status} ${response.statusText}`);
+  }
+  return reviveBigInts((await response.json()) as CollectionsManagementPayload) as CollectionsManagementPayload;
+}
+
+export async function updateCollectionsPolicy(apiBaseUrl: string, token: string): Promise<CollectionsManagementPayload> {
+  const response = await fetch(`${apiBaseUrl}/api/collections/management/policy/update`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw new Error((await safePayload(response)) || `${response.status} ${response.statusText}`);
+  }
+  return reviveBigInts((await response.json()) as CollectionsManagementPayload) as CollectionsManagementPayload;
+}
+
 function reviveBigInts(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(reviveBigInts);
   if (value && typeof value === 'object') {

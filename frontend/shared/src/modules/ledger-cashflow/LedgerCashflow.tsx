@@ -1,7 +1,7 @@
 import { ArrowUpRight, Banknote, Download, Info, Percent, TrendingUp, Wallet2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { getApiBaseUrl } from '../../api/client';
-import { fetchFinanceCashflowView, flagCashMovement, holdCashMovement, postCashMovement, reconcileCashMovement, type FinanceCashflowViewPayload } from '../../api/financeAuditViews';
+import { downloadCashflowSummary, fetchFinanceCashflowView, flagCashMovement, holdCashMovement, postCashMovement, reconcileCashMovement, type FinanceCashflowViewPayload } from '../../api/financeAuditViews';
 import { DateRangePill, PageHeader } from '../../app/shell';
 import { AreaChart, GlassSurface, KpiCard, MoneyCell, cn } from '../../design-system';
 import type { Money } from '../../lib/money';
@@ -116,6 +116,32 @@ export function LedgerCashflow({ mode = 'oversight' }: { mode?: LedgerMode }) {
     });
   };
 
+  const handleAsk = async (movement: CashMovement) => {
+    if (!token) {
+      toast({ tone: 'info', title: 'Asked finance', body: `Requested an explanation for ${movement.reference} from the finance team.` });
+      return;
+    }
+    await refresh(() => holdCashMovement(apiBaseUrl, token, movement.id, 'Explanation requested from finance team.'), {
+      title: 'Asked finance',
+      body: `Requested an explanation for ${movement.reference} from the finance team.`,
+    });
+  };
+
+  const exportSummary = async () => {
+    try {
+      const blob = await downloadCashflowSummary(apiBaseUrl, token);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = 'kora-cashflow-summary.pdf';
+      anchor.click();
+      URL.revokeObjectURL(url);
+      toast({ tone: 'success', title: 'Export downloaded', body: 'The tenant cash-flow summary is ready.' });
+    } catch (error) {
+      toast({ tone: 'danger', title: 'Export failed', body: error instanceof Error ? error.message : 'Could not export the cash-flow summary.' });
+    }
+  };
+
   return (
     <div className="flex h-full flex-col">
       <PageHeader
@@ -123,7 +149,7 @@ export function LedgerCashflow({ mode = 'oversight' }: { mode?: LedgerMode }) {
         subtitle={LEDGER_SUBTITLE[mode]}
         right={
           <div className="flex items-center gap-2.5">
-            <button type="button" onClick={() => toast({ tone: 'info', title: 'Exporting', body: 'Cash ledger (Excel) is being prepared.' })} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-glass-strong px-4 text-[13px] font-semibold text-ink-soft ring-1 ring-white/70 backdrop-blur-glass hover:bg-white hover:text-ink">
+            <button type="button" onClick={() => void exportSummary()} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-glass-strong px-4 text-[13px] font-semibold text-ink-soft ring-1 ring-white/70 backdrop-blur-glass hover:bg-white hover:text-ink">
               <Download className="size-4" /> Export
             </button>
             <DateRangePill label="May 2025" />
@@ -150,7 +176,7 @@ export function LedgerCashflow({ mode = 'oversight' }: { mode?: LedgerMode }) {
           ))}
         </div>
 
-        {tab === 'movements' ? <CashMovementsTab mode={mode} movements={movements} openingBalance={openingBalance} onReconcile={handleReconcile} onHold={handleHold} onPost={handlePost} onFlag={handleFlag} /> : null}
+        {tab === 'movements' ? <CashMovementsTab mode={mode} movements={movements} openingBalance={openingBalance} onReconcile={handleReconcile} onHold={handleHold} onPost={handlePost} onFlag={handleFlag} onAsk={handleAsk} /> : null}
         {tab === 'statement' ? <StatementTab movements={movements} openingBalance={openingBalance} /> : null}
         {tab === 'pnl' ? <PnlTab lines={pnl} marginBySegment={marginBySegment} /> : null}
         {tab === 'forecast' ? <ForecastTab forecast={forecast} /> : null}

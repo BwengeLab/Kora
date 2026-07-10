@@ -26,6 +26,22 @@ export async function postIntakeDoc(apiBaseUrl: string, token: string, docID: st
   return mutateDoc(`${apiBaseUrl}/api/intake/docs/${docID}/post`, token);
 }
 
+export async function fetchIntakeSources(apiBaseUrl: string, token: string, signal?: AbortSignal): Promise<Record<string, boolean>> {
+  const init: RequestInit = { method: 'GET', headers: { Authorization: `Bearer ${token}` } };
+  if (signal) init.signal = signal;
+  const response = await fetch(`${apiBaseUrl}/api/intake/sources`, init);
+  if (!response.ok) throw new Error((await safePayload(response)) || `${response.status} ${response.statusText}`);
+  const data = (await response.json()) as { sources?: Record<string, boolean> };
+  return data.sources ?? {};
+}
+
+export async function connectIntakeSource(apiBaseUrl: string, token: string, source: string): Promise<void> {
+  const response = await fetch(`${apiBaseUrl}/api/intake/sources/${source}/connect`, {
+    method: 'POST', headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error((await safePayload(response)) || `${response.status} ${response.statusText}`);
+}
+
 async function mutateDoc(url: string, token: string, body?: unknown): Promise<IntakeDoc> {
   const response = await fetch(url, {
     method: 'POST',

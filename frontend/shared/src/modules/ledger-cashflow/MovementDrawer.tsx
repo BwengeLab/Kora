@@ -1,9 +1,9 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { ArrowDownLeft, ArrowUpRight, Check, FileText, Flag, Link2, MessageSquare, X } from 'lucide-react';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
+import { openLinkedRecord } from '../../lib/linkedRecords';
 import { CATEGORY_META, type CashMovement } from '../../seed/cashLedger';
 import { openDoc } from '../../state/docViewerStore';
-import { toast } from '../../state/toastStore';
 
 export type LedgerMode = 'operate' | 'post' | 'oversight' | 'read';
 
@@ -15,6 +15,7 @@ export function MovementDrawer({
   onHold,
   onPost,
   onFlag,
+  onAsk,
 }: {
   movement: CashMovement | null;
   onClose: () => void;
@@ -23,6 +24,7 @@ export function MovementDrawer({
   onHold?: (movement: CashMovement) => void | Promise<void>;
   onPost?: (movement: CashMovement) => void | Promise<void>;
   onFlag?: (movement: CashMovement) => void | Promise<void>;
+  onAsk?: (movement: CashMovement) => void | Promise<void>;
 }) {
   const open = movement !== null;
   const m = movement;
@@ -84,7 +86,7 @@ export function MovementDrawer({
                 {m.linked ? (
                   <button
                     type="button"
-                    onClick={() => toast({ tone: 'info', title: 'Opening linked record', body: `${m.linked!.kind.toUpperCase()} ${m.linked!.ref}` })}
+                    onClick={() => openLinkedRecord(m.linked!)}
                     className="flex w-full items-center gap-3 rounded-2xl bg-brand-soft/60 p-3 text-left ring-1 ring-brand/15 hover:bg-brand-soft"
                   >
                     <Link2 className="size-4 text-brand-ink" />
@@ -148,7 +150,7 @@ export function MovementDrawer({
                   <button type="button" onClick={() => { void onFlag?.(m); }} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-white/70 px-4 text-[13px] font-bold text-danger ring-1 ring-white/70 hover:bg-white">
                     <Flag className="size-4" /> Flag
                   </button>
-                  <button type="button" onClick={() => toast({ tone: 'info', title: 'Asked finance', body: `Requested an explanation for ${m.reference} from the finance team.` })} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">
+                  <button type="button" onClick={() => { void onAsk?.(m); }} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">
                     <MessageSquare className="size-4" /> Ask finance
                   </button>
                 </footer>

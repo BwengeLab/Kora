@@ -35,10 +35,19 @@ type AgentActivityEventData struct {
 	Link      *AgentActivityLinkData `json:"link,omitempty"`
 }
 
+type AgentFeedbackData struct {
+	ID          string `json:"id"`
+	AgentID     string `json:"agentId"`
+	Rating      string `json:"rating"`
+	SubmittedAt string `json:"submittedAt"`
+	SubmittedBy string `json:"submittedBy"`
+}
+
 type AgentsOverviewData struct {
 	Stats     AgentStatsData           `json:"stats"`
 	Agents    []AgentCardData          `json:"agents"`
 	Activity  []AgentActivityEventData `json:"activity"`
+	Feedback  []AgentFeedbackData      `json:"feedback"`
 	RunningID string                   `json:"runningId,omitempty"`
 }
 

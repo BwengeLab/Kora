@@ -3,6 +3,7 @@ import { ArrowDownLeft, ArrowUpRight, Check, FileText, Flag, Link2, Send, X } fr
 import { getApiBaseUrl } from '../../api/client';
 import { classifyTransaction, flagTransaction, prepareTransaction } from '../../api/financeOperations';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
+import { openLinkedRecord } from '../../lib/linkedRecords';
 import { CATEGORY_META, type CashCategory } from '../../seed/cashLedger';
 import { useSessionStore } from '../../state/sessionStore';
 import { REVIEW_META, useTransactionsStore, type Txn } from '../../state/transactionsStore';
@@ -119,14 +120,14 @@ export function TxnDrawer({ txn, onClose, readOnly }: { txn: Txn | null; onClose
                   {readOnly ? (
                     <span className={cn('inline-block rounded-lg px-2.5 py-1 text-[12px] font-bold', CATEGORY_META[t.category].tone)}>{CATEGORY_META[t.category].label}</span>
                   ) : (
-                    <select value={t.category} onChange={(e) => { classify(t.id, e.target.value as CashCategory); toast({ tone: 'success', title: 'Reclassified', body: `${t.reference} → ${CATEGORY_META[e.target.value as CashCategory].label}` }); }} className="h-11 w-full rounded-xl bg-white/70 px-3.5 text-[13.5px] font-semibold text-ink ring-1 ring-white/70 focus:outline-none focus:ring-2 focus:ring-brand/30">
+                    <select value={t.category} onChange={(e) => { void handleClassify(t.id, t.reference, e.target.value as CashCategory); }} className="h-11 w-full rounded-xl bg-white/70 px-3.5 text-[13.5px] font-semibold text-ink ring-1 ring-white/70 focus:outline-none focus:ring-2 focus:ring-brand/30">
                       {Object.entries(CATEGORY_META).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                     </select>
                   )}
                 </div>
 
                 {t.linked ? (
-                  <button type="button" onClick={() => toast({ tone: 'info', title: 'Opening linked record', body: `${t.linked!.kind.toUpperCase()} ${t.linked!.ref}` })} className="flex w-full items-center gap-3 rounded-2xl bg-brand-soft/60 p-3 text-left ring-1 ring-brand/15 hover:bg-brand-soft">
+                  <button type="button" onClick={() => openLinkedRecord(t.linked!)} className="flex w-full items-center gap-3 rounded-2xl bg-brand-soft/60 p-3 text-left ring-1 ring-brand/15 hover:bg-brand-soft">
                     <Link2 className="size-4 text-brand-ink" />
                     <div className="min-w-0 flex-1">
                       <p className="text-[12.5px] font-bold text-brand-ink">Linked {t.linked.kind}</p>

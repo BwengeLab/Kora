@@ -8,6 +8,9 @@ import type { Reconciliation } from '../../seed/reconciliation';
 import { openDoc } from '../../state/docViewerStore';
 import { toast } from '../../state/toastStore';
 import { useWorkflowStore } from '../../state/workflowStore';
+import { useSessionStore } from '../../state/sessionStore';
+import { getApiBaseUrl } from '../../api/client';
+import { downloadReconciliationSummary, workflowReconciliationAction } from '../../api/workflow';
 
 // Org Owner "Reconciliation" — an ASSURANCE view, not the operator's cockpit.
 // The owner does not match items; they see whether money is under control, what
@@ -15,8 +18,39 @@ import { useWorkflowStore } from '../../state/workflowStore';
 // acknowledge). Role separation is the point.
 export function ReconciliationOverview({ readOnly = false }: { readOnly?: boolean }) {
   const recons = useWorkflowStore((s) => s.reconciliations);
+  const hydrate = useWorkflowStore((s) => s.hydrate);
+  const session = useSessionStore((s) => s.session);
   const open = recons.filter((r) => r.stage === 'reviewing' || r.stage === 'detected');
   const [selected, setSelected] = useState<Reconciliation | null>(null);
+
+  const runAction = async (r: Reconciliation, action: 'assign' | 'ask' | 'acknowledge') => {
+    if (!session?.token) return;
+    try {
+      const response = await workflowReconciliationAction(getApiBaseUrl(), session.token, r.id, action);
+      hydrate(response.snapshot);
+      setSelected(null);
+      const labels = { assign: 'Delegated to finance', ask: 'Explanation requested', acknowledge: 'Exception acknowledged' };
+      toast({ tone: action === 'acknowledge' ? 'success' : 'info', title: labels[action], body: `${r.transaction.counterparty} was updated and logged in the audit trail.` });
+    } catch (error) {
+      toast({ tone: 'danger', title: 'Action failed', body: error instanceof Error ? error.message : 'Could not update this exception.' });
+    }
+  };
+
+  const exportSummary = async () => {
+    if (!session?.token) return;
+    try {
+      const blob = await downloadReconciliationSummary(getApiBaseUrl(), session.token);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = 'kora-reconciliation-summary.pdf';
+      anchor.click();
+      URL.revokeObjectURL(url);
+      toast({ tone: 'success', title: 'Export downloaded', body: 'The reconciliation control summary is ready.' });
+    } catch (error) {
+      toast({ tone: 'danger', title: 'Export failed', body: error instanceof Error ? error.message : 'Could not export reconciliation.' });
+    }
+  };
 
   const tierStats = [
     { tier: 'auto', label: 'Auto matched', color: '#16a37b' },
@@ -52,7 +86,7 @@ export function ReconciliationOverview({ readOnly = false }: { readOnly?: boolea
         subtitle={readOnly ? <>Read-only assurance — verify that money is matched to reality and evidence is complete. You change nothing.</> : <>Assurance that money is matched to reality. You oversee control health and push exceptions to finance — the team does the matching.</>}
         right={
           <div className="flex items-center gap-2.5">
-            <button type="button" onClick={() => toast({ tone: 'info', title: 'Exporting', body: 'Reconciliation control summary (PDF) is being prepared.' })} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-glass-strong px-4 text-[13px] font-semibold text-ink-soft ring-1 ring-white/70 backdrop-blur-glass hover:bg-white hover:text-ink">
+            <button type="button" onClick={() => void exportSummary()} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-glass-strong px-4 text-[13px] font-semibold text-ink-soft ring-1 ring-white/70 backdrop-blur-glass hover:bg-white hover:text-ink">
               <Download className="size-4" /> Control summary
             </button>
             <DateRangePill label="May 2025" />
@@ -123,9 +157,9 @@ export function ReconciliationOverview({ readOnly = false }: { readOnly?: boolea
         item={selected}
         readOnly={readOnly}
         onClose={() => setSelected(null)}
-        onAssign={(r) => { toast({ tone: 'info', title: 'Delegated to finance', body: `${r.transaction.counterparty} sent to the Finance Operator to resolve.` }); setSelected(null); }}
-        onAsk={(r) => { toast({ tone: 'info', title: 'Explanation requested', body: `Asked finance to explain the ${r.transaction.counterparty} item.` }); }}
-        onAck={(r) => { toast({ tone: 'success', title: 'Acknowledged', body: `You've reviewed the ${r.transaction.counterparty} exception.` }); setSelected(null); }}
+        onAssign={(r) => { void runAction(r, 'assign'); }}
+        onAsk={(r) => { void runAction(r, 'ask'); }}
+        onAck={(r) => { void runAction(r, 'acknowledge'); }}
       />
     </div>
   );

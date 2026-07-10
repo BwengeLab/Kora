@@ -26,6 +26,23 @@ export async function fetchIntegrationStatuses(
   return data.items ?? [];
 }
 
+export async function integrationStatusAction(
+  apiBaseUrl: string,
+  token: string,
+  integrationID: string,
+  action: 'connect' | 'disconnect',
+): Promise<IntegrationStatusItem[]> {
+  const response = await fetch(`${apiBaseUrl}/api/integrations/status/${integrationID}/${action}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    throw new Error((await safePayload(response)) || `${response.status} ${response.statusText}`);
+  }
+  const data = (await response.json()) as { items: IntegrationStatusItem[] };
+  return data.items ?? [];
+}
+
 async function safePayload(response: Response): Promise<string> {
   try {
     const data = (await response.json()) as { error?: string };

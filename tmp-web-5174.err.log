@@ -1,0 +1,2 @@
+[33mThe file does not exist at "C:/Users/Lamelo/projects/project/Kora/frontend/web/node_modules/.vite/deps/zustand.js?v=f1deb5c3" which is in the optimize deps directory. The dependency might be incompatible with the dep optimizer. Try adding it to `optimizeDeps.exclude`.[39m
+[33mThe file does not exist at "C:/Users/Lamelo/projects/project/Kora/frontend/web/node_modules/.vite/deps/zustand_middleware.js?v=c90deaad" which is in the optimize deps directory. The dependency might be incompatible with the dep optimizer. Try adding it to `optimizeDeps.exclude`.[39m

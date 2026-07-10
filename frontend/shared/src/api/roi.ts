@@ -28,6 +28,15 @@ export async function fetchRoiSummary(apiBaseUrl: string, token: string, signal?
   return reviveBigInts((await response.json()) as ROISummaryPayload) as ROISummaryPayload;
 }
 
+export async function downloadRoiSummary(apiBaseUrl: string, token: string): Promise<Blob> {
+  const response = await fetch(`${apiBaseUrl}/api/roi/export`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error((await safePayload(response)) || `${response.status} ${response.statusText}`);
+  return response.blob();
+}
+
 function reviveBigInts(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(reviveBigInts);
   if (value && typeof value === 'object') {

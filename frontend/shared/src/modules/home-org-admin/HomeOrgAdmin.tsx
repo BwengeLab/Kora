@@ -1,11 +1,13 @@
-import { useQuery } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
+import { Plus } from 'lucide-react';
+import { useState } from 'react';
 import { PageHeader } from '../../app/shell';
-import { fetchAdminDashboard } from '../../api/dashboard';
 import { getApiBaseUrl } from '../../api/client';
-import { seedAccessAlerts, seedAccessRequests, seedAdminStats, seedAdminUsers, seedBilling, seedPolicies } from '../../seed/adminHome';
+import { fetchAdminDashboard, resolveAdminAccessRequest } from '../../api/dashboard';
+import { seedAccessAlerts, seedAccessRequests, seedAdminStats, seedAdminUsers, seedBilling, seedPolicies, type AccessRequest } from '../../seed/adminHome';
 import { useSessionStore } from '../../state/sessionStore';
+import { toast } from '../../state/toastStore';
 import { AccessAlertsCard } from './AccessAlertsCard';
 import { AccessRequestsCard } from './AccessRequestsCard';
 import { AdminStatCards } from './AdminStatCards';
@@ -17,17 +19,49 @@ import { UsersAccessCard } from './UsersAccessCard';
 export function HomeOrgAdmin() {
   const apiBaseUrl = getApiBaseUrl();
   const token = useSessionStore((s) => s.session?.token ?? '');
+  const queryClient = useQueryClient();
+  const [resolvingID, setResolvingID] = useState<string | null>(null);
+
   const { data } = useQuery({
     queryKey: ['admin-dashboard', token],
     queryFn: ({ signal }) => fetchAdminDashboard(apiBaseUrl, token, signal),
     enabled: Boolean(token),
   });
+
+  const resolveMutation = useMutation({
+    mutationFn: ({ requestID, action }: { requestID: string; action: 'grant' | 'deny' }) =>
+      resolveAdminAccessRequest(apiBaseUrl, token, requestID, action),
+    onSuccess: (payload) => {
+      queryClient.setQueryData(['admin-dashboard', token], payload);
+    },
+  });
+
   const stats = data?.stats ?? seedAdminStats;
   const users = data?.users ?? seedAdminUsers;
   const accessRequests = data?.accessRequests ?? seedAccessRequests;
   const accessAlerts = data?.accessAlerts ?? seedAccessAlerts;
   const policies = data?.policies ?? seedPolicies;
   const billing = data?.billing ?? seedBilling;
+
+  async function handleResolve(request: AccessRequest, action: 'grant' | 'deny') {
+    setResolvingID(request.id);
+    try {
+      await resolveMutation.mutateAsync({ requestID: request.id, action });
+      toast({
+        tone: action === 'grant' ? 'success' : 'warning',
+        title: action === 'grant' ? 'Access granted' : 'Request denied',
+        body: `${request.name} · ${request.requestedRole}`,
+      });
+    } catch (error) {
+      toast({
+        tone: 'danger',
+        title: 'Access update failed',
+        body: error instanceof Error ? error.message : 'Could not resolve this access request.',
+      });
+    } finally {
+      setResolvingID(null);
+    }
+  }
 
   return (
     <div className="flex flex-col">
@@ -48,7 +82,9 @@ export function HomeOrgAdmin() {
         </section>
 
         <section className="grid grid-cols-1 items-stretch gap-5 @5xl:grid-cols-12">
-          <div className="@5xl:col-span-5"><AccessRequestsCard items={accessRequests} /></div>
+          <div className="@5xl:col-span-5">
+            <AccessRequestsCard items={accessRequests} busyID={resolvingID} onResolve={handleResolve} />
+          </div>
           <div className="@5xl:col-span-7"><IntegrationStatusCard /></div>
         </section>
 

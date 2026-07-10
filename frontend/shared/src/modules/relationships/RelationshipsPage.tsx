@@ -1,10 +1,10 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { ArrowDownLeft, ArrowUpRight, CalendarClock, FileText, Mail, Phone, ScrollText, Search, Sparkles, Users, X } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { DateRangePill, PageHeader } from '../../app/shell';
 import { getApiBaseUrl } from '../../api/client';
-import { fetchRelationshipsOverview } from '../../api/relationships';
+import { fetchRelationshipsOverview, relationshipPartyAction, type RelationshipsOverviewPayload } from '../../api/relationships';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
 import type { Money } from '../../lib/money';
 import { ContractsView } from '../contracts';
@@ -26,6 +26,7 @@ type Lens = 'parties' | 'contracts';
 export function RelationshipsPage({ readOnly = false }: { readOnly?: boolean }) {
   const apiBaseUrl = getApiBaseUrl();
   const token = useSessionStore((s) => s.session?.token ?? '');
+  const queryClient = useQueryClient();
   const { data } = useQuery({
     queryKey: ['relationships-overview', token],
     queryFn: ({ signal }) => fetchRelationshipsOverview(apiBaseUrl, token, signal),
@@ -39,6 +40,11 @@ export function RelationshipsPage({ readOnly = false }: { readOnly?: boolean }) 
   const [type, setType] = useState<PartyType | 'all'>('all');
   const [risk, setRisk] = useState<RiskLevel | 'all'>('all');
   const [selected, setSelected] = useState<Party | null>(null);
+  const actionMutation = useMutation({
+    mutationFn: ({ partyID, action }: { partyID: string; action: 'email-contact' | 'send-statement' }) =>
+      relationshipPartyAction(apiBaseUrl, token, partyID, action),
+    onSuccess: (payload) => syncRelationshipData(payload),
+  });
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -57,6 +63,32 @@ export function RelationshipsPage({ readOnly = false }: { readOnly?: boolean }) 
   }), [parties]);
 
   const viewContracts = (partyName: string) => { setContractQuery(partyName); setLens('contracts'); setSelected(null); };
+
+  function syncRelationshipData(payload: RelationshipsOverviewPayload) {
+    queryClient.setQueryData(['relationships-overview', token], payload);
+    if (selected) {
+      setSelected(payload.parties.find((party) => party.id === selected.id) ?? null);
+    }
+  }
+
+  async function handlePartyAction(party: Party, action: 'email-contact' | 'send-statement') {
+    try {
+      await actionMutation.mutateAsync({ partyID: party.id, action });
+      toast({
+        tone: 'success',
+        title: action === 'email-contact' ? 'Email recorded' : 'Statement sent',
+        body: action === 'email-contact'
+          ? `Contact outreach for ${party.contact} was logged.`
+          : `Statement delivery for ${party.name} was logged.`,
+      });
+    } catch (error) {
+      toast({
+        tone: 'warning',
+        title: action === 'email-contact' ? 'Email failed' : 'Statement failed',
+        body: error instanceof Error ? error.message : 'Could not complete this relationship action.',
+      });
+    }
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -143,7 +175,15 @@ export function RelationshipsPage({ readOnly = false }: { readOnly?: boolean }) 
       </div>
       )}
 
-      <PartyDrawer party={selected} onClose={() => setSelected(null)} onViewContracts={viewContracts} readOnly={readOnly} />
+      <PartyDrawer
+        party={selected}
+        onClose={() => setSelected(null)}
+        onViewContracts={viewContracts}
+        onEmail={(party) => void handlePartyAction(party, 'email-contact')}
+        onSendStatement={(party) => void handlePartyAction(party, 'send-statement')}
+        readOnly={readOnly}
+        busy={actionMutation.isPending}
+      />
     </div>
   );
 }
@@ -157,7 +197,7 @@ function LensTab({ active, onClick, icon, label, sub }: { active: boolean; onCli
   );
 }
 
-function PartyDrawer({ party: p, onClose, onViewContracts, readOnly = false }: { party: Party | null; onClose: () => void; onViewContracts: (name: string) => void; readOnly?: boolean }) {
+function PartyDrawer({ party: p, onClose, onViewContracts, onEmail, onSendStatement, readOnly = false, busy = false }: { party: Party | null; onClose: () => void; onViewContracts: (name: string) => void; onEmail: (party: Party) => void; onSendStatement: (party: Party) => void; readOnly?: boolean; busy?: boolean }) {
   const net: Money | null = p ? { amountMinor: p.moneyIn.amountMinor - p.moneyOut.amountMinor, currency: 'USD' } : null;
   return (
     <Dialog.Root open={p !== null} onOpenChange={(o) => !o && onClose()}>
@@ -210,7 +250,7 @@ function PartyDrawer({ party: p, onClose, onViewContracts, readOnly = false }: {
               </div>
               <footer className="flex items-center gap-2 border-t border-white/55 p-4">
                 <button type="button" onClick={() => openDoc({ name: `${p.name} — statement.pdf`, kind: 'statement', sizeText: '—', context: p.name })} className={cn('inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-white/70 px-4 text-[13px] font-bold text-ink ring-1 ring-white/70 hover:bg-white', readOnly && 'flex-1')}><FileText className="size-4" /> {readOnly ? 'View statement' : 'Statement'}</button>
-                {!readOnly ? <button type="button" onClick={() => toast({ tone: 'success', title: 'Email drafted', body: `Opening a message to ${p.contact} <${p.email}>.` })} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110"><Mail className="size-4" /> Email contact</button> : null}
+                {!readOnly ? <button type="button" disabled={busy} onClick={() => onEmail(p)} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70"><Mail className="size-4" /> {busy ? 'Working...' : 'Email contact'}</button> : null}
               </footer>
             </>
           ) : null}

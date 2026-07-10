@@ -1,8 +1,8 @@
-import { Download, Share2 } from 'lucide-react';
+import { Download, Loader2, Share2 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { PageHeader } from '../../app/shell';
 import { getApiBaseUrl } from '../../api/client';
-import { fetchPortalCreditPassport } from '../../api/portal';
+import { downloadPortalCreditPassport, fetchPortalCreditPassport } from '../../api/portal';
 import { seedAffordability, seedEvidencePack, seedGrant, seedPassport, seedPassportTrends, seedSubScores } from '../../seed/portalHome';
 import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
@@ -10,12 +10,14 @@ import { AffordabilityCard } from './AffordabilityCard';
 import { EvidenceScopeCard } from './EvidenceScopeCard';
 import { ScoreCard } from './ScoreCard';
 import { TrendsCard } from './TrendsCard';
+import { useState } from 'react';
 
 // External Collaborator "Shared Portal" â€” a lender's Credit Passport view.
 // Few permissions, premium experience: score, trends, affordability, evidence.
 export function CreditPassportPortal() {
   const apiBaseUrl = getApiBaseUrl();
   const token = useSessionStore((s) => s.session?.token ?? '');
+  const [downloading, setDownloading] = useState(false);
   const { data } = useQuery({
     queryKey: ['portal-credit-passport', token],
     queryFn: ({ signal }) => fetchPortalCreditPassport(apiBaseUrl, token, signal),
@@ -27,6 +29,26 @@ export function CreditPassportPortal() {
   const trends = data?.trends ?? seedPassportTrends;
   const affordability = data?.affordability ?? seedAffordability;
   const evidencePack = data?.evidencePack ?? seedEvidencePack;
+
+  const downloadPassport = async () => {
+    setDownloading(true);
+    try {
+      const file = await downloadPortalCreditPassport(apiBaseUrl, token);
+      const url = URL.createObjectURL(file);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = 'kora-credit-passport.pdf';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      toast({ tone: 'success', title: 'Passport downloaded', body: 'The consent-scoped Credit Passport PDF is ready.' });
+    } catch (error) {
+      toast({ tone: 'warning', title: 'Download failed', body: error instanceof Error ? error.message : 'Could not download the Credit Passport.' });
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <div className="flex flex-col">
@@ -43,10 +65,11 @@ export function CreditPassportPortal() {
         right={
           <button
             type="button"
-            onClick={() => toast({ tone: 'success', title: 'Download started', body: 'Credit Passport (PDF) is being prepared.' })}
-            className="inline-flex h-11 items-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink px-4 text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110"
+            disabled={downloading}
+            onClick={() => void downloadPassport()}
+            className="inline-flex h-11 items-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink px-4 text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70"
           >
-            <Download className="size-4" /> Download passport
+            {downloading ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />} Download passport
           </button>
         }
       />

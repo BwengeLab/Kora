@@ -1,8 +1,9 @@
 import * as Dialog from '@radix-ui/react-dialog';
+import { useMutation } from '@tanstack/react-query';
 import { Banknote, Cog, Download, FileSearch, FileWarning, Flag, KeyRound, Search, ShieldAlert, ShieldCheck, Sparkles, Stamp, UserCheck, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { getApiBaseUrl } from '../../api/client';
-import { fetchAuditInvestigations, type AuditInvestigationsPayload } from '../../api/financeAuditViews';
+import { createAuditFinding, exportAuditEvidencePack, fetchAuditInvestigations, type AuditInvestigationsPayload } from '../../api/financeAuditViews';
 import { DateRangePill, PageHeader } from '../../app/shell';
 import { GlassSurface, MoneyCell, PartyAvatar, ProgressRing, cn } from '../../design-system';
 import { seedControlHealth, seedMissingDocs, seedSodViolations, type AuditEvent, type AuditKind } from '../../seed/auditorHome';
@@ -18,6 +19,7 @@ const KIND_META: Record<AuditKind, { label: string; icon: typeof Stamp; tone: st
   config: { label: 'Config', icon: Cog, tone: 'bg-warning-soft text-warning' },
   agent: { label: 'Agent', icon: Sparkles, tone: 'bg-ai-soft text-ai' },
   consent: { label: 'Consent', icon: UserCheck, tone: 'bg-lavender-soft text-lavender' },
+  audit: { label: 'Audit', icon: Flag, tone: 'bg-danger-soft text-danger' },
 };
 
 export function AuditInvestigations() {
@@ -28,6 +30,26 @@ export function AuditInvestigations() {
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState<AuditKind | 'all'>('all');
   const [selected, setSelected] = useState<AuditEvent | null>(null);
+  const exportMutation = useMutation({
+    mutationFn: () => exportAuditEvidencePack(apiBaseUrl, token),
+    onSuccess: (result) => {
+      toast({ tone: 'info', title: 'Evidence pack', body: `${result.fileName} is ready.` });
+    },
+    onError: (error: Error) => {
+      toast({ tone: 'warning', title: 'Evidence pack failed', body: error.message });
+    },
+  });
+  const findingMutation = useMutation({
+    mutationFn: (eventID: string) => createAuditFinding(apiBaseUrl, token, eventID),
+    onSuccess: (payload) => {
+      setData(payload);
+      setSelected(null);
+      toast({ tone: 'info', title: 'Finding raised', body: 'The follow-up finding was logged on the audit trail.' });
+    },
+    onError: (error: Error) => {
+      toast({ tone: 'warning', title: 'Finding failed', body: error.message });
+    },
+  });
 
   useEffect(() => {
     if (!token) return;
@@ -62,7 +84,7 @@ export function AuditInvestigations() {
         subtitle="Read-only by design - trace every sensitive action, test controls and verify evidence. You change nothing."
         right={
           <div className="flex items-center gap-2.5">
-            <button type="button" onClick={() => toast({ tone: 'info', title: 'Evidence pack', body: 'Compiling the audit trail + evidence into a signed PDF.' })} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-glass-strong px-4 text-[13px] font-semibold text-ink-soft ring-1 ring-white/70 backdrop-blur-glass hover:bg-white hover:text-ink"><Download className="size-4" /> Evidence pack</button>
+            <button type="button" onClick={() => exportMutation.mutate()} disabled={exportMutation.isPending} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-glass-strong px-4 text-[13px] font-semibold text-ink-soft ring-1 ring-white/70 backdrop-blur-glass hover:bg-white hover:text-ink disabled:cursor-not-allowed disabled:opacity-70"><Download className="size-4" /> {exportMutation.isPending ? 'Preparing...' : 'Evidence pack'}</button>
             <DateRangePill label="May 2025" />
           </div>
         }
@@ -146,12 +168,12 @@ export function AuditInvestigations() {
         </div>
       </div>
 
-      <EventDrawer event={selected} onClose={() => setSelected(null)} />
+      <EventDrawer event={selected} onClose={() => setSelected(null)} onRaiseFinding={(eventID) => findingMutation.mutate(eventID)} busy={findingMutation.isPending} />
     </div>
   );
 }
 
-function EventDrawer({ event, onClose }: { event: AuditEvent | null; onClose: () => void }) {
+function EventDrawer({ event, onClose, onRaiseFinding, busy = false }: { event: AuditEvent | null; onClose: () => void; onRaiseFinding: (eventID: string) => void; busy?: boolean }) {
   if (!event) return <Dialog.Root open={false} onOpenChange={() => onClose()}><span /></Dialog.Root>;
   const meta = KIND_META[event.kind];
   return (
@@ -184,7 +206,7 @@ function EventDrawer({ event, onClose }: { event: AuditEvent | null; onClose: ()
             )}
           </div>
           <footer className="border-t border-white/55 p-4">
-            <button type="button" onClick={() => { toast({ tone: 'info', title: 'Finding raised', body: `Logged a follow-up finding on "${event.action}". No financial change made.` }); onClose(); }} className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110"><Flag className="size-4" /> Raise finding</button>
+            <button type="button" disabled={busy} onClick={() => onRaiseFinding(event.id)} className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70"><Flag className="size-4" /> {busy ? 'Saving...' : 'Raise finding'}</button>
           </footer>
         </Dialog.Content>
       </Dialog.Portal>

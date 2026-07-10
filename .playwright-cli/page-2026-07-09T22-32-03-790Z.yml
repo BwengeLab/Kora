@@ -1,0 +1,151 @@
+- generic [ref=f2e3]:
+  - complementary [ref=f2e5]:
+    - button "Expand sidebar" [ref=f2e12] [cursor=pointer]
+    - navigation [ref=f2e16]:
+      - list [ref=f2e17]:
+        - listitem [ref=f2e18]:
+          - link "Portal" [ref=f2e19] [cursor=pointer]:
+            - /url: /portal
+        - listitem [ref=f2e24]:
+          - link "Credit Passport" [ref=f2e25] [cursor=pointer]:
+            - /url: /portal/credit-passport
+        - listitem [ref=f2e29]:
+          - link "Access" [ref=f2e30] [cursor=pointer]:
+            - /url: /portal/access
+    - button "BK Lender Officer" [ref=f2e37] [cursor=pointer]:
+      - generic [ref=f2e38]: BO
+  - generic [ref=f2e39]:
+    - banner [ref=f2e40]:
+      - generic [ref=f2e41]:
+        - searchbox "Search anything…" [ref=f2e45]
+        - generic [ref=f2e46]:
+          - generic [ref=f2e47]: ⌘
+          - text: K
+      - button "Tools" [ref=f2e48] [cursor=pointer]
+      - link "Mail" [ref=f2e51] [cursor=pointer]:
+        - /url: /mail
+      - button "Kora copilot" [ref=f2e55] [cursor=pointer]
+      - button "Notifications" [ref=f2e58] [cursor=pointer]:
+        - generic [ref=f2e62]: "9"
+      - link "Account & preferences" [ref=f2e63] [cursor=pointer]:
+        - /url: /account
+      - button "Acme Insurance (seed) All entities" [ref=f2e67] [cursor=pointer]:
+        - generic [ref=f2e73]:
+          - generic [ref=f2e74]: Acme Insurance (seed)
+          - generic [ref=f2e75]: All entities
+    - main [ref=f2e78]:
+      - generic [ref=f2e79]:
+        - generic [ref=f2e80]:
+          - generic [ref=f2e81]:
+            - heading "Acme Insurance Ltd. · Credit Passport" [level=1] [ref=f2e82]
+            - paragraph [ref=f2e83]:
+              - generic [ref=f2e84]:
+                - generic [ref=f2e85]: Shared with you
+                - text: by Eric Habimana · Finance Lead · expires in 23 days
+          - button "Download passport" [ref=f2e92] [cursor=pointer]
+        - generic [ref=f2e96]:
+          - generic [ref=f2e97]:
+            - generic [ref=f2e98]:
+              - generic [ref=f2e99]:
+                - generic:
+                  - generic:
+                    - generic: "82"
+                    - generic: Good
+              - generic [ref=f2e107]: Band A− · Business Health
+              - generic [ref=f2e108]: Updated May 18, 2025
+            - generic [ref=f2e114]:
+              - button "Payment behavior Good · 88 94% on-time over 12 months · avg 3-day delay" [ref=f2e115] [cursor=pointer]:
+                - generic [ref=f2e116]:
+                  - generic [ref=f2e117]: Payment behavior
+                  - generic [ref=f2e118]: Good · 88
+                - generic [ref=f2e121]: 94% on-time over 12 months · avg 3-day delay
+              - button "Financial strength Good · 84 Revenue +18% YoY · positive net cash 11/12 months" [ref=f2e122] [cursor=pointer]:
+                - generic [ref=f2e123]:
+                  - generic [ref=f2e124]: Financial strength
+                  - generic [ref=f2e125]: Good · 84
+                - generic [ref=f2e128]: Revenue +18% YoY · positive net cash 11/12 months
+              - button "Risk profile Fair · 79 Moderate customer concentration · low dispute rate" [ref=f2e129] [cursor=pointer]:
+                - generic [ref=f2e130]:
+                  - generic [ref=f2e131]: Risk profile
+                  - generic [ref=f2e132]: Fair · 79
+                - generic [ref=f2e135]: Moderate customer concentration · low dispute rate
+              - button "Credit readiness Strong · 86 Audited books · full evidence trail · 0 unresolved flags" [ref=f2e136] [cursor=pointer]:
+                - generic [ref=f2e137]:
+                  - generic [ref=f2e138]: Credit readiness
+                  - generic [ref=f2e139]: Strong · 86
+                - generic [ref=f2e142]: Audited books · full evidence trail · 0 unresolved flags
+          - generic [ref=f2e143]:
+            - generic [ref=f2e144]:
+              - generic [ref=f2e145]:
+                - heading "Revenue & cash flow" [level=3] [ref=f2e146]
+                - generic [ref=f2e147]:
+                  - generic [ref=f2e148]: Revenue
+                  - generic [ref=f2e150]: Net cash
+              - img [ref=f2e156]:
+                - generic [ref=f2e158]:
+                  - generic [ref=f2e159]: $0K
+                  - generic [ref=f2e160]: $0K
+                  - generic [ref=f2e161]: $0K
+                  - generic [ref=f2e162]: $0K
+                  - generic [ref=f2e163]: $0K
+                  - generic [ref=f2e164]: $0K
+                  - generic [ref=f2e165]: $0K
+                  - generic [ref=f2e166]: $0K
+                  - generic [ref=f2e167]: Dec
+                  - generic [ref=f2e168]: Jan
+                  - generic [ref=f2e169]: Feb
+                  - generic [ref=f2e170]: Mar
+                  - generic [ref=f2e171]: Apr
+                  - generic [ref=f2e172]: May
+              - paragraph [ref=f2e181]: 12-month trend · revenue up 18% YoY · positive net cash in 11 of 12 months.
+            - generic [ref=f2e182]:
+              - heading "Affordability estimate" [level=3] [ref=f2e191]
+              - generic [ref=f2e192]:
+                - generic [ref=f2e193]: Max facility$680,000.00
+                - generic [ref=f2e194]: Monthly capacity$58,000.00
+                - generic [ref=f2e195]:
+                  - text: Indicative term
+                  - generic [ref=f2e196]: 24 months
+              - generic [ref=f2e197]:
+                - text: Assumptions explained
+                - list [ref=f2e198]:
+                  - listitem [ref=f2e199]: Based on 12-month average net operating cash flow
+                  - listitem [ref=f2e202]: Debt-service coverage ratio held at 1.4×
+                  - listitem [ref=f2e205]: Existing obligations of $1.32M payables deducted
+                  - listitem [ref=f2e208]: Seasonal dip (Dec–Jan) factored at 0.8×
+          - generic [ref=f2e211]:
+            - heading "Evidence pack" [level=3] [ref=f2e217]
+            - list [ref=f2e218]:
+              - listitem [ref=f2e219]:
+                - button "Revenue · Audited P&L 2024.pdf Independently verified View" [ref=f2e220] [cursor=pointer]:
+                  - generic [ref=f2e225]:
+                    - paragraph [ref=f2e226]: Revenue · Audited P&L 2024.pdf
+                    - paragraph [ref=f2e227]: Independently verified
+                  - generic [ref=f2e228]: View
+              - listitem [ref=f2e229]:
+                - button "Cash flow · Bank statements (12 mo).pdf HSBC · BK · reconciled View" [ref=f2e230] [cursor=pointer]:
+                  - generic [ref=f2e235]:
+                    - paragraph [ref=f2e236]: Cash flow · Bank statements (12 mo).pdf
+                    - paragraph [ref=f2e237]: HSBC · BK · reconciled
+                  - generic [ref=f2e238]: View
+              - listitem [ref=f2e239]:
+                - button "Payment behavior · Payables ledger.xlsx 94% on-time View" [ref=f2e240] [cursor=pointer]:
+                  - generic [ref=f2e245]:
+                    - paragraph [ref=f2e246]: Payment behavior · Payables ledger.xlsx
+                    - paragraph [ref=f2e247]: 94% on-time
+                  - generic [ref=f2e248]: View
+              - listitem [ref=f2e249]:
+                - button "Obligations · Debt schedule.pdf Current as of May 18 View" [ref=f2e250] [cursor=pointer]:
+                  - generic [ref=f2e255]:
+                    - paragraph [ref=f2e256]: Obligations · Debt schedule.pdf
+                    - paragraph [ref=f2e257]: Current as of May 18
+                  - generic [ref=f2e258]: View
+            - generic [ref=f2e259]:
+              - generic [ref=f2e260]: Access expires in 23 days
+              - list [ref=f2e266]:
+                - listitem [ref=f2e267]: Credit score & sub-scores
+                - listitem [ref=f2e270]: Revenue & cash-flow trends
+                - listitem [ref=f2e273]: Affordability estimate
+                - listitem [ref=f2e276]: Evidence pack
+              - paragraph [ref=f2e279]: Read-only · consent-scoped · revocable at any time by Acme Insurance.
+              - button "Request more access" [ref=f2e283] [cursor=pointer]

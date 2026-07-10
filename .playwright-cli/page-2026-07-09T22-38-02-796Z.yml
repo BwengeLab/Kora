@@ -1,0 +1,66 @@
+- generic [ref=f6e3]:
+  - complementary [ref=f6e5]:
+    - button "Expand sidebar" [ref=f6e12] [cursor=pointer]
+    - navigation [ref=f6e16]:
+      - list [ref=f6e17]:
+        - listitem [ref=f6e18]:
+          - link "Portal" [ref=f6e19] [cursor=pointer]:
+            - /url: /portal
+        - listitem [ref=f6e24]:
+          - link "Credit Passport" [ref=f6e25] [cursor=pointer]:
+            - /url: /portal/credit-passport
+        - listitem [ref=f6e29]:
+          - link "Access" [ref=f6e30] [cursor=pointer]:
+            - /url: /portal/access
+    - button "BK Lender Officer" [ref=f6e37] [cursor=pointer]:
+      - generic [ref=f6e38]: BO
+  - generic [ref=f6e39]:
+    - banner [ref=f6e40]:
+      - generic [ref=f6e41]:
+        - searchbox "Search anything…" [ref=f6e45]
+        - generic [ref=f6e46]:
+          - generic [ref=f6e47]: ⌘
+          - text: K
+      - button "Tools" [ref=f6e48] [cursor=pointer]
+      - link "Mail" [ref=f6e51] [cursor=pointer]:
+        - /url: /mail
+      - button "Kora copilot" [ref=f6e55] [cursor=pointer]
+      - button "Notifications" [ref=f6e58] [cursor=pointer]:
+        - generic [ref=f6e62]: "9"
+      - link "Account & preferences" [ref=f6e63] [cursor=pointer]:
+        - /url: /account
+      - button "Acme Insurance (seed) All entities" [ref=f6e67] [cursor=pointer]:
+        - generic [ref=f6e73]:
+          - generic [ref=f6e74]: Acme Insurance (seed)
+          - generic [ref=f6e75]: All entities
+    - main [ref=f6e78]:
+      - generic [ref=f6e79]:
+        - generic [ref=f6e81]:
+          - heading "Access & Requests" [level=1] [ref=f6e82]
+          - paragraph [ref=f6e83]: Your access to the business - consent-scoped, time-boxed and revocable at any time.
+        - generic [ref=f6e85]:
+          - generic [ref=f6e91]:
+            - paragraph [ref=f6e92]: No active access
+            - paragraph [ref=f6e93]: Every view is consent-scoped, time-boxed and auditable.
+          - generic [ref=f6e94]:
+            - heading "What you can access" [level=3] [ref=f6e95]
+            - list [ref=f6e96]:
+              - listitem [ref=f6e97]: No active consent grants are available.
+          - generic [ref=f6e98]:
+            - heading "Request more access" [level=3] [ref=f6e99]
+            - paragraph [ref=f6e100]: The business reviews every request before granting. You will be notified of their decision.
+            - list [ref=f6e101]:
+              - listitem [ref=f6e102]:
+                - generic [ref=f6e107]:
+                  - paragraph [ref=f6e108]: Transaction detail
+                  - paragraph [ref=f6e109]: Line-level movements for deeper diligence
+                - button "Request" [ref=f6e110] [cursor=pointer]
+              - listitem [ref=f6e112]:
+                - generic [ref=f6e117]:
+                  - paragraph [ref=f6e118]: Contracts register
+                  - paragraph [ref=f6e119]: Obligations and committed spend
+                - button "Request" [ref=f6e120] [cursor=pointer]
+          - generic [ref=f6e122]:
+            - heading "Your access activity" [level=3] [ref=f6e123]
+            - list [ref=f6e124]:
+              - listitem [ref=f6e125]: No access activity has been recorded yet.

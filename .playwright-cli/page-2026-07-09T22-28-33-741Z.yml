@@ -1,0 +1,8 @@
+- generic [ref=f1e4]:
+  - heading "Something went wrong" [level=2] [ref=f1e8]
+  - paragraph [ref=f1e9]: This screen hit an unexpected error. You can retry, or head back — nothing you did was lost.
+  - generic [ref=f1e10]:
+    - button "Try again" [ref=f1e11] [cursor=pointer]
+    - link "Back to home" [ref=f1e15] [cursor=pointer]:
+      - /url: /
+    - paragraph [ref=f1e19]: Cannot read properties of null (reading 'some')

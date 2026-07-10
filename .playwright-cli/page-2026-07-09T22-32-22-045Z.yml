@@ -1,0 +1,91 @@
+- generic [ref=f2e3]:
+  - complementary [ref=f2e5]:
+    - button "Expand sidebar" [ref=f2e12] [cursor=pointer]
+    - navigation [ref=f2e16]:
+      - list [ref=f2e17]:
+        - listitem [ref=f2e18]:
+          - link "Portal" [ref=f2e19] [cursor=pointer]:
+            - /url: /portal
+        - listitem [ref=f2e29]:
+          - link "Access" [active] [ref=f2e30] [cursor=pointer]:
+            - /url: /portal/access
+    - button "BK Lender Officer" [ref=f2e37] [cursor=pointer]:
+      - generic [ref=f2e38]: BO
+  - generic [ref=f2e39]:
+    - banner [ref=f2e40]:
+      - generic [ref=f2e41]:
+        - searchbox "Search anything…" [ref=f2e45]
+        - generic [ref=f2e46]:
+          - generic [ref=f2e47]: ⌘
+          - text: K
+      - button "Tools" [ref=f2e48] [cursor=pointer]
+      - link "Mail" [ref=f2e51] [cursor=pointer]:
+        - /url: /mail
+        - generic [ref=f2e285]: "2"
+      - button "Kora copilot" [ref=f2e55] [cursor=pointer]
+      - button "Notifications" [ref=f2e58] [cursor=pointer]:
+        - generic [ref=f2e62]: "9"
+      - link "Account & preferences" [ref=f2e63] [cursor=pointer]:
+        - /url: /account
+      - button "Acme Insurance Ltd. All entities" [ref=f2e286] [cursor=pointer]:
+        - generic [ref=f2e73]:
+          - generic [ref=f2e74]: Acme Insurance Ltd.
+          - generic [ref=f2e75]: All entities
+    - main [ref=f2e78]:
+      - generic [ref=f2e312]:
+        - generic [ref=f2e314]:
+          - heading "Access & Requests" [level=1] [ref=f2e315]
+          - paragraph [ref=f2e316]: Your access to Acme Insurance Ltd. — consent-scoped, time-boxed and revocable by them at any time.
+        - generic [ref=f2e318]:
+          - generic [ref=f2e319]:
+            - generic [ref=f2e324]:
+              - paragraph [ref=f2e325]: Access granted · expires Oct 2, 2025
+              - paragraph [ref=f2e326]: Granted by Aline Mukamana for working-capital underwriting.
+            - generic [ref=f2e327]: 137 days left
+          - generic [ref=f2e331]:
+            - heading "What you can access" [level=3] [ref=f2e332]
+            - list [ref=f2e333]:
+              - listitem [ref=f2e334]:
+                - generic [ref=f2e339]:
+                  - paragraph [ref=f2e340]: Credit Passport
+                  - paragraph [ref=f2e341]: Score, limits, repayment behaviour
+                - generic [ref=f2e342]: until Oct 2, 2025
+                - button "Open" [ref=f2e343] [cursor=pointer]
+              - listitem [ref=f2e344]:
+                - generic [ref=f2e349]:
+                  - paragraph [ref=f2e350]: Financial statements
+                  - paragraph [ref=f2e351]: P&L, balance sheet, cash flow
+                - generic [ref=f2e352]: until Oct 2, 2025
+                - button "Open" [ref=f2e353] [cursor=pointer]
+              - listitem [ref=f2e354]:
+                - generic [ref=f2e359]:
+                  - paragraph [ref=f2e360]: Bank statements
+                  - paragraph [ref=f2e361]: Verified bank-feed history
+                - generic [ref=f2e362]: until Oct 2, 2025
+                - button "Open" [ref=f2e363] [cursor=pointer]
+          - generic [ref=f2e364]:
+            - heading "Request more access" [level=3] [ref=f2e365]
+            - paragraph [ref=f2e366]: The business reviews every request before granting. You'll be notified of their decision.
+            - list [ref=f2e367]:
+              - listitem [ref=f2e368]:
+                - generic [ref=f2e373]:
+                  - paragraph [ref=f2e374]: Transaction detail
+                  - paragraph [ref=f2e375]: Line-level movements for deeper diligence
+                - button "Request" [ref=f2e376] [cursor=pointer]
+              - listitem [ref=f2e378]:
+                - generic [ref=f2e383]:
+                  - paragraph [ref=f2e384]: Contracts register
+                  - paragraph [ref=f2e385]: Obligations and committed spend
+                - button "Request" [ref=f2e386] [cursor=pointer]
+          - generic [ref=f2e388]:
+            - heading "Your access activity" [level=3] [ref=f2e389]
+            - list [ref=f2e390]:
+              - listitem [ref=f2e391]:
+                - generic [ref=f2e393]: Viewed Credit Passport
+                - generic [ref=f2e394]: May 16, 2025 · 14:20
+              - listitem [ref=f2e395]:
+                - generic [ref=f2e397]: Downloaded financial statements
+                - generic [ref=f2e398]: May 12, 2025 · 09:05
+              - listitem [ref=f2e399]:
+                - generic [ref=f2e401]: Access granted
+                - generic [ref=f2e402]: Apr 2, 2025 · 11:00

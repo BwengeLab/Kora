@@ -3,7 +3,7 @@ import { CheckCircle2, FileText, Inbox, Link2, Loader2, Mail, Plus, Scan, Smartp
 import { useEffect, useState } from 'react';
 import { PageHeader } from '../../app/shell';
 import { getApiBaseUrl } from '../../api/client';
-import { fetchIntakeDocs, matchIntakeDoc, postIntakeDoc, uploadIntakeDoc } from '../../api/intake';
+import { connectIntakeSource, fetchIntakeDocs, fetchIntakeSources, matchIntakeDoc, postIntakeDoc, uploadIntakeDoc } from '../../api/intake';
 import { GlassSurface, cn } from '../../design-system';
 import { SOURCE_META, seedIntake, type IntakeDoc, type IntakeSource, type IntakeStage } from '../../seed/intake';
 import { openDoc } from '../../state/docViewerStore';
@@ -28,6 +28,11 @@ export function DataIntakePage() {
     queryFn: ({ signal }) => fetchIntakeDocs(apiBaseUrl, token, signal),
     enabled: Boolean(token),
   });
+  const { data: sourceStatus = {} } = useQuery({
+    queryKey: ['intake-sources', token],
+    queryFn: ({ signal }) => fetchIntakeSources(apiBaseUrl, token, signal),
+    enabled: Boolean(token),
+  });
   const docs = data ?? seedIntake;
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -44,6 +49,14 @@ export function DataIntakePage() {
       toast({ tone: 'info', title: 'Uploaded', body: 'Kora is extracting the fields...' });
     },
     onError: (error: Error) => toast({ tone: 'danger', title: 'Upload failed', body: error.message }),
+  });
+  const sourceMutation = useMutation({
+    mutationFn: (source: string) => connectIntakeSource(apiBaseUrl, token, source),
+    onSuccess: (_, source) => {
+      void queryClient.invalidateQueries({ queryKey: ['intake-sources', token] });
+      toast({ tone: 'success', title: `${SOURCE_META[source as IntakeSource].label} connected`, body: 'The source is now registered and audited.' });
+    },
+    onError: (error: Error) => toast({ tone: 'danger', title: 'Connection failed', body: error.message }),
   });
 
   const selected = docs.find((d) => d.id === selectedId) ?? null;
@@ -86,8 +99,8 @@ export function DataIntakePage() {
           </ul>
           <div className="grid grid-cols-3 gap-2 border-t border-white/55 p-3">
             {([['bank-feed', Link2], ['email', Mail], ['scan', Scan]] as const).map(([source, Icon]) => (
-              <button key={source} type="button" onClick={() => toast({ tone: 'info', title: `${SOURCE_META[source].label} connected`, body: 'New documents will arrive automatically.' })} className="flex flex-col items-center gap-1 rounded-xl bg-white/55 py-2.5 text-[10.5px] font-bold text-ink-soft ring-1 ring-white/60 hover:bg-white hover:text-ink">
-                <Icon className="size-4" /> {SOURCE_META[source].label}
+              <button key={source} type="button" onClick={() => sourceMutation.mutate(source)} disabled={sourceMutation.isPending} className="flex flex-col items-center gap-1 rounded-xl bg-white/55 py-2.5 text-[10.5px] font-bold text-ink-soft ring-1 ring-white/60 hover:bg-white hover:text-ink disabled:opacity-60">
+                <Icon className="size-4" /> {sourceStatus[source] ? `${SOURCE_META[source].label} connected` : SOURCE_META[source].label}
               </button>
             ))}
           </div>

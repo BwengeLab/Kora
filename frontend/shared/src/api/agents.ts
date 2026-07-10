@@ -58,6 +58,23 @@ export async function runAllAgents(apiBaseUrl: string, token: string): Promise<A
   return (await response.json()) as AgentsOverviewPayload;
 }
 
+export async function submitAgentFeedback(
+  apiBaseUrl: string,
+  token: string,
+  agentID: string,
+  rating: 'helpful' | 'not_helpful',
+): Promise<AgentsOverviewPayload> {
+  const response = await fetch(`${apiBaseUrl}/api/agents/${agentID}/feedback`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rating }),
+  });
+  if (!response.ok) {
+    throw new Error((await safePayload(response)) || `${response.status} ${response.statusText}`);
+  }
+  return (await response.json()) as AgentsOverviewPayload;
+}
+
 async function safePayload(response: Response): Promise<string> {
   try {
     const data = (await response.json()) as { error?: string };

@@ -1,10 +1,10 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { ArrowDownLeft, ArrowUpRight, Banknote, FileText, Mail, Search, SlidersHorizontal, X } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { DateRangePill, PageHeader } from '../../app/shell';
 import { getApiBaseUrl } from '../../api/client';
-import { fetchRelationshipsOverview } from '../../api/relationships';
+import { fetchRelationshipsOverview, relationshipPartyAction, type RelationshipsOverviewPayload } from '../../api/relationships';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
 import type { Money } from '../../lib/money';
 import { seedParties, type Party, type PartyType } from '../../seed/ownerExtra';
@@ -24,6 +24,7 @@ const abs = (m: Money): Money => ({ amountMinor: m.amountMinor < 0n ? -m.amountM
 export function ReceivablesPayables() {
   const apiBaseUrl = getApiBaseUrl();
   const token = useSessionStore((s) => s.session?.token ?? '');
+  const queryClient = useQueryClient();
   const { data } = useQuery({
     queryKey: ['relationships-overview', token],
     queryFn: ({ signal }) => fetchRelationshipsOverview(apiBaseUrl, token, signal),
@@ -34,6 +35,11 @@ export function ReceivablesPayables() {
   const [side, setSide] = useState<Side>('all');
   const [type, setType] = useState<PartyType | 'all'>('all');
   const [selected, setSelected] = useState<Party | null>(null);
+  const actionMutation = useMutation({
+    mutationFn: ({ partyID, action }: { partyID: string; action: 'review-terms' | 'send-statement' | 'schedule-payment' }) =>
+      relationshipPartyAction(apiBaseUrl, token, partyID, action),
+    onSuccess: (payload) => syncRelationshipData(payload),
+  });
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -48,6 +54,32 @@ export function ReceivablesPayables() {
   const totalAP: Money = { amountMinor: parties.filter((p) => !isAR(p)).reduce((a, p) => a - p.balance.amountMinor, 0n), currency: 'USD' };
   const overdueCount = parties.filter((p) => p.overdue).length;
   const net: Money = { amountMinor: totalAR.amountMinor - totalAP.amountMinor, currency: 'USD' };
+
+  function syncRelationshipData(payload: RelationshipsOverviewPayload) {
+    queryClient.setQueryData(['relationships-overview', token], payload);
+    if (selected) {
+      setSelected(payload.parties.find((party) => party.id === selected.id) ?? null);
+    }
+  }
+
+  async function handlePartyAction(party: Party, action: 'review-terms' | 'send-statement' | 'schedule-payment') {
+    try {
+      await actionMutation.mutateAsync({ partyID: party.id, action });
+      const body =
+        action === 'review-terms'
+          ? `Terms review for ${party.name} was logged.`
+          : action === 'send-statement'
+            ? `Statement delivery for ${party.name} was logged.`
+            : `Payment scheduling for ${party.name} was logged.`;
+      toast({ tone: 'success', title: 'Relationship updated', body });
+    } catch (error) {
+      toast({
+        tone: 'warning',
+        title: 'Action failed',
+        body: error instanceof Error ? error.message : 'Could not complete this relationship action.',
+      });
+    }
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -103,12 +135,18 @@ export function ReceivablesPayables() {
         </GlassSurface>
       </div>
 
-      <AccountDrawer party={selected} onClose={() => setSelected(null)} />
+      <AccountDrawer
+        party={selected}
+        onClose={() => setSelected(null)}
+        onReviewTerms={(party) => void handlePartyAction(party, 'review-terms')}
+        onSettlement={(party, action) => void handlePartyAction(party, action)}
+        busy={actionMutation.isPending}
+      />
     </div>
   );
 }
 
-function AccountDrawer({ party: p, onClose }: { party: Party | null; onClose: () => void }) {
+function AccountDrawer({ party: p, onClose, onReviewTerms, onSettlement, busy = false }: { party: Party | null; onClose: () => void; onReviewTerms: (party: Party) => void; onSettlement: (party: Party, action: 'send-statement' | 'schedule-payment') => void; busy?: boolean }) {
   if (!p) return <Dialog.Root open={false} onOpenChange={() => onClose()}><span /></Dialog.Root>;
   const ar = isAR(p);
   const utilization = Math.min(100, Math.round((Number(abs(p.balance).amountMinor) / Number(p.creditLimit.amountMinor)) * 100));
@@ -154,9 +192,9 @@ function AccountDrawer({ party: p, onClose }: { party: Party | null; onClose: ()
             </div>
           </div>
           <footer className="flex items-center gap-2 border-t border-white/55 p-4">
-            <button type="button" onClick={() => toast({ tone: 'info', title: 'Terms', body: `Adjust credit terms / limit for ${p.name}.` })} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-white/70 px-3.5 text-[12.5px] font-bold text-ink ring-1 ring-white/70 hover:bg-white"><SlidersHorizontal className="size-4" /> Terms</button>
+            <button type="button" disabled={busy} onClick={() => onReviewTerms(p)} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-white/70 px-3.5 text-[12.5px] font-bold text-ink ring-1 ring-white/70 hover:bg-white disabled:cursor-not-allowed disabled:opacity-70"><SlidersHorizontal className="size-4" /> Terms</button>
             <button type="button" onClick={() => openDoc({ name: `${p.name} — statement.pdf`, kind: 'statement', sizeText: '—', context: p.name })} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-white/70 px-3.5 text-[12.5px] font-bold text-ink ring-1 ring-white/70 hover:bg-white"><FileText className="size-4" /> Statement</button>
-            <button type="button" onClick={() => toast({ tone: 'success', title: ar ? 'Statement sent' : 'Payment scheduled', body: ar ? `Account statement emailed to ${p.contact}.` : `Payment to ${p.name} queued for the next run.` })} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110"><Banknote className="size-4" /> {ar ? 'Send statement' : 'Schedule payment'}</button>
+            <button type="button" disabled={busy} onClick={() => onSettlement(p, ar ? 'send-statement' : 'schedule-payment')} className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70"><Banknote className="size-4" /> {busy ? 'Working...' : ar ? 'Send statement' : 'Schedule payment'}</button>
           </footer>
         </Dialog.Content>
       </Dialog.Portal>

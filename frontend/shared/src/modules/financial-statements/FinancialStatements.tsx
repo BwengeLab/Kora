@@ -1,5 +1,7 @@
 import { CheckCircle2, Download, Scale, TrendingUp, Wallet2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { getApiBaseUrl } from '../../api/client';
+import { downloadFinancialStatementPack } from '../../api/financialStatements';
 import { DateRangePill, PageHeader } from '../../app/shell';
 import { GlassSurface, MoneyCell, cn } from '../../design-system';
 import type { Money } from '../../lib/money';
@@ -7,6 +9,7 @@ import { entityName } from '../../seed/entities';
 import { balanceSheet, cashFlow, incomeStatement, type StatementLine } from '../../state/glStore';
 import { useEntityStore } from '../../state/entityStore';
 import { useGLStore } from '../../state/glStore';
+import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
 
 const M = (amountMinor: bigint): Money => ({ amountMinor, currency: 'USD' });
@@ -19,11 +22,28 @@ type Tab = 'pl' | 'bs' | 'cf';
 export function FinancialStatements() {
   const scope = useEntityStore((s) => s.scope);
   const journals = useGLStore((s) => s.journals);
+  const token = useSessionStore((s) => s.session?.token ?? '');
+  const apiBaseUrl = getApiBaseUrl();
   const [tab, setTab] = useState<Tab>('pl');
 
   const pl = useMemo(() => incomeStatement(journals, scope), [journals, scope]);
   const bs = useMemo(() => balanceSheet(journals, scope), [journals, scope]);
   const cf = useMemo(() => cashFlow(journals, scope), [journals, scope]);
+
+  const exportStatements = async () => {
+    try {
+      const blob = await downloadFinancialStatementPack(apiBaseUrl, token);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = 'kora-financial-statements.pdf';
+      anchor.click();
+      URL.revokeObjectURL(url);
+      toast({ tone: 'success', title: 'Export downloaded', body: 'Statement pack prepared from the backend ledger.' });
+    } catch (error) {
+      toast({ tone: 'danger', title: 'Export failed', body: error instanceof Error ? error.message : 'Could not export the statement pack.' });
+    }
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -32,7 +52,7 @@ export function FinancialStatements() {
         subtitle={<>Live from the ledger for <span className="font-semibold text-ink">{entityName(scope)}</span>{scope === 'all' ? ' (consolidated)' : ''} — they tie out because the books do.</>}
         right={
           <div className="flex items-center gap-2.5">
-            <button type="button" onClick={() => toast({ tone: 'success', title: 'Exported', body: 'Statement pack (PDF) prepared from the ledger.' })} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-glass-strong px-4 text-[13px] font-semibold text-ink-soft ring-1 ring-white/70 backdrop-blur-glass hover:bg-white hover:text-ink"><Download className="size-4" /> Export</button>
+            <button type="button" onClick={() => void exportStatements()} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-glass-strong px-4 text-[13px] font-semibold text-ink-soft ring-1 ring-white/70 backdrop-blur-glass hover:bg-white hover:text-ink"><Download className="size-4" /> Export</button>
             <DateRangePill label="May 2025" />
           </div>
         }
