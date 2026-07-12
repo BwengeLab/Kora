@@ -36,10 +36,10 @@ func TestSendReminderRequiresHumanCollectionsPermission(t *testing.T) {
 	if _, err := SendReminder(actor(access.RoleFinanceLead), false, c, proof("send"), "email"); err == nil {
 		t.Fatal("SendReminder() allowed agent/non-human send")
 	}
-	if _, err := SendReminder(actor(access.RoleFinanceOperator), true, c, proof("send"), "email"); err == nil {
-		t.Fatal("SendReminder() allowed role without collections permission")
+	if _, err := SendReminder(actor(access.RoleAuditorCompliance), true, c, proof("send"), "email"); err == nil {
+		t.Fatal("SendReminder() allowed read-only auditor")
 	}
-	receipt, err := SendReminder(actor(access.RoleFinanceLead), true, c, proof("send"), "email")
+	receipt, err := SendReminder(actor(access.RoleFinanceOperator), true, c, proof("send"), "email")
 	if err != nil {
 		t.Fatalf("SendReminder() error = %v", err)
 	}

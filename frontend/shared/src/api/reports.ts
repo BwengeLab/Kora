@@ -57,7 +57,7 @@ export async function generateReport(apiBaseUrl: string, token: string, reportID
   return (await response.json()) as ReportDef;
 }
 
-export async function exportReport(apiBaseUrl: string, token: string, reportID: string, period: string): Promise<{ status: string; fileName: string; period: string }> {
+export async function exportReport(apiBaseUrl: string, token: string, reportID: string, period: string): Promise<Blob> {
   const response = await fetch(`${apiBaseUrl}/api/reports/${reportID}/export`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -66,7 +66,7 @@ export async function exportReport(apiBaseUrl: string, token: string, reportID: 
   if (!response.ok) {
     throw new Error((await safePayload(response)) || `${response.status} ${response.statusText}`);
   }
-  return (await response.json()) as { status: string; fileName: string; period: string };
+  return response.blob();
 }
 
 export async function scheduleReport(apiBaseUrl: string, token: string, reportID: string, schedule: string): Promise<ReportDef> {
@@ -81,7 +81,7 @@ export async function scheduleReport(apiBaseUrl: string, token: string, reportID
   return (await response.json()) as ReportDef;
 }
 
-export async function buildBoardPack(apiBaseUrl: string, token: string): Promise<{ status: string; fileName: string }> {
+export async function buildBoardPack(apiBaseUrl: string, token: string): Promise<Blob> {
   const response = await fetch(`${apiBaseUrl}/api/reports-board-pack`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
@@ -89,7 +89,7 @@ export async function buildBoardPack(apiBaseUrl: string, token: string): Promise
   if (!response.ok) {
     throw new Error((await safePayload(response)) || `${response.status} ${response.statusText}`);
   }
-  return (await response.json()) as { status: string; fileName: string };
+  return response.blob();
 }
 
 async function safePayload(response: Response): Promise<string> {

@@ -25,6 +25,7 @@ const (
 	RoleAuditorCompliance    Role = "AUDITOR_COMPLIANCE"
 	RoleOrgAdmin             Role = "ORG_ADMIN"
 	RoleExternalCollaborator Role = "EXTERNAL_COLLABORATOR"
+	RoleClaimsOfficer        Role = "CLAIMS_OFFICER"
 )
 
 type Permission string
@@ -47,7 +48,9 @@ const (
 	PermissionPostLedger             Permission = "ledger:post"
 	PermissionReverseLedger          Permission = "ledger:reverse"
 	PermissionSendCollections        Permission = "collections:send"
+	PermissionReadRelationships      Permission = "relationships:read"
 	PermissionManageRelationships    Permission = "relationships:manage"
+	PermissionReadContracts          Permission = "contracts:read"
 	PermissionManageContracts        Permission = "contracts:manage"
 	PermissionManageSuppliers        Permission = "suppliers:manage"
 	PermissionReadReports            Permission = "reports:read"
@@ -56,7 +59,14 @@ const (
 	PermissionGenerateCreditPassport Permission = "credit_passport:generate"
 	PermissionReadCreditPassport     Permission = "credit_passport:read"
 	PermissionManageConsent          Permission = "consent:manage"
+	PermissionReadConsent            Permission = "consent:read"
 	PermissionReadAudit              Permission = "audit:read"
+	PermissionCreateAuditFinding     Permission = "audit:finding.create"
+	PermissionRunAgents              Permission = "agents:run"
+	PermissionSubmitAgentFeedback    Permission = "agents:feedback"
+	PermissionReviewClaims           Permission = "claims:review"
+	PermissionPrepareClaims          Permission = "claims:prepare"
+	PermissionSettleClaims           Permission = "claims:settle"
 
 	PermissionPlatformManageTenants Permission = "platform:tenants.manage"
 	PermissionPlatformManageBilling Permission = "platform:billing.manage"
@@ -86,7 +96,9 @@ var tenantPermissionCatalog = []Permission{
 	PermissionPostLedger,
 	PermissionReverseLedger,
 	PermissionSendCollections,
+	PermissionReadRelationships,
 	PermissionManageRelationships,
+	PermissionReadContracts,
 	PermissionManageContracts,
 	PermissionManageSuppliers,
 	PermissionReadReports,
@@ -95,7 +107,14 @@ var tenantPermissionCatalog = []Permission{
 	PermissionGenerateCreditPassport,
 	PermissionReadCreditPassport,
 	PermissionManageConsent,
+	PermissionReadConsent,
 	PermissionReadAudit,
+	PermissionCreateAuditFinding,
+	PermissionRunAgents,
+	PermissionSubmitAgentFeedback,
+	PermissionReviewClaims,
+	PermissionPrepareClaims,
+	PermissionSettleClaims,
 }
 
 var platformPermissionCatalog = []Permission{
@@ -127,6 +146,8 @@ var systemRoles = []Role{
 	RoleExternalCollaborator,
 }
 
+var verticalRoles = []Role{RoleClaimsOfficer}
+
 var defaultRolePermissions = map[Role][]Permission{
 	RoleSuperAdmin: {
 		PermissionPlatformManageTenants,
@@ -154,6 +175,13 @@ var defaultRolePermissions = map[Role][]Permission{
 		PermissionReadCreditPassport,
 		PermissionManageConsent,
 		PermissionReadAudit,
+		PermissionSendCollections,
+		PermissionManageRelationships,
+		PermissionReadRelationships,
+		PermissionReadContracts,
+		PermissionReadConsent,
+		PermissionRunAgents,
+		PermissionSubmitAgentFeedback,
 	},
 	RoleFinanceLead: {
 		PermissionReadOwnTenant,
@@ -168,7 +196,9 @@ var defaultRolePermissions = map[Role][]Permission{
 		PermissionReverseLedger,
 		PermissionSendCollections,
 		PermissionManageRelationships,
+		PermissionReadRelationships,
 		PermissionManageContracts,
+		PermissionReadContracts,
 		PermissionManageSuppliers,
 		PermissionReadReports,
 		PermissionExportReports,
@@ -176,6 +206,10 @@ var defaultRolePermissions = map[Role][]Permission{
 		PermissionGenerateCreditPassport,
 		PermissionReadCreditPassport,
 		PermissionReadAudit,
+		PermissionReadConsent,
+		PermissionManageConsent,
+		PermissionRunAgents,
+		PermissionSubmitAgentFeedback,
 	},
 	RoleFinanceOperator: {
 		PermissionReadOwnTenant,
@@ -186,6 +220,9 @@ var defaultRolePermissions = map[Role][]Permission{
 		PermissionResolveReconciliation,
 		PermissionCreateApproval,
 		PermissionReadReports,
+		PermissionSendCollections,
+		PermissionRunAgents,
+		PermissionSubmitAgentFeedback,
 	},
 	RoleAuditorCompliance: {
 		PermissionReadOwnTenant,
@@ -197,6 +234,12 @@ var defaultRolePermissions = map[Role][]Permission{
 		PermissionReadROI,
 		PermissionReadCreditPassport,
 		PermissionReadAudit,
+		PermissionReadRelationships,
+		PermissionReadContracts,
+		PermissionReadConsent,
+		PermissionCreateAuditFinding,
+		PermissionRunAgents,
+		PermissionSubmitAgentFeedback,
 	},
 	RoleOrgAdmin: {
 		PermissionReadOwnTenant,
@@ -211,6 +254,19 @@ var defaultRolePermissions = map[Role][]Permission{
 	},
 	// External access is resolved from an active consent grant, never from the role itself.
 	RoleExternalCollaborator: {},
+	RoleClaimsOfficer: {
+		PermissionReadOwnTenant,
+		PermissionUploadDocuments,
+		PermissionReviewDataQuality,
+		PermissionReadEvents,
+		PermissionReviewReconciliation,
+		PermissionResolveReconciliation,
+		PermissionCreateApproval,
+		PermissionReviewClaims,
+		PermissionPrepareClaims,
+		PermissionRunAgents,
+		PermissionSubmitAgentFeedback,
+	},
 }
 
 type ConsentScope struct {
@@ -290,7 +346,7 @@ func IsSystemRole(role Role) bool {
 }
 
 func IsTenantRole(role Role) bool {
-	return role != RoleSuperAdmin && IsSystemRole(role)
+	return (role != RoleSuperAdmin && IsSystemRole(role)) || slices.Contains(verticalRoles, role)
 }
 
 func IsTenantPermission(permission Permission) bool {

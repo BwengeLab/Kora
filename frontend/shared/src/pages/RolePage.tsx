@@ -74,9 +74,11 @@ const REGISTRY: Record<string, Partial<Record<string, ComponentType>>> = {
   },
   data_intake: {
     [B.FINANCE_OPERATOR]: DataIntakePage,
+    [CUSTOM_BLUEPRINT_IDS.CLAIMS_OFFICER]: DataIntakePage,
   },
   transactions: {
     [B.FINANCE_OPERATOR]: TransactionsPage,
+    [CUSTOM_BLUEPRINT_IDS.CLAIMS_OFFICER]: TransactionsPage,
     [B.AUDITOR]: () => <TransactionsPage readOnly />,
   },
   ledger: {
@@ -110,6 +112,7 @@ const REGISTRY: Record<string, Partial<Record<string, ComponentType>>> = {
   agents: {
     [B.ORG_OWNER]: AiAgentsPage,
     [B.FINANCE_OPERATOR]: AiAgentsPage,
+    [CUSTOM_BLUEPRINT_IDS.CLAIMS_OFFICER]: AiAgentsPage,
     [B.FINANCE_LEAD]: AiAgentsPage,
     [B.AUDITOR]: AiAgentsPage,
   },
@@ -140,14 +143,17 @@ const REGISTRY: Record<string, Partial<Record<string, ComponentType>>> = {
     [B.FINANCE_LEAD]: CollectionsManagement,
   },
   contracts: {
+    [B.ORG_OWNER]: () => <ContractsPage variant="read" />,
     [B.FINANCE_LEAD]: ContractsPage,
     [B.AUDITOR]: () => <ContractsPage variant="read" />,
   },
   consent: {
+    [B.ORG_OWNER]: () => <ConsentPage readOnly />,
     [B.FINANCE_LEAD]: ConsentPage,
     [B.AUDITOR]: () => <ConsentPage readOnly />,
   },
   credit_passport: {
+    [B.ORG_OWNER]: CreditPassportPortal,
     [B.FINANCE_LEAD]: CreditPassportPortal,
   },
   approvals: {
@@ -157,6 +163,10 @@ const REGISTRY: Record<string, Partial<Record<string, ComponentType>>> = {
   },
 };
 
+export function hasRolePage(pageKey: string, blueprintId: string): boolean {
+  return Boolean(REGISTRY[pageKey]?.[blueprintId]);
+}
+
 export function RolePage({ pageKey, label }: { pageKey: string; label: string }) {
   const session = useSession();
   const role = session?.roles[0];
@@ -165,7 +175,7 @@ export function RolePage({ pageKey, label }: { pageKey: string; label: string })
   const Component = blueprintId ? REGISTRY[pageKey]?.[blueprintId] : undefined;
   if (Component) return <Component />;
 
-  return <RoleScopedPlaceholder label={label} roleName={role?.name ?? 'your role'} />;
+  throw new Error(`No ${label} page is registered for blueprint ${blueprintId ?? 'unknown'}`);
 }
 
 // A professional, role-aware "coming soon" — proves the route is isolated to

@@ -190,7 +190,7 @@ export async function fetchAuditInvestigations(apiBaseUrl: string, token: string
   };
 }
 
-export async function exportAuditEvidencePack(apiBaseUrl: string, token: string): Promise<{ status: string; fileName: string }> {
+export async function exportAuditEvidencePack(apiBaseUrl: string, token: string): Promise<Blob> {
   const response = await fetch(`${apiBaseUrl}/api/audit/investigations/evidence-pack`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
@@ -198,7 +198,7 @@ export async function exportAuditEvidencePack(apiBaseUrl: string, token: string)
   if (!response.ok) {
     throw new Error((await safePayload(response)) || `${response.status} ${response.statusText}`);
   }
-  return (await response.json()) as { status: string; fileName: string };
+  return response.blob();
 }
 
 export async function createAuditFinding(apiBaseUrl: string, token: string, eventID: string): Promise<AuditInvestigationsPayload> {

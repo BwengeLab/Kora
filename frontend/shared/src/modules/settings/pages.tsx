@@ -3,7 +3,7 @@ import { Check, Sparkles } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { getApiBaseUrl } from '../../api/client';
 import { fetchIntegrationStatuses, integrationStatusAction, type IntegrationStatusItem } from '../../api/integrations';
-import { fetchSettingsOverview, openBillingPortal, requestDataExport, saveDataControls, saveOrgProfile, savePolicyControls, type SettingsOverviewPayload } from '../../api/settingsOverview';
+import { fetchSettingsOverview, requestDataExport, saveDataControls, saveOrgProfile, savePolicyControls, updateBillingPlan, type SettingsOverviewPayload } from '../../api/settingsOverview';
 import { useSession } from '../../auth/hooks';
 import { toast } from '../../state/toastStore';
 import { DoaMatrix } from './DoaMatrix';
@@ -182,6 +182,8 @@ export function SettingsIntegrationsPage() {
     status: item.connected ? 'connected' : 'disconnected',
     lastSync: item.connected ? 'seed data' : 'Not connected',
     connected: item.connected,
+    readiness: 'not_implemented',
+    canConnect: false,
   }));
   return (
       <SettingsCard title="Integrations" desc="Connect bank feeds, mobile money and accounting tools so data flows into Kora automatically.">
@@ -192,7 +194,7 @@ export function SettingsIntegrationsPage() {
               <div className="min-w-0 flex-1"><p className="truncate text-[13px] font-bold text-ink">{item.name}</p><p className="text-[11px] text-ink-muted">{item.category} · {item.lastSync}</p></div>
               {item.connected ? (
                 <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2 py-0.5 text-[10.5px] font-bold text-success"><Check className="size-3" /> Connected</span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2 py-0.5 text-[10.5px] font-bold text-success"><Check className="size-3" /> {item.readiness === 'sandbox' ? 'Sandbox' : item.readiness === 'manual_import' ? 'Manual import' : 'Connected'}</span>
                   <button
                     type="button"
                     disabled={actionMutation.isPending}
@@ -205,11 +207,11 @@ export function SettingsIntegrationsPage() {
               ) : (
                 <button
                   type="button"
-                  disabled={actionMutation.isPending}
+                  disabled={actionMutation.isPending || !item.canConnect}
                   onClick={() => void runIntegrationAction(item, 'connect')}
                   className="rounded-lg bg-brand px-2.5 py-1 text-[11px] font-bold text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70"
                 >
-                  {actionMutation.isPending ? 'Working...' : item.status === 'error' ? 'Reconnect' : 'Connect'}
+                  {actionMutation.isPending ? 'Working...' : !item.canConnect ? 'Adapter needed' : item.status === 'error' ? 'Reconnect' : 'Connect'}
                 </button>
               )}
             </div>
@@ -225,7 +227,7 @@ export function SettingsIntegrationsPage() {
       toast({
         tone: action === 'connect' ? 'success' : 'info',
         title: action === 'connect' ? 'Integration connected' : 'Integration disconnected',
-        body: action === 'connect' ? `${item.name} is now available to Kora.` : `${item.name} has been disconnected.`,
+        body: action === 'connect' ? `${item.name} configuration is now active in Kora.` : `${item.name} has been disconnected.`,
       });
     } catch (error) {
       toast({
@@ -240,6 +242,7 @@ export function SettingsIntegrationsPage() {
 export function SettingsBillingPage() {
   const session = useSession();
   const apiBaseUrl = getApiBaseUrl();
+  const queryClient = useQueryClient();
   const { data } = useQuery({
     queryKey: ['settings-overview', session?.tenant.id],
     queryFn: ({ signal }) => fetchSettingsOverview(apiBaseUrl, session!.token, signal),
@@ -248,12 +251,16 @@ export function SettingsBillingPage() {
   });
   const billing = data?.billing ?? fallbackOverview.billing;
   const invoices = data?.invoices ?? fallbackOverview.invoices;
+  const [selectedPlan, setSelectedPlan] = useState(billing.plan);
+
+  useEffect(() => setSelectedPlan(billing.plan), [billing.plan]);
 
   const managePlan = async () => {
     if (!session?.token) return;
     try {
-      await openBillingPortal(apiBaseUrl, session.token);
-      toast({ tone: 'info', title: 'Manage plan', body: 'Billing portal is ready for upgrade, downgrade or plan comparison.' });
+      const updated = await updateBillingPlan(apiBaseUrl, session.token, selectedPlan);
+      queryClient.setQueryData(['settings-overview', session.tenant.id], updated);
+      toast({ tone: 'success', title: 'Plan updated', body: `The organization is now on the ${updated.billing.plan} plan.` });
     } catch (error) {
       toast({ tone: 'warning', title: 'Billing portal unavailable', body: error instanceof Error ? error.message : 'Could not open billing portal.' });
     }
@@ -261,7 +268,7 @@ export function SettingsBillingPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <SettingsCard title="Plan" desc="Your Kora subscription." action={<button type="button" onClick={() => void managePlan()} className="rounded-xl bg-gradient-to-br from-brand to-brand-ink px-3.5 py-2 text-[12px] font-bold text-white shadow-glass-soft hover:brightness-110">Manage plan</button>}>
+      <SettingsCard title="Plan" desc="Your Kora subscription." action={<div className="flex items-center gap-2"><select value={selectedPlan} onChange={(event) => setSelectedPlan(event.target.value)} className="h-9 rounded-xl bg-white/70 px-3 text-[12px] font-semibold text-ink ring-1 ring-white/70 focus:outline-none"><option>Starter</option><option>Growth</option><option>Enterprise</option></select><button type="button" disabled={selectedPlan === billing.plan} onClick={() => void managePlan()} className="rounded-xl bg-gradient-to-br from-brand to-brand-ink px-3.5 py-2 text-[12px] font-bold text-white shadow-glass-soft hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45">Apply plan</button></div>}>
         <div className="flex items-end justify-between rounded-2xl bg-gradient-to-br from-brand-soft/60 to-white/40 p-5 ring-1 ring-brand/15">
           <div>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-white/70 px-2.5 py-1 text-[11px] font-bold text-brand-ink"><Sparkles className="size-3.5" /> {billing.plan}</span>
@@ -321,8 +328,9 @@ export function SettingsDataPage() {
   const exportData = async () => {
     if (!session?.token) return;
     try {
-      await requestDataExport(apiBaseUrl, session.token);
-      toast({ tone: 'info', title: 'Export queued', body: 'Your data archive will be emailed when ready.' });
+      const blob = await requestDataExport(apiBaseUrl, session.token);
+      downloadFile(blob, 'kora-tenant-data-export.json');
+      toast({ tone: 'success', title: 'Export downloaded', body: 'Your tenant data archive was generated from current backend records.' });
     } catch (error) {
       toast({ tone: 'warning', title: 'Export failed', body: error instanceof Error ? error.message : 'Could not queue the data export.' });
     }
@@ -348,6 +356,17 @@ export function SettingsDataPage() {
       </SettingsCard>
     </div>
   );
+}
+
+function downloadFile(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 function SaveBtn({ onClick }: { onClick: () => void | Promise<void> }) {

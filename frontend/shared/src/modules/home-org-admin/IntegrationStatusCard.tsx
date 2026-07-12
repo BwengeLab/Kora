@@ -29,6 +29,8 @@ export function IntegrationStatusCard() {
     status: item.status,
     lastSync: item.lastSync,
     connected: item.status === 'connected' || item.status === 'syncing',
+    readiness: 'not_implemented',
+    canConnect: false,
   }));
   return (
     <GlassSurface tone="strong" className="flex h-full flex-col gap-3 p-6">
@@ -48,7 +50,7 @@ export function IntegrationStatusCard() {
                 <p className="truncate text-[13px] font-bold text-ink">{it.name}</p>
                 <p className="truncate text-[11px] text-ink-muted">{it.category} · {it.lastSync}</p>
               </div>
-              <span className={cn('shrink-0 text-[10.5px] font-bold', s.tone)}>{s.label}</span>
+              <span className={cn('shrink-0 text-[10.5px] font-bold', s.tone)}>{it.connected ? (it.readiness === 'sandbox' ? 'Sandbox' : it.readiness === 'manual_import' ? 'Manual import' : s.label) : s.label}</span>
             </li>
           );
         })}

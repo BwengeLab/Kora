@@ -71,9 +71,11 @@ const REGISTRY = {
     },
     data_intake: {
         [B.FINANCE_OPERATOR]: DataIntakePage,
+        [CUSTOM_BLUEPRINT_IDS.CLAIMS_OFFICER]: DataIntakePage,
     },
     transactions: {
         [B.FINANCE_OPERATOR]: TransactionsPage,
+        [CUSTOM_BLUEPRINT_IDS.CLAIMS_OFFICER]: TransactionsPage,
         [B.AUDITOR]: () => _jsx(TransactionsPage, { readOnly: true }),
     },
     ledger: {
@@ -107,6 +109,7 @@ const REGISTRY = {
     agents: {
         [B.ORG_OWNER]: AiAgentsPage,
         [B.FINANCE_OPERATOR]: AiAgentsPage,
+        [CUSTOM_BLUEPRINT_IDS.CLAIMS_OFFICER]: AiAgentsPage,
         [B.FINANCE_LEAD]: AiAgentsPage,
         [B.AUDITOR]: AiAgentsPage,
     },
@@ -137,14 +140,17 @@ const REGISTRY = {
         [B.FINANCE_LEAD]: CollectionsManagement,
     },
     contracts: {
+        [B.ORG_OWNER]: () => _jsx(ContractsPage, { variant: "read" }),
         [B.FINANCE_LEAD]: ContractsPage,
         [B.AUDITOR]: () => _jsx(ContractsPage, { variant: "read" }),
     },
     consent: {
+        [B.ORG_OWNER]: () => _jsx(ConsentPage, { readOnly: true }),
         [B.FINANCE_LEAD]: ConsentPage,
         [B.AUDITOR]: () => _jsx(ConsentPage, { readOnly: true }),
     },
     credit_passport: {
+        [B.ORG_OWNER]: CreditPassportPortal,
         [B.FINANCE_LEAD]: CreditPassportPortal,
     },
     approvals: {
@@ -153,6 +159,9 @@ const REGISTRY = {
         [B.ORG_OWNER]: () => _jsx(ActionCenter, { variant: "org_owner" }),
     },
 };
+export function hasRolePage(pageKey, blueprintId) {
+    return Boolean(REGISTRY[pageKey]?.[blueprintId]);
+}
 export function RolePage({ pageKey, label }) {
     const session = useSession();
     const role = session?.roles[0];
@@ -160,7 +169,7 @@ export function RolePage({ pageKey, label }) {
     const Component = blueprintId ? REGISTRY[pageKey]?.[blueprintId] : undefined;
     if (Component)
         return _jsx(Component, {});
-    return _jsx(RoleScopedPlaceholder, { label: label, roleName: role?.name ?? 'your role' });
+    throw new Error(`No ${label} page is registered for blueprint ${blueprintId ?? 'unknown'}`);
 }
 // A professional, role-aware "coming soon" — proves the route is isolated to
 // the current role and tells the user whose experience is being built.

@@ -35,7 +35,9 @@ export const PERMISSIONS = {
 
   // Collections + external relationships
   COLLECTIONS_SEND: 'collections:send',
+  RELATIONSHIPS_READ: 'relationships:read',
   RELATIONSHIPS_MANAGE: 'relationships:manage',
+  CONTRACTS_READ: 'contracts:read',
   CONTRACTS_MANAGE: 'contracts:manage',
   SUPPLIERS_MANAGE: 'suppliers:manage',
 
@@ -48,7 +50,11 @@ export const PERMISSIONS = {
   CREDIT_PASSPORT_GENERATE: 'credit_passport:generate',
   CREDIT_PASSPORT_READ: 'credit_passport:read',
   CONSENT_MANAGE: 'consent:manage',
+  CONSENT_READ: 'consent:read',
   AUDIT_READ: 'audit:read',
+  AUDIT_FINDING_CREATE: 'audit:finding.create',
+  AGENTS_RUN: 'agents:run',
+  AGENT_FEEDBACK: 'agents:feedback',
 } as const;
 
 export type CanonicalPermission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];

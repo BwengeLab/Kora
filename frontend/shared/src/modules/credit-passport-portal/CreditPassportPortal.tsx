@@ -11,12 +11,15 @@ import { EvidenceScopeCard } from './EvidenceScopeCard';
 import { ScoreCard } from './ScoreCard';
 import { TrendsCard } from './TrendsCard';
 import { useState } from 'react';
+import { CANONICAL_BLUEPRINT_IDS } from '../../auth/catalog';
 
 // External Collaborator "Shared Portal" â€” a lender's Credit Passport view.
 // Few permissions, premium experience: score, trends, affordability, evidence.
 export function CreditPassportPortal() {
   const apiBaseUrl = getApiBaseUrl();
   const token = useSessionStore((s) => s.session?.token ?? '');
+  const blueprintID = useSessionStore((s) => s.session?.roles[0]?.blueprintId);
+  const isExternal = blueprintID === CANONICAL_BLUEPRINT_IDS.EXTERNAL_COLLABORATOR;
   const [downloading, setDownloading] = useState(false);
   const { data } = useQuery({
     queryKey: ['portal-credit-passport', token],
@@ -57,9 +60,9 @@ export function CreditPassportPortal() {
         subtitle={
           <span className="inline-flex items-center gap-2">
             <span className="inline-flex items-center gap-1 rounded-full bg-white/70 px-2 py-0.5 text-[11px] font-bold text-ink-soft ring-1 ring-white/70">
-              <Share2 className="size-3" /> Shared with you
+              <Share2 className="size-3" /> {isExternal ? 'Shared with you' : 'Verified internal profile'}
             </span>
-            by {p.sharedBy} · expires in {grant.expiresInDays} days
+            {isExternal ? <>by {p.sharedBy} · expires in {grant.expiresInDays} days</> : <>updated {p.updated} · evidence-backed</>}
           </span>
         }
         right={

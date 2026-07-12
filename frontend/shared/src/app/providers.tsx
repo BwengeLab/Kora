@@ -20,6 +20,7 @@ import { useTransactionsStore } from '../state/transactionsStore';
 import { useUiStore } from '../state/uiStore';
 import { useWorkflowStore } from '../state/workflowStore';
 import type { Session } from '../auth/types';
+import { PERMISSIONS } from '../auth/catalog';
 
 export interface AppProvidersProps {
   platform: Platform;
@@ -27,8 +28,8 @@ export interface AppProvidersProps {
   children: ReactNode;
 }
 
-function needsTenantStoreHydration(session: Session): boolean {
-  return !session.roles.some((role) => role.id === 'role.external_collaborator');
+function hasPermission(session: Session, permission: string): boolean {
+  return session.permissions.some((grant) => grant.permission === permission);
 }
 
 export function AppProviders({ platform, apiBaseUrl, children }: AppProvidersProps) {
@@ -54,6 +55,26 @@ export function AppProviders({ platform, apiBaseUrl, children }: AppProvidersPro
   useEffect(() => {
     const controller = new AbortController();
     const tokenKey = sessionTokenKey();
+    const hydrateAuthorizedStores = async (session: Session) => {
+      if (hasPermission(session, PERMISSIONS.EVENTS_READ)) {
+        try {
+          const snapshot = await fetchWorkflowSnapshot(apiBaseUrl, session.token, controller.signal);
+          hydrateWorkflow(snapshot);
+        } catch {}
+        try {
+          const finance = await fetchFinanceOperations(apiBaseUrl, session.token, controller.signal);
+          hydrateGL(finance.journals);
+          hydratePayables(finance.bills);
+          hydrateTransactions(finance.transactions);
+        } catch {}
+      }
+      if (hasPermission(session, PERMISSIONS.TENANT_READ)) {
+        try {
+          const features = await fetchFeatureEntitlements(apiBaseUrl, session.token, controller.signal);
+          hydrateFeatures(features.enabled);
+        } catch {}
+      }
+    };
     const run = async () => {
       const isDev = typeof import.meta !== 'undefined' ? Boolean(import.meta.env?.DEV) : false;
       try {
@@ -61,42 +82,14 @@ export function AppProviders({ platform, apiBaseUrl, children }: AppProvidersPro
           const session = await demoLoginSession(apiBaseUrl, previewRoleId, controller.signal);
           await platform.store.set(tokenKey, session.token);
           useSessionStore.getState().setSession(session);
-          if (!needsTenantStoreHydration(session)) return;
-          try {
-            const snapshot = await fetchWorkflowSnapshot(apiBaseUrl, session.token, controller.signal);
-            hydrateWorkflow(snapshot);
-          } catch {}
-          try {
-            const features = await fetchFeatureEntitlements(apiBaseUrl, session.token, controller.signal);
-            hydrateFeatures(features.enabled);
-          } catch {}
-          try {
-            const finance = await fetchFinanceOperations(apiBaseUrl, session.token, controller.signal);
-            hydrateGL(finance.journals);
-            hydratePayables(finance.bills);
-            hydrateTransactions(finance.transactions);
-          } catch {}
+          await hydrateAuthorizedStores(session);
           return;
         }
         const persisted = await platform.store.get(tokenKey);
         if (persisted) {
           const session = await fetchCurrentSession(apiBaseUrl, persisted, controller.signal);
           useSessionStore.getState().setSession(session);
-          if (!needsTenantStoreHydration(session)) return;
-          try {
-            const snapshot = await fetchWorkflowSnapshot(apiBaseUrl, session.token, controller.signal);
-            hydrateWorkflow(snapshot);
-          } catch {}
-          try {
-            const features = await fetchFeatureEntitlements(apiBaseUrl, session.token, controller.signal);
-            hydrateFeatures(features.enabled);
-          } catch {}
-          try {
-            const finance = await fetchFinanceOperations(apiBaseUrl, session.token, controller.signal);
-            hydrateGL(finance.journals);
-            hydratePayables(finance.bills);
-            hydrateTransactions(finance.transactions);
-          } catch {}
+          await hydrateAuthorizedStores(session);
           return;
         }
       } catch {
@@ -106,21 +99,7 @@ export function AppProviders({ platform, apiBaseUrl, children }: AppProvidersPro
             const session = await demoLoginSession(apiBaseUrl, previewRoleId, controller.signal);
             await platform.store.set(tokenKey, session.token);
             useSessionStore.getState().setSession(session);
-            if (!needsTenantStoreHydration(session)) return;
-            try {
-              const snapshot = await fetchWorkflowSnapshot(apiBaseUrl, session.token, controller.signal);
-              hydrateWorkflow(snapshot);
-            } catch {}
-            try {
-              const features = await fetchFeatureEntitlements(apiBaseUrl, session.token, controller.signal);
-              hydrateFeatures(features.enabled);
-            } catch {}
-            try {
-              const finance = await fetchFinanceOperations(apiBaseUrl, session.token, controller.signal);
-              hydrateGL(finance.journals);
-              hydratePayables(finance.bills);
-              hydrateTransactions(finance.transactions);
-            } catch {}
+            await hydrateAuthorizedStores(session);
           } catch {
             useSessionStore.getState().setSession(getSeedSession(previewRoleId));
           }

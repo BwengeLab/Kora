@@ -3,7 +3,8 @@ import { Check, FileText, Forward, Lock, ShieldAlert } from 'lucide-react';
 import { useMemo } from 'react';
 import { claimWorkspaceAction } from '../../api/claims';
 import { getApiBaseUrl } from '../../api/client';
-import { useSession } from '../../auth/hooks';
+import { CLAIMS_PERMISSIONS } from '../../auth/catalog';
+import { usePermissions, useSession } from '../../auth/hooks';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
 import { CLAIM_STAGES, type Claim, type ClaimStage } from '../../seed/claims';
 import { useClaimsStore } from '../../state/claimsStore';
@@ -19,6 +20,7 @@ export function ClaimDetail({ claimId }: { claimId: string }) {
   const claim = useClaimsStore((s) => s.claims.find((c) => c.id === claimId));
   const hydrateClaims = useClaimsStore((s) => s.hydrate);
   const session = useSession();
+  const { can } = usePermissions();
   const apiBaseUrl = getApiBaseUrl();
   const queryClient = useQueryClient();
   const mutation = useMutation({
@@ -35,6 +37,7 @@ export function ClaimDetail({ claimId }: { claimId: string }) {
 
   const stageIdx = STAGE_ORDER.indexOf(claim.stage);
   const overLimit = claim.suggestedSettlement.amountMinor > SETTLE_LIMIT;
+  const canSettle = can(CLAIMS_PERMISSIONS.CLAIMS_SETTLE);
 
   const doAdvance = async () => {
     try {
@@ -82,7 +85,7 @@ export function ClaimDetail({ claimId }: { claimId: string }) {
     settlement: { label: 'Confirm payment & close', sub: 'reconcile -> closed' },
     closed: null,
   };
-  const p = primary[claim.stage];
+  const p = (claim.stage === 'approval' || claim.stage === 'settlement') && !canSettle ? null : primary[claim.stage];
 
   return (
     <GlassSurface tone="strong" className="flex h-full min-h-0 flex-col">
@@ -173,9 +176,13 @@ export function ClaimDetail({ claimId }: { claimId: string }) {
                 <span className="text-[10px] font-medium text-white/85">{p.sub}</span>
               </span>
             </button>
-          ) : (
+          ) : claim.stage === 'closed' ? (
             <span className="inline-flex h-11 items-center gap-2 rounded-2xl bg-success-soft px-5 text-[14px] font-bold text-success">
               <Check className="size-[18px]" /> Closed
+            </span>
+          ) : (
+            <span className="inline-flex h-11 items-center gap-2 rounded-2xl bg-warning-soft px-5 text-[13px] font-bold text-warning">
+              <Lock className="size-4" /> Awaiting finance approval
             </span>
           )}
         </div>

@@ -38,7 +38,10 @@ export function CollectionsPage() {
   });
   const exportMutation = useMutation({
     mutationFn: () => exportCollectionsSummary(apiBaseUrl, token),
-    onSuccess: (result) => toast({ tone: 'success', title: 'Exporting', body: `${result.fileName} is ready from backend data.` }),
+    onSuccess: (blob) => {
+      downloadFile(blob, 'kora-receivables-summary.pdf');
+      toast({ tone: 'success', title: 'Summary downloaded', body: 'The receivables summary was generated from current backend data.' });
+    },
     onError: (error: Error) => toast({ tone: 'danger', title: 'Export failed', body: error.message }),
   });
 
@@ -161,6 +164,17 @@ export function CollectionsPage() {
       <CollectionDrawer item={selected} status={selected?.actionStatus ?? 'open'} onClose={() => setSelected(null)} onSend={sendReminder} onPromise={logPromise} onEscalate={escalate} />
     </div>
   );
+}
+
+function downloadFile(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 function CollectionDrawer({ item, status, onClose, onSend, onPromise, onEscalate }: { item: Overdue | null; status: string; onClose: () => void; onSend: (item: Overdue) => void | Promise<void>; onPromise: (item: Overdue) => void | Promise<void>; onEscalate: (item: Overdue) => void | Promise<void> }) {

@@ -1,14 +1,17 @@
 import { AlertTriangle, LifeBuoy, Lock } from 'lucide-react';
 import { GlassSurface, cn } from '../../design-system';
 import { seedIncidents, seedSupportQueue } from '../../seed/platformHome';
-import { toast } from '../../state/toastStore';
 
 export function IncidentsSupportCard({
   incidents = seedIncidents,
   supportQueue = seedSupportQueue,
+  onRequestSupport,
+  requestingTenant,
 }: {
   incidents?: typeof seedIncidents;
   supportQueue?: typeof seedSupportQueue;
+  onRequestSupport?: (tenant: string) => void | Promise<void>;
+  requestingTenant?: string;
 }) {
   return (
     <GlassSurface tone="strong" className="flex h-full flex-col gap-4 p-6">
@@ -53,10 +56,11 @@ export function IncidentsSupportCard({
               {r.status === 'requested' ? (
                 <button
                   type="button"
-                  onClick={() => toast({ tone: 'info', title: 'Support access requested', body: `${r.tenant} must consent before access is granted — and every entry is logged.` })}
-                  className="shrink-0 rounded-full bg-brand px-2.5 py-1 text-[10px] font-bold uppercase text-white"
+                  onClick={() => { void onRequestSupport?.(r.tenant); }}
+                  disabled={requestingTenant === r.tenant}
+                  className="shrink-0 rounded-full bg-brand px-2.5 py-1 text-[10px] font-bold uppercase text-white disabled:cursor-not-allowed disabled:opacity-70"
                 >
-                  Request consent
+                  {requestingTenant === r.tenant ? 'Requesting...' : 'Request consent'}
                 </button>
               ) : (
                 <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase', 'bg-success-soft text-success')}>

@@ -6,6 +6,8 @@ export interface IntegrationStatusItem {
   lastSync: string;
   connected: boolean;
   connectionId?: string;
+  readiness: 'sandbox' | 'manual_import' | 'not_implemented';
+  canConnect: boolean;
 }
 
 export async function fetchIntegrationStatuses(

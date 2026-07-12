@@ -15,7 +15,7 @@ test('shell + Org Owner home render without console errors', async ({ page }) =>
   // Default preview role = Organization Owner → Business Command Center content
   await expect(page.getByText('Total Cash Position')).toBeVisible();
   await expect(page.getByText('Cash Flow Overview')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Action Center' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Top approvals' })).toBeVisible();
   await expect(page.getByText('Reconciliation Snapshot')).toBeVisible();
   await expect(page.getByText('Recent Documents')).toBeVisible();
 
@@ -25,5 +25,28 @@ test('shell + Org Owner home render without console errors', async ({ page }) =>
   await expect(page.getByText('Aline Mukamana')).toBeVisible();
   await expect(page.getByRole('link', { name: /Reconciliation/ }).first()).toBeVisible();
 
+  expect(errors).toEqual([]);
+});
+
+test('Org Owner drill-ins render working backend-connected pages', async ({ page }) => {
+  test.setTimeout(60_000);
+  const errors: string[] = [];
+  page.on('pageerror', (err) => errors.push(err.message));
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') errors.push(msg.text());
+  });
+
+  for (const target of [
+    { path: '/contracts', heading: 'Contracts' },
+    { path: '/consent', heading: 'Consent log' },
+    { path: '/credit-passport', heading: /Credit Passport/ },
+  ]) {
+    await page.goto(target.path);
+    await page.waitForLoadState('networkidle');
+    await expect(page.getByRole('heading', { name: target.heading }).first()).toBeVisible();
+    expect(await page.getByText(/being crafted next/).count()).toBe(0);
+  }
+
+  await expect(page.getByText('Verified internal profile')).toBeVisible();
   expect(errors).toEqual([]);
 });

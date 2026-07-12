@@ -27,7 +27,7 @@ export const seedRiskStats = {
 };
 
 // ─── Immutable audit log feed ──────────────────────────────────────────────
-export type AuditKind = 'approval' | 'posting' | 'access' | 'config' | 'agent' | 'consent' | 'audit';
+export type AuditKind = 'approval' | 'posting' | 'access' | 'config' | 'agent' | 'consent' | 'audit' | 'claim';
 
 export interface AuditEvent {
   id: string;

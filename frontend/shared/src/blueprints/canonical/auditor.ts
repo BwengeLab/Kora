@@ -14,9 +14,9 @@ export const auditorBlueprint: RoleBlueprint = {
     { id: 'gl', labelKey: 'nav.gl', path: '/general-ledger', requires: [{ permission: PERMISSIONS.EVENTS_READ }] },
     { id: 'statements', labelKey: 'nav.statements', path: '/statements', requires: [{ permission: PERMISSIONS.REPORTS_READ }] },
     { id: 'reports', labelKey: 'nav.reports', path: '/reports', requires: [{ permission: PERMISSIONS.REPORTS_READ }] },
-    { id: 'relationships', labelKey: 'nav.relationships.read', path: '/relationships', requires: [{ permission: PERMISSIONS.RELATIONSHIPS_MANAGE }] },
-    { id: 'contracts', labelKey: 'nav.contracts.read', path: '/contracts', requires: [{ permission: PERMISSIONS.CONTRACTS_MANAGE }] },
-    { id: 'consent', labelKey: 'nav.consent.log', path: '/consent', requires: [{ permission: PERMISSIONS.CONSENT_MANAGE }] },
+    { id: 'relationships', labelKey: 'nav.relationships.read', path: '/relationships', requires: [{ permission: PERMISSIONS.RELATIONSHIPS_READ }] },
+    { id: 'contracts', labelKey: 'nav.contracts.read', path: '/contracts', requires: [{ permission: PERMISSIONS.CONTRACTS_READ }] },
+    { id: 'consent', labelKey: 'nav.consent.log', path: '/consent', requires: [{ permission: PERMISSIONS.CONSENT_READ }] },
     { id: 'agents', labelKey: 'nav.agents', path: '/agents', requires: [] },
   ],
   homeModules: [

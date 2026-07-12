@@ -71,12 +71,11 @@ export interface Integration {
 }
 
 export const seedIntegrations: Integration[] = [
-  { id: 'in-1', name: 'MTN MoMo', category: 'Mobile money', status: 'connected', lastSync: '5m ago' },
-  { id: 'in-2', name: 'Bank of Kigali', category: 'Bank feed', status: 'connected', lastSync: '12m ago' },
-  { id: 'in-3', name: 'EBM / RRA', category: 'Tax & invoices', status: 'syncing', lastSync: 'now' },
-  { id: 'in-4', name: 'HSBC', category: 'Bank feed', status: 'connected', lastSync: '1h ago' },
-  { id: 'in-5', name: 'QuickBooks', category: 'Accounting', status: 'error', lastSync: 'failed 2h ago' },
-  { id: 'in-6', name: 'Airtel Money', category: 'Mobile money', status: 'connected', lastSync: '8m ago' },
+  { id: 'in-1', name: 'MTN MoMo', category: 'Mobile money', status: 'disconnected', lastSync: 'Sandbox not checked' },
+  { id: 'in-2', name: 'Bank of Kigali', category: 'Statement import', status: 'disconnected', lastSync: 'Manual import available' },
+  { id: 'in-3', name: 'EBM / RRA', category: 'Tax & invoices', status: 'disconnected', lastSync: 'Adapter required' },
+  { id: 'in-4', name: 'QuickBooks', category: 'Accounting', status: 'disconnected', lastSync: 'Adapter required' },
+  { id: 'in-5', name: 'Email / SMS', category: 'Notifications', status: 'disconnected', lastSync: 'Adapter required' },
 ];
 
 // ─── Policy versions ───────────────────────────────────────────────────────

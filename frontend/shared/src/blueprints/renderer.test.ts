@@ -60,7 +60,7 @@ describe('useResolvedBlueprint — canonical blueprints', () => {
     expect(ids).toEqual(['portal.home', 'portal.credit_passport', 'portal.access']);
   });
 
-  it('Org Owner nav is the curated 10-item set (no Contracts/Credit Passport/Consent/Settings)', () => {
+  it('Org Owner nav is the curated finance oversight set without admin-only settings', () => {
     useSessionStore.setState({ session: seedSessions[CANONICAL_ROLE_IDS.ORG_OWNER] });
     const { result } = renderHook(() => useResolvedBlueprint());
     const ids = result.current.nav.map((n) => n.id);
@@ -68,6 +68,8 @@ describe('useResolvedBlueprint — canonical blueprints', () => {
       'home',
       'approvals',
       'ledger',
+      'gl',
+      'statements',
       'reconciliation',
       'relationships',
       'agents',

@@ -112,6 +112,8 @@ type integrationStatus struct {
 	LastSync     string `json:"lastSync"`
 	Connected    bool   `json:"connected"`
 	ConnectionID string `json:"connectionId,omitempty"`
+	Readiness    string `json:"readiness"`
+	CanConnect   bool   `json:"canConnect"`
 }
 
 type integrationStatusOverride struct {
@@ -406,6 +408,10 @@ func (s *Server) integrationsStatusAction(writer http.ResponseWriter, request *h
 		writeError(writer, http.StatusNotFound, "integration not found")
 		return
 	}
+	if !current.CanConnect {
+		writeError(writer, http.StatusNotImplemented, "provider adapter is not implemented")
+		return
+	}
 	override := integrationStatusOverride{
 		Status:       current.Status,
 		LastSync:     current.LastSync,
@@ -415,12 +421,13 @@ func (s *Server) integrationsStatusAction(writer http.ResponseWriter, request *h
 	actionLabel := ""
 	switch action {
 	case "connect":
+		if override.ConnectionID == "" {
+			writeError(writer, http.StatusConflict, "connector credentials and connection must be configured first")
+			return
+		}
 		override.Connected = true
 		override.Status = "connected"
-		override.LastSync = "ready"
-		if override.ConnectionID == "" {
-			override.ConnectionID = "conn_demo_" + strings.ReplaceAll(integrationID, "-", "_")
-		}
+		override.LastSync = map[string]string{"sandbox": "Sandbox configured", "manual_import": "Manual import configured"}[current.Readiness]
 		actionLabel = "Integration connect"
 	case "disconnect":
 		override.Connected = false
@@ -494,10 +501,6 @@ func (s *Server) workflowApprovalAction(writer http.ResponseWriter, request *htt
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	claims, ok := s.requireAuthenticatedSession(writer, request)
-	if !ok {
-		return
-	}
 	path := strings.TrimPrefix(request.URL.Path, "/api/workflow/approvals/")
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	if len(parts) != 2 {
@@ -505,6 +508,14 @@ func (s *Server) workflowApprovalAction(writer http.ResponseWriter, request *htt
 		return
 	}
 	approvalID, action := parts[0], parts[1]
+	permission := access.PermissionCreateApproval
+	if action == "approve" || action == "reject" {
+		permission = access.PermissionApproveFinancial
+	}
+	claims, _, ok := s.requireTenantActor(writer, request, permission)
+	if !ok {
+		return
+	}
 	actorName := s.sessionDisplayName(claims)
 	actorRole := s.sessionRoleName(claims)
 
@@ -594,10 +605,6 @@ func (s *Server) workflowReconciliationAction(writer http.ResponseWriter, reques
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	claims, ok := s.requireAuthenticatedSession(writer, request)
-	if !ok {
-		return
-	}
 	path := strings.TrimPrefix(request.URL.Path, "/api/workflow/reconciliations/")
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	if len(parts) != 2 {
@@ -605,6 +612,22 @@ func (s *Server) workflowReconciliationAction(writer http.ResponseWriter, reques
 		return
 	}
 	reconID, action := parts[0], parts[1]
+	permission := access.PermissionReviewReconciliation
+	if action == "prepare" || action == "reject" || action == "dismiss" {
+		permission = access.PermissionResolveReconciliation
+	} else if action == "approve" {
+		permission = access.PermissionApproveFinancial
+	}
+	claims, actor, ok := s.requireTenantActor(writer, request, permission)
+	if !ok {
+		return
+	}
+	if action == "approve" {
+		if err := access.Authorize(actor, access.Resource{OrganizationID: claims.OrganizationID}, access.PermissionPostLedger); err != nil {
+			writeError(writer, http.StatusForbidden, err.Error())
+			return
+		}
+	}
 	actorName := s.sessionDisplayName(claims)
 	actorRole := s.sessionRoleName(claims)
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -948,7 +971,7 @@ func (s *Server) collectionsOverdue(writer http.ResponseWriter, request *http.Re
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionManageIntegrations); !ok {
+	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadEvents); !ok {
 		return
 	}
 	s.demoMu.RLock()
@@ -969,7 +992,7 @@ func (s *Server) collectionsOverdueAction(writer http.ResponseWriter, request *h
 		return
 	}
 	itemID, action := parts[0], parts[1]
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadEvents); !ok {
+	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionSendCollections); !ok {
 		return
 	}
 	s.demoMu.Lock()
@@ -1014,10 +1037,38 @@ func (s *Server) collectionsExportSummary(writer http.ResponseWriter, request *h
 	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadEvents); !ok {
 		return
 	}
-	writeJSON(writer, http.StatusOK, map[string]any{
-		"status":   "ready",
-		"fileName": "receivables-summary.pdf",
-	})
+	s.demoMu.RLock()
+	items := append([]demo.OverdueItem(nil), s.collections...)
+	s.demoMu.RUnlock()
+
+	var totalMinor int64
+	buckets := map[string]int{"0-30": 0, "31-60": 0, "61-90": 0, "90+": 0}
+	for _, item := range items {
+		amount, err := strconv.ParseInt(item.Amount.AmountMinor, 10, 64)
+		if err == nil {
+			totalMinor += amount
+		}
+		switch {
+		case item.DaysOverdue <= 30:
+			buckets["0-30"]++
+		case item.DaysOverdue <= 60:
+			buckets["31-60"]++
+		case item.DaysOverdue <= 90:
+			buckets["61-90"]++
+		default:
+			buckets["90+"]++
+		}
+	}
+	currency := "USD"
+	if len(items) > 0 && items[0].Amount.Currency != "" {
+		currency = items[0].Amount.Currency
+	}
+	content := fmt.Sprintf("BT\n/F1 20 Tf\n72 748 Td\n(Kora Receivables Summary) Tj\n0 -28 Td\n/F1 11 Tf\n(Generated: %s) Tj\n0 -22 Td\n(Open receivables: %d) Tj\n0 -22 Td\n(Total overdue: %s %.2f) Tj\n0 -22 Td\n(Aging 0-30 days: %d) Tj\n0 -22 Td\n(Aging 31-60 days: %d) Tj\n0 -22 Td\n(Aging 61-90 days: %d) Tj\n0 -22 Td\n(Aging 90+ days: %d) Tj\n0 -30 Td\n/F1 9 Tf\n(Generated from tenant-scoped collections records.) Tj\nET\n", time.Now().UTC().Format("2006-01-02 15:04 UTC"), len(items), currency, float64(totalMinor)/100, buckets["0-30"], buckets["31-60"], buckets["61-90"], buckets["90+"])
+	pdf := "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Resources<</Font<</F1 4 0 R>>>>/Contents 5 0 R>>endobj\n4 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n5 0 obj<</Length " + strconv.Itoa(len(content)) + ">>stream\n" + content + "endstream\nendobj\ntrailer<</Root 1 0 R>>\n%%EOF\n"
+	writer.Header().Set("Content-Type", "application/pdf")
+	writer.Header().Set("Content-Disposition", "attachment; filename=\"kora-receivables-summary.pdf\"")
+	writer.WriteHeader(http.StatusOK)
+	_, _ = writer.Write([]byte(pdf))
 }
 
 func (s *Server) claimsWorkspace(writer http.ResponseWriter, request *http.Request) {
@@ -1039,7 +1090,7 @@ func (s *Server) claimsAction(writer http.ResponseWriter, request *http.Request)
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	claims, ok := s.requireAuthenticatedSession(writer, request)
+	claims, actor, ok := s.requireTenantActor(writer, request, access.PermissionPrepareClaims)
 	if !ok {
 		return
 	}
@@ -1059,6 +1110,12 @@ func (s *Server) claimsAction(writer http.ResponseWriter, request *http.Request)
 		claim := &s.claimsState.Claims[idx]
 		if claim.ID != claimID {
 			continue
+		}
+		if action == "advance" && (claim.Stage == "approval" || claim.Stage == "settlement") {
+			if err := access.Authorize(actor, access.Resource{OrganizationID: claims.OrganizationID}, access.PermissionSettleClaims); err != nil {
+				writeError(writer, http.StatusForbidden, err.Error())
+				return
+			}
 		}
 		actionLabel := map[string]string{"advance": "Advanced claim workflow", "refer-siu": "Referred claim to SIU", "request-docs": "Requested claim documents"}[action]
 		if actionLabel == "" {
@@ -1109,7 +1166,11 @@ func (s *Server) consentGrants(writer http.ResponseWriter, request *http.Request
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionManageConsent)
+	permission := access.PermissionReadConsent
+	if request.Method == http.MethodPost {
+		permission = access.PermissionManageConsent
+	}
+	claims, _, ok := s.requireTenantActor(writer, request, permission)
 	if !ok {
 		return
 	}
@@ -1238,7 +1299,7 @@ func (s *Server) relationshipsOverview(writer http.ResponseWriter, request *http
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant); !ok {
+	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadRelationships); !ok {
 		return
 	}
 	s.demoMu.RLock()
@@ -1252,7 +1313,7 @@ func (s *Server) relationshipPartyAction(writer http.ResponseWriter, request *ht
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant)
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionManageRelationships)
 	if !ok {
 		return
 	}
@@ -1267,12 +1328,6 @@ func (s *Server) relationshipPartyAction(writer http.ResponseWriter, request *ht
 		writeError(writer, http.StatusNotFound, "unknown relationship action")
 		return
 	}
-	if action != "email-contact" {
-		if _, _, ok := s.requireTenantActor(writer, request, access.PermissionManageRelationships); !ok {
-			return
-		}
-	}
-
 	now := time.Now().UTC()
 	actorName := s.sessionDisplayName(claims)
 	actorRole := s.sessionRoleName(claims)
@@ -1487,7 +1542,7 @@ func (s *Server) agentRun(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant)
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionRunAgents)
 	if !ok {
 		return
 	}
@@ -1510,7 +1565,7 @@ func (s *Server) agentRunAll(writer http.ResponseWriter, request *http.Request) 
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant)
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionRunAgents)
 	if !ok {
 		return
 	}
@@ -1528,7 +1583,7 @@ func (s *Server) agentFeedback(writer http.ResponseWriter, request *http.Request
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant)
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionSubmitAgentFeedback)
 	if !ok {
 		return
 	}
@@ -2018,11 +2073,18 @@ func (s *Server) reportDetail(writer http.ResponseWriter, request *http.Request)
 			writeError(writer, http.StatusBadRequest, err.Error())
 			return
 		}
-		writeJSON(writer, http.StatusOK, map[string]any{
-			"status":   "ready",
-			"fileName": strings.ReplaceAll(strings.ToLower(report.Name), " ", "-") + ".pdf",
-			"period":   body.Period,
-		})
+		period := strings.TrimSpace(body.Period)
+		if period == "" {
+			period = "Current period"
+		}
+		contentData := demo.BuildReportContent(report.Kind)
+		content := fmt.Sprintf("BT\n/F1 20 Tf\n72 748 Td\n(%s) Tj\n0 -28 Td\n/F1 11 Tf\n(Period: %s) Tj\n0 -22 Td\n(Report type: %s) Tj\n0 -22 Td\n(Key metrics: %d) Tj\n0 -22 Td\n(Evidence rows: %d) Tj\n0 -30 Td\n/F1 9 Tf\n(Evidence-backed and generated from tenant-scoped reporting data.) Tj\nET\n", pdfLiteral(report.Name), pdfLiteral(period), pdfLiteral(report.Kind), len(contentData.KPIs), len(contentData.Rows))
+		pdf := simplePDF(content)
+		fileName := strings.ReplaceAll(strings.ToLower(report.Name), " ", "-") + ".pdf"
+		writer.Header().Set("Content-Type", "application/pdf")
+		writer.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", fileName))
+		writer.WriteHeader(http.StatusOK)
+		_, _ = writer.Write([]byte(pdf))
 		return
 	}
 	if request.Method == http.MethodPost && len(parts) == 2 && parts[1] == "schedule" {
@@ -2055,10 +2117,22 @@ func (s *Server) reportsBoardPack(writer http.ResponseWriter, request *http.Requ
 	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadReports); !ok {
 		return
 	}
-	writeJSON(writer, http.StatusOK, map[string]any{
-		"status":   "building",
-		"fileName": "board-pack.pdf",
-	})
+	s.demoMu.RLock()
+	reports := append([]demo.ReportDef(nil), s.reports...)
+	s.demoMu.RUnlock()
+	content := fmt.Sprintf("BT\n/F1 20 Tf\n72 748 Td\n(Kora Board Pack) Tj\n0 -28 Td\n/F1 11 Tf\n(Period: May 2025) Tj\n0 -22 Td\n(Reports included: %d) Tj\n0 -22 Td\n(Generated: %s) Tj\n0 -30 Td\n/F1 9 Tf\n(Compiled from tenant-scoped, evidence-backed reports.) Tj\nET\n", len(reports), time.Now().UTC().Format("2006-01-02 15:04 UTC"))
+	writer.Header().Set("Content-Type", "application/pdf")
+	writer.Header().Set("Content-Disposition", "attachment; filename=\"kora-board-pack.pdf\"")
+	writer.WriteHeader(http.StatusOK)
+	_, _ = writer.Write([]byte(simplePDF(content)))
+}
+
+func pdfLiteral(value string) string {
+	return strings.NewReplacer("\\", "\\\\", "(", "\\(", ")", "\\)", "\r", " ", "\n", " ").Replace(value)
+}
+
+func simplePDF(content string) string {
+	return "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Resources<</Font<</F1 4 0 R>>>>/Contents 5 0 R>>endobj\n4 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n5 0 obj<</Length " + strconv.Itoa(len(content)) + ">>stream\n" + content + "endstream\nendobj\ntrailer<</Root 1 0 R>>\n%%EOF\n"
 }
 
 func (s *Server) financialStatementsExport(writer http.ResponseWriter, request *http.Request) {
@@ -2297,7 +2371,13 @@ func (s *Server) financeTransactionAction(writer http.ResponseWriter, request *h
 		return
 	}
 	transactionID, action := parts[0], parts[1]
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReviewDataQuality); !ok {
+	permission := access.PermissionReviewDataQuality
+	if action == "prepare" || action == "reconcile" {
+		permission = access.PermissionResolveReconciliation
+	} else if action == "post" {
+		permission = access.PermissionPostLedger
+	}
+	if _, _, ok := s.requireTenantActor(writer, request, permission); !ok {
 		return
 	}
 	var body struct {
@@ -2381,10 +2461,15 @@ func (s *Server) auditEvidencePack(writer http.ResponseWriter, request *http.Req
 	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadAudit); !ok {
 		return
 	}
-	writeJSON(writer, http.StatusOK, map[string]any{
-		"status":   "ready",
-		"fileName": "kora-audit-evidence-pack.pdf",
-	})
+	s.demoMu.RLock()
+	view := s.auditViews
+	auditEvents := append([]demo.AuditEvent(nil), s.workflowState.AuditLog...)
+	s.demoMu.RUnlock()
+	content := fmt.Sprintf("BT\n/F1 20 Tf\n72 748 Td\n(Kora Audit Evidence Pack) Tj\n0 -28 Td\n/F1 11 Tf\n(Generated: %s) Tj\n0 -22 Td\n(Audit events: %d) Tj\n0 -22 Td\n(Control checks: %d) Tj\n0 -22 Td\n(Segregation-of-duty findings: %d) Tj\n0 -22 Td\n(Missing evidence records: %d) Tj\n0 -30 Td\n/F1 9 Tf\n(Generated from immutable tenant-scoped audit and workflow records.) Tj\nET\n", time.Now().UTC().Format("2006-01-02 15:04 UTC"), len(auditEvents), len(view.ControlHealth.Subscores), len(view.SodViolations), len(view.MissingDocs))
+	writer.Header().Set("Content-Type", "application/pdf")
+	writer.Header().Set("Content-Disposition", "attachment; filename=\"kora-audit-evidence-pack.pdf\"")
+	writer.WriteHeader(http.StatusOK)
+	_, _ = writer.Write([]byte(simplePDF(content)))
 }
 
 func (s *Server) auditFindingCreate(writer http.ResponseWriter, request *http.Request) {
@@ -2392,7 +2477,7 @@ func (s *Server) auditFindingCreate(writer http.ResponseWriter, request *http.Re
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadAudit)
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionCreateAuditFinding)
 	if !ok {
 		return
 	}
@@ -2663,7 +2748,29 @@ func (s *Server) settingsDataExport(writer http.ResponseWriter, request *http.Re
 	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionManageDataRetention); !ok {
 		return
 	}
-	writeJSON(writer, http.StatusOK, map[string]any{"status": "queued"})
+	s.demoMu.RLock()
+	export := map[string]any{
+		"exportedAt":      time.Now().UTC().Format(time.RFC3339),
+		"settings":        s.settingsOverview,
+		"reports":         append([]demo.ReportDef(nil), s.reports...),
+		"collections":     append([]demo.OverdueItem(nil), s.collections...),
+		"finance":         s.financeSnapshot,
+		"contracts":       s.contracts,
+		"consentGrants":   append([]demo.ConsentGrantData(nil), s.consentState...),
+		"relationships":   s.relationships,
+		"claims":          s.claimsState,
+		"riskAndControls": s.ownerRisk,
+	}
+	s.demoMu.RUnlock()
+	payload, err := json.MarshalIndent(export, "", "  ")
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, "could not build data export")
+		return
+	}
+	writer.Header().Set("Content-Type", "application/json")
+	writer.Header().Set("Content-Disposition", "attachment; filename=\"kora-tenant-data-export.json\"")
+	writer.WriteHeader(http.StatusOK)
+	_, _ = writer.Write(payload)
 }
 
 func (s *Server) settingsBillingPortal(writer http.ResponseWriter, request *http.Request) {
@@ -2674,7 +2781,40 @@ func (s *Server) settingsBillingPortal(writer http.ResponseWriter, request *http
 	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionManageBilling); !ok {
 		return
 	}
-	writeJSON(writer, http.StatusOK, map[string]any{"status": "ready"})
+	var body struct {
+		Plan string `json:"plan"`
+	}
+	if err := decode(request, writer, &body); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+	plan := strings.TrimSpace(body.Plan)
+	if plan == "" {
+		writeError(writer, http.StatusBadRequest, "plan is required")
+		return
+	}
+	s.demoMu.Lock()
+	switch plan {
+	case "Starter":
+		s.settingsOverview.Billing.Plan = plan
+		s.settingsOverview.Billing.PriceMonthly = "$199"
+		s.settingsOverview.Billing.SeatsIncluded = 5
+	case "Growth":
+		s.settingsOverview.Billing.Plan = plan
+		s.settingsOverview.Billing.PriceMonthly = "$499"
+		s.settingsOverview.Billing.SeatsIncluded = 15
+	case "Enterprise":
+		s.settingsOverview.Billing.Plan = plan
+		s.settingsOverview.Billing.PriceMonthly = "Custom"
+		s.settingsOverview.Billing.SeatsIncluded = 100
+	default:
+		s.demoMu.Unlock()
+		writeError(writer, http.StatusBadRequest, "unsupported billing plan")
+		return
+	}
+	payload := s.settingsOverview
+	s.demoMu.Unlock()
+	writeJSON(writer, http.StatusOK, payload)
 }
 
 func (s *Server) accountSettingsAPI(writer http.ResponseWriter, request *http.Request) {
@@ -2725,7 +2865,7 @@ func (s *Server) featuresOverview(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 	s.demoMu.RLock()
-	enabled := append([]string(nil), s.featureEntitlements...)
+	enabled := append([]string{}, s.featureEntitlements...)
 	s.demoMu.RUnlock()
 	writeJSON(writer, http.StatusOK, map[string]any{"enabled": enabled})
 }
@@ -2769,7 +2909,7 @@ func (s *Server) featureToggle(writer http.ResponseWriter, request *http.Request
 			Tone:   "success",
 		}}, s.platformConsole.AuditEvents...)
 	}
-	writeJSON(writer, http.StatusOK, map[string]any{"enabled": append([]string(nil), s.featureEntitlements...)})
+	writeJSON(writer, http.StatusOK, map[string]any{"enabled": append([]string{}, s.featureEntitlements...)})
 }
 
 func (s *Server) mailboxAPI(writer http.ResponseWriter, request *http.Request) {
@@ -3113,7 +3253,7 @@ func (s *Server) contractsOverview(writer http.ResponseWriter, request *http.Req
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant); !ok {
+	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadContracts); !ok {
 		return
 	}
 	s.demoMu.RLock()
@@ -3460,6 +3600,7 @@ func (s *Server) seedDemoData() error {
 		roleIDAuditor:              {Email: "auditor@acme.local", DisplayName: "Patrick Niyonsenga", Role: access.RoleAuditorCompliance},
 		roleIDOrgAdmin:             {Email: "admin@acme.local", DisplayName: "Sarah Ingabire", Role: access.RoleOrgAdmin},
 		roleIDExternalCollaborator: {Email: "officer@bk.local", DisplayName: "BK Lender Officer", Role: access.RoleExternalCollaborator},
+		roleIDClaimsOfficer:        {Email: "claims@acme.local", DisplayName: "James Okello", Role: access.RoleClaimsOfficer},
 	}
 
 	for _, demo := range s.demoUsers {
@@ -4191,17 +4332,20 @@ func buildTenantSession(user identity.User, org identity.Organization, token str
 
 func buildIntegrationStatuses(connections []connectors.Connection) []integrationStatus {
 	type base struct {
-		id       string
-		name     string
-		category string
-		status   string
-		lastSync string
+		id        string
+		name      string
+		category  string
+		status    string
+		lastSync  string
+		readiness string
 	}
 	catalog := []base{
-		{id: "mtn-momo", name: "MTN MoMo", category: "Mobile money", status: "connected", lastSync: "2m ago"},
-		{id: "bk", name: "Bank of Kigali", category: "Bank feed", status: "connected", lastSync: "12m ago"},
-		{id: "airtel-money", name: "Airtel Money", category: "Mobile money", status: "disconnected", lastSync: "Not connected"},
-		{id: "quickbooks", name: "QuickBooks", category: "Accounting", status: "error", lastSync: "failed 2h ago"},
+		{id: "mtn-momo", name: "MTN MoMo", category: "Mobile money", status: "disconnected", lastSync: "Sandbox not configured", readiness: "sandbox"},
+		{id: "bk", name: "Bank of Kigali", category: "Statement import", status: "disconnected", lastSync: "Manual import not configured", readiness: "manual_import"},
+		{id: "ebm-rra", name: "EBM / RRA", category: "Tax & invoices", status: "disconnected", lastSync: "Provider adapter required", readiness: "not_implemented"},
+		{id: "airtel-money", name: "Airtel Money", category: "Mobile money", status: "disconnected", lastSync: "Provider adapter required", readiness: "not_implemented"},
+		{id: "quickbooks", name: "QuickBooks", category: "Accounting", status: "disconnected", lastSync: "Provider adapter required", readiness: "not_implemented"},
+		{id: "email-sms", name: "Email / SMS", category: "Notifications", status: "disconnected", lastSync: "Provider adapter required", readiness: "not_implemented"},
 	}
 	byName := map[string]connectors.Connection{}
 	for _, connection := range connections {
@@ -4216,13 +4360,15 @@ func buildIntegrationStatuses(connections []connectors.Connection) []integration
 			Status:    item.status,
 			LastSync:  item.lastSync,
 			Connected: item.status == "connected" || item.status == "syncing",
+			Readiness: item.readiness,
 		}
 		if connection, ok := byName[strings.ToLower(item.name)]; ok {
-			out.Connected = connection.Active
 			out.ConnectionID = connection.ID
-			if out.Status == "disconnected" && connection.Active {
+			out.CanConnect = item.readiness != "not_implemented"
+			out.Connected = connection.Active && out.CanConnect
+			if out.Connected {
 				out.Status = "connected"
-				out.LastSync = "ready"
+				out.LastSync = map[string]string{"sandbox": "Sandbox configured", "manual_import": "Manual import configured"}[item.readiness]
 			}
 		}
 		items = append(items, out)
@@ -4350,6 +4496,7 @@ const (
 	roleIDAuditor              = "role.auditor"
 	roleIDOrgAdmin             = "role.org_admin"
 	roleIDExternalCollaborator = "role.external_collaborator"
+	roleIDClaimsOfficer        = "role.claims_officer"
 	blueprintSuperAdmin        = "blueprint.super_admin"
 	permPlatformAdmin          = "platform:admin"
 )
@@ -4368,6 +4515,8 @@ func frontendRoleID(role access.Role) string {
 		return roleIDOrgAdmin
 	case access.RoleExternalCollaborator:
 		return roleIDExternalCollaborator
+	case access.RoleClaimsOfficer:
+		return roleIDClaimsOfficer
 	default:
 		return string(role)
 	}
@@ -4387,6 +4536,8 @@ func frontendRoleName(role access.Role) string {
 		return "Org Admin"
 	case access.RoleExternalCollaborator:
 		return "External Collaborator"
+	case access.RoleClaimsOfficer:
+		return "Claims Officer"
 	default:
 		return string(role)
 	}
@@ -4406,6 +4557,8 @@ func frontendBlueprintID(role access.Role) string {
 		return "blueprint.org_admin"
 	case access.RoleExternalCollaborator:
 		return "blueprint.external_collaborator"
+	case access.RoleClaimsOfficer:
+		return "blueprint.claims_officer"
 	default:
 		return "blueprint.unknown"
 	}

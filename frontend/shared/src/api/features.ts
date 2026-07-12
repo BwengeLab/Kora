@@ -14,7 +14,8 @@ export async function fetchFeatureEntitlements(apiBaseUrl: string, token: string
   if (!response.ok) {
     throw new Error((await safePayload(response)) || `${response.status} ${response.statusText}`);
   }
-  return (await response.json()) as FeatureEntitlementsPayload;
+  const payload = (await response.json()) as Partial<FeatureEntitlementsPayload>;
+  return { enabled: Array.isArray(payload.enabled) ? payload.enabled : [] };
 }
 
 export async function toggleFeatureEntitlement(apiBaseUrl: string, token: string, featureID: FeatureId): Promise<FeatureEntitlementsPayload> {
@@ -25,7 +26,8 @@ export async function toggleFeatureEntitlement(apiBaseUrl: string, token: string
   if (!response.ok) {
     throw new Error((await safePayload(response)) || `${response.status} ${response.statusText}`);
   }
-  return (await response.json()) as FeatureEntitlementsPayload;
+  const payload = (await response.json()) as Partial<FeatureEntitlementsPayload>;
+  return { enabled: Array.isArray(payload.enabled) ? payload.enabled : [] };
 }
 
 async function safePayload(response: Response): Promise<string> {

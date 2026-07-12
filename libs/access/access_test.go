@@ -47,6 +47,27 @@ func TestFinanceOperatorCanPrepareButCannotApprove(t *testing.T) {
 	}
 }
 
+func TestClaimsOfficerIsVerticalAndCannotSettleOrApprove(t *testing.T) {
+	if IsSystemRole(RoleClaimsOfficer) {
+		t.Fatal("claims officer must remain outside the seven canonical system roles")
+	}
+	if !IsTenantRole(RoleClaimsOfficer) {
+		t.Fatal("claims officer must be assignable within a tenant")
+	}
+	actor := Actor{UserID: "claims-a", OrganizationID: "tenant-a", Roles: []Role{RoleClaimsOfficer}}
+	resource := Resource{OrganizationID: "tenant-a"}
+	for _, permission := range []Permission{PermissionReadEvents, PermissionReviewClaims, PermissionPrepareClaims} {
+		if err := Authorize(actor, resource, permission); err != nil {
+			t.Fatalf("expected claims officer permission %s: %v", permission, err)
+		}
+	}
+	for _, permission := range []Permission{PermissionSettleClaims, PermissionApproveFinancial, PermissionPostLedger} {
+		if err := Authorize(actor, resource, permission); err == nil {
+			t.Fatalf("expected claims officer permission %s to be denied", permission)
+		}
+	}
+}
+
 func TestFinanceLeadCanApproveAndPost(t *testing.T) {
 	actor := Actor{UserID: "user-a", OrganizationID: "tenant-a", Roles: []Role{RoleFinanceLead}}
 	resource := Resource{OrganizationID: "tenant-a"}

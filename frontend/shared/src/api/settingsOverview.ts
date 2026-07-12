@@ -60,12 +60,18 @@ export async function saveDataControls(apiBaseUrl: string, token: string, payloa
   return sendJson<SettingsOverviewPayload>(`${apiBaseUrl}/api/settings/data-controls`, token, payload);
 }
 
-export async function requestDataExport(apiBaseUrl: string, token: string): Promise<void> {
-  await sendJson(`${apiBaseUrl}/api/settings/data-export`, token, {});
+export async function requestDataExport(apiBaseUrl: string, token: string): Promise<Blob> {
+  const response = await fetch(`${apiBaseUrl}/api/settings/data-export`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+  if (!response.ok) throw new Error((await safePayload(response)) || `${response.status} ${response.statusText}`);
+  return response.blob();
 }
 
-export async function openBillingPortal(apiBaseUrl: string, token: string): Promise<void> {
-  await sendJson(`${apiBaseUrl}/api/settings/billing-portal`, token, {});
+export async function updateBillingPlan(apiBaseUrl: string, token: string, plan: string): Promise<SettingsOverviewPayload> {
+  return sendJson<SettingsOverviewPayload>(`${apiBaseUrl}/api/settings/billing-portal`, token, { plan });
 }
 
 async function getJson<T>(url: string, token: string, signal?: AbortSignal): Promise<T> {

@@ -45,7 +45,7 @@ export const useFeatureStore = create<FeatureState>()(
     (set, get) => ({
       enabled: [],
       isEnabled: (id) => get().enabled.includes(id),
-      hydrate: (enabled) => set({ enabled }),
+      hydrate: (enabled) => set({ enabled: Array.isArray(enabled) ? enabled : [] }),
       unlock: (id) => set((s) => (s.enabled.includes(id) ? s : { enabled: [...s.enabled, id] })),
       lock: (id) => set((s) => ({ enabled: s.enabled.filter((x) => x !== id) })),
     }),

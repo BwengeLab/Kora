@@ -22,6 +22,7 @@ const KIND: Record<AuditKind, { icon: LucideIcon; tone: string }> = {
   agent: { icon: Sparkles, tone: 'bg-ai-soft text-ai' },
   consent: { icon: Share2, tone: 'bg-brand-soft text-brand-ink' },
   audit: { icon: FileText, tone: 'bg-danger-soft text-danger' },
+  claim: { icon: FileText, tone: 'bg-info-soft text-info' },
 };
 
 export function AuditLogFeedCard() {

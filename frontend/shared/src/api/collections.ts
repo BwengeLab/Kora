@@ -31,7 +31,7 @@ export async function collectionsAction(apiBaseUrl: string, token: string, itemI
   return (data.items ?? []).map((item) => reviveBigInts(item) as Overdue);
 }
 
-export async function exportCollectionsSummary(apiBaseUrl: string, token: string): Promise<{ status: string; fileName: string }> {
+export async function exportCollectionsSummary(apiBaseUrl: string, token: string): Promise<Blob> {
   const response = await fetch(`${apiBaseUrl}/api/collections/export-summary`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
@@ -39,7 +39,7 @@ export async function exportCollectionsSummary(apiBaseUrl: string, token: string
   if (!response.ok) {
     throw new Error((await safePayload(response)) || `${response.status} ${response.statusText}`);
   }
-  return (await response.json()) as { status: string; fileName: string };
+  return response.blob();
 }
 
 function reviveBigInts(value: unknown): unknown {

@@ -20,7 +20,14 @@ const KIND_META: Record<AuditKind, { label: string; icon: typeof Stamp; tone: st
   agent: { label: 'Agent', icon: Sparkles, tone: 'bg-ai-soft text-ai' },
   consent: { label: 'Consent', icon: UserCheck, tone: 'bg-lavender-soft text-lavender' },
   audit: { label: 'Audit', icon: Flag, tone: 'bg-danger-soft text-danger' },
+  claim: { label: 'Claim', icon: ShieldCheck, tone: 'bg-info-soft text-info' },
 };
+
+const UNKNOWN_KIND_META = { label: 'Event', icon: FileSearch, tone: 'bg-white/70 text-ink-soft' };
+
+function kindMeta(kind: string) {
+  return KIND_META[kind as AuditKind] ?? UNKNOWN_KIND_META;
+}
 
 export function AuditInvestigations() {
   const token = useSessionStore((s) => s.session?.token ?? '');
@@ -32,8 +39,9 @@ export function AuditInvestigations() {
   const [selected, setSelected] = useState<AuditEvent | null>(null);
   const exportMutation = useMutation({
     mutationFn: () => exportAuditEvidencePack(apiBaseUrl, token),
-    onSuccess: (result) => {
-      toast({ tone: 'info', title: 'Evidence pack', body: `${result.fileName} is ready.` });
+    onSuccess: (blob) => {
+      downloadFile(blob, 'kora-audit-evidence-pack.pdf');
+      toast({ tone: 'success', title: 'Evidence pack downloaded', body: 'The pack was generated from current audit and workflow records.' });
     },
     onError: (error: Error) => {
       toast({ tone: 'warning', title: 'Evidence pack failed', body: error.message });
@@ -114,7 +122,7 @@ export function AuditInvestigations() {
             </div>
             <ul className="scrollbar-thin min-h-0 flex-1 overflow-y-auto">
               {trail.map((event) => {
-                const meta = KIND_META[event.kind];
+                const meta = kindMeta(event.kind);
                 return (
                   <li key={event.id}>
                     <button type="button" onClick={() => setSelected(event)} className="flex w-full items-center gap-3 border-b border-white/40 px-4 py-3 text-left transition-colors hover:bg-white/55">
@@ -173,9 +181,20 @@ export function AuditInvestigations() {
   );
 }
 
+function downloadFile(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 function EventDrawer({ event, onClose, onRaiseFinding, busy = false }: { event: AuditEvent | null; onClose: () => void; onRaiseFinding: (eventID: string) => void; busy?: boolean }) {
   if (!event) return <Dialog.Root open={false} onOpenChange={() => onClose()}><span /></Dialog.Root>;
-  const meta = KIND_META[event.kind];
+  const meta = kindMeta(event.kind);
   return (
     <Dialog.Root open={event !== null} onOpenChange={(value) => !value && onClose()}>
       <Dialog.Portal>

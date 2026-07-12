@@ -36,8 +36,9 @@ export function ReportsPage({ variant = 'read' }: { variant?: 'read' | 'produce'
   });
   const boardPackMutation = useMutation({
     mutationFn: () => buildBoardPack(apiBaseUrl, token),
-    onSuccess: (result) => {
-      toast({ tone: 'success', title: 'Board pack building', body: `${result.fileName} is being compiled from backend data.` });
+    onSuccess: (blob) => {
+      downloadFile(blob, 'kora-board-pack.pdf');
+      toast({ tone: 'success', title: 'Board pack downloaded', body: 'The board pack was compiled from current backend reports.' });
     },
     onError: (error: Error) => toast({ tone: 'danger', title: 'Board pack failed', body: error.message }),
   });
@@ -122,7 +123,11 @@ function ReportView({ report }: { report: ReportDef }) {
   const [period, setPeriod] = useState('May 2025');
   const exportMutation = useMutation({
     mutationFn: () => exportReport(apiBaseUrl, token, report.id, period),
-    onSuccess: (result) => toast({ tone: 'success', title: 'Exported', body: `${result.fileName} for ${result.period} is ready.` }),
+    onSuccess: (blob) => {
+      const fileName = `${report.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'report'}.pdf`;
+      downloadFile(blob, fileName);
+      toast({ tone: 'success', title: 'Report downloaded', body: `${report.name} for ${period} was exported from backend data.` });
+    },
     onError: (error: Error) => toast({ tone: 'danger', title: 'Export failed', body: error.message }),
   });
   const { data } = useQuery({
@@ -174,6 +179,17 @@ function ReportView({ report }: { report: ReportDef }) {
       </div>
     </>
   );
+}
+
+function downloadFile(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 function nextSchedule(current: string) {

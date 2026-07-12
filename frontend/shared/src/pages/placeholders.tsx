@@ -3,8 +3,7 @@
 // role's screen. Platform/portal pages are single-role (guarded), so they use
 // a simple stub until built.
 
-import { Outlet, useRouterState } from '@tanstack/react-router';
-import { GlassSurface } from '../design-system';
+import { Outlet } from '@tanstack/react-router';
 import { AccountSettings } from '../modules/account';
 import { PortalAccessPage as PortalAccess } from '../modules/portal-access';
 import { ClaimsWorkspace } from '../modules/claims';
@@ -14,28 +13,6 @@ import { Mailbox } from '../modules/mailbox';
 import * as Platform from '../modules/platform';
 import * as Settings from '../modules/settings';
 import { RolePage } from './RolePage';
-
-// Generic stub for single-role (platform / portal / settings) routes.
-const Stub = () => {
-  const path = useRouterState({ select: (s) => s.location.pathname });
-  return (
-    <div className="px-8 pb-8 pt-2">
-      <GlassSurface tone="strong" className="grid min-h-[60vh] place-items-center p-10">
-        <div className="flex flex-col items-center gap-2 text-center">
-          <span className="rounded-full bg-white/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
-            Route stub
-          </span>
-          <h2 className="font-display text-xl font-semibold text-ink">
-            <code className="font-mono text-base">{path}</code>
-          </h2>
-          <p className="max-w-md text-sm text-ink-muted">
-            This route is registered and permission-guarded. The screen lands here once it&apos;s built.
-          </p>
-        </div>
-      </GlassSurface>
-    </div>
-  );
-};
 
 // ─── Tenant plane — role-isolated ──────────────────────────────────────────
 export const HomePage = () => <RolePage pageKey="home" label="Home" />;

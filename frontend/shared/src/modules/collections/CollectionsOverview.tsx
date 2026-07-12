@@ -31,7 +31,10 @@ export function CollectionsOverview() {
   });
   const exportMutation = useMutation({
     mutationFn: () => exportCollectionsSummary(apiBaseUrl, token),
-    onSuccess: (result) => toast({ tone: 'success', title: 'Exporting', body: `${result.fileName} is being prepared.` }),
+    onSuccess: (blob) => {
+      downloadFile(blob, 'kora-receivables-summary.pdf');
+      toast({ tone: 'success', title: 'Summary downloaded', body: 'The receivables summary was generated from current backend data.' });
+    },
     onError: (error: Error) => toast({ tone: 'danger', title: 'Export failed', body: error.message }),
   });
 
@@ -142,6 +145,17 @@ export function CollectionsOverview() {
       />
     </div>
   );
+}
+
+function downloadFile(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 function OversightDrawer({ item, onClose, onHand, onFlag, onMessage }: { item: Overdue | null; onClose: () => void; onHand: (item: Overdue) => void; onFlag: (item: Overdue) => void; onMessage: (item: Overdue) => void }) {

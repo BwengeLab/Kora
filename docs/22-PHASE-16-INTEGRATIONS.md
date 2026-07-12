@@ -88,3 +88,5 @@ Tests cover raw credential rejection, missing secret rejection, connector replay
 - Bank statement/API samples.
 - Accounting sandbox access for QuickBooks, Sage, or Xero.
 - Email/SMS provider choice and sandbox credentials.
+
+See `docs/25-EXTERNAL-INTEGRATION-READINESS.md` for the authoritative provider-by-provider readiness matrix and release gate.
