@@ -1,0 +1,30 @@
+- generic [ref=e4]:
+  - generic [ref=e7]:
+    - generic [ref=e8]:
+      - generic [ref=e9]: Enterprise access
+      - generic [ref=e14]:
+        - heading "Sign in with your business email" [level=1] [ref=e15]
+        - paragraph [ref=e16]: Register the organization once, then invite real people by email. Every session stays tenant-scoped and audit logged.
+    - generic [ref=e17]:
+      - generic [ref=e18]: Domain-checked business email sign-in
+      - generic [ref=e22]: Invite codes for new members
+      - generic [ref=e26]: Demo mode remains available for development
+  - generic [ref=e30]:
+    - generic [ref=e31]:
+      - button "Sign in" [ref=e32] [cursor=pointer]
+      - button "Register business" [ref=e33] [cursor=pointer]
+    - generic [ref=e34]:
+      - generic [ref=e35]:
+        - generic [ref=e36]: Business email
+        - textbox "Business email" [ref=e40]:
+          - /placeholder: you@company.com
+      - generic [ref=e41]:
+        - generic [ref=e42]: Password
+        - textbox "Password" [ref=e46]:
+          - /placeholder: Enter your password
+      - generic [ref=e47]:
+        - generic [ref=e48]: Invite code
+        - textbox "Invite code" [ref=e52]:
+          - /placeholder: Optional invite code
+      - button "Sign in" [ref=e53] [cursor=pointer]
+      - button "Use demo workspace" [ref=e57] [cursor=pointer]

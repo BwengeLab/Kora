@@ -35,6 +35,8 @@ from agents.reconciliation_agent.agent import (
 from agents.runtime.runtime import AgentRequest, AgentRuntime
 from agents.runtime.auth import Identity, verify_gateway_token
 from agents.shared.schemas import Confidence, Evidence, Money
+from agents.model_router.groq_client import GroqClient
+from agents.live_insight_agent.agent import run as run_live_insight
 
 
 class ConfidenceInput(BaseModel):
@@ -101,7 +103,8 @@ if os.getenv("DATABASE_URL"):
 
     repository = PostgresAgentRepository(os.environ["DATABASE_URL"])
 
-runtime = AgentRuntime(repository=repository)
+model = GroqClient() if os.getenv("GROQ_API_KEY") else None
+runtime = AgentRuntime(repository=repository, model=model)
 runtime.register(INTAKE_AGENT, run_intake, {"classification", "review_request"})
 runtime.register(RECONCILIATION_AGENT, run_reconciliation, {"suggestion"})
 runtime.register(CREDIT_PASSPORT_AGENT, run_credit_passport, {"explanation"})
@@ -110,6 +113,12 @@ runtime.register(COLLECTIONS_AGENT, run_collections, {"suggestion"})
 runtime.register(SUPPLIER_MARGIN_AGENT, run_supplier_margin, {"suggestion"})
 runtime.register(AUDIT_COMPLIANCE_AGENT, run_audit_compliance, {"review_request"})
 runtime.register(SALES_GROWTH_AGENT, run_sales_growth, {"explanation"})
+for live_agent_name in (
+    "data_intake_live", "reconciliation_live", "finance_live", "relationship_live",
+    "contract_live", "collections_live", "credit_live", "supplier_live",
+    "sales_live", "audit_live",
+):
+    runtime.register(live_agent_name, run_live_insight, {"explanation"})
 feedback = FeedbackStore(repository=repository)
 EVALUATION_CASES = {
     case.case_id: case

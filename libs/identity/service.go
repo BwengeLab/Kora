@@ -85,6 +85,9 @@ func (s *Service) RegisterOrganization(input RegisterInput) (RegisterOutput, err
 	}
 	now := s.now()
 	org := Organization{ID: orgID, Name: input.OrganizationName, Status: "active", CreatedAt: now}
+	if parts := strings.Split(strings.ToLower(strings.TrimSpace(input.OwnerEmail)), "@"); len(parts) == 2 {
+		org.Domain = parts[1]
+	}
 	user := User{
 		ID:             userID,
 		OrganizationID: orgID,

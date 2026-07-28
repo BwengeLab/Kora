@@ -26,7 +26,7 @@ import { DateRangePill, PageHeader } from '../../app/shell';
 import { fetchAgentsOverview, runAgent, runAllAgents, submitAgentFeedback, type AgentActivityEvent } from '../../api/agents';
 import { getApiBaseUrl } from '../../api/client';
 import { GlassSurface, cn } from '../../design-system';
-import { seedAgentStats, seedAgents, type AgentCard } from '../../seed/agents';
+import type { AgentCard } from '../../seed/agents';
 import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
 
@@ -57,7 +57,7 @@ export function AiAgentsPage() {
   const queryClient = useQueryClient();
   const [runningId, setRunningId] = useState<string | null>(null);
 
-  const { data } = useQuery({
+  const { data, error: overviewError, isLoading } = useQuery({
     queryKey: ['agents-overview', token],
     queryFn: ({ signal }) => fetchAgentsOverview(apiBaseUrl, token, signal),
     enabled: Boolean(token),
@@ -84,8 +84,8 @@ export function AiAgentsPage() {
     },
   });
 
-  const stats = data?.stats ?? seedAgentStats;
-  const agents = data?.agents ?? seedAgents;
+  const stats = data?.stats ?? { agentsActive: 0, processedToday: 0, suggestionsAwaiting: 0, avgAccuracyPct: 0 };
+  const agents = data?.agents ?? [];
   const activity = data?.activity ?? [];
   const activeRun = runningId ?? data?.runningId ?? null;
 
@@ -133,7 +133,7 @@ export function AiAgentsPage() {
           <div className="flex items-center gap-2.5">
             <button
               type="button"
-              disabled={!!activeRun}
+              disabled={!!activeRun || !data}
               onClick={handleRunAll}
               className={cn(
                 'inline-flex h-11 items-center gap-2 rounded-2xl px-4 text-[13px] font-bold shadow-glass-soft',
@@ -157,6 +157,11 @@ export function AiAgentsPage() {
 
         <section className="grid min-h-0 flex-1 grid-cols-1 items-start gap-5 @5xl:grid-cols-12">
           <div className="grid grid-cols-1 gap-4 @2xl:grid-cols-2 @5xl:col-span-8">
+            {!data ? (
+              <GlassSurface tone="strong" className="p-5 text-[13px] text-ink-soft @2xl:col-span-2">
+                {isLoading ? 'Loading live agent status...' : `Live agent service unavailable${overviewError instanceof Error ? `: ${overviewError.message}` : '.'}`}
+              </GlassSurface>
+            ) : null}
             {agents.map((agent) => (
               <AgentTile
                 key={agent.id}
@@ -249,7 +254,8 @@ function AgentTile({ agent, running, disabled, onRun, onFeedback }: { agent: Age
         <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-ink-muted">
           <Sparkles className="size-3 text-ai" /> Latest finding
         </p>
-        <p className="mt-0.5 text-[12.5px] text-ink">{agent.insight}</p>
+          <p className="mt-0.5 text-[12.5px] text-ink">{agent.insight}</p>
+          {agent.runtimeRunId ? <p className="mt-1 text-[10.5px] font-semibold text-ai">Live - {agent.modelName}</p> : null}
       </div>
 
       <footer className="flex items-center justify-between gap-2">

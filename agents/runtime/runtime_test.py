@@ -27,7 +27,24 @@ class RuntimeTests(unittest.TestCase):
             external_models_allowed=True,
             idempotency_key="external-attempt",
         )
-        self.assertFalse(self.runtime.run(forced_external).external_model)
+        external = self.runtime.run(forced_external)
+        self.assertTrue(external.external_model)
+        self.assertEqual(external.output.metadata["model_status"], "unavailable")
+
+    def test_external_model_enriches_only_sanitized_deterministic_output(self) -> None:
+        model = FixtureModel()
+        runtime = AgentRuntime(model=model)
+        runtime.register("fixture_agent", self.handler)
+        record = runtime.run(
+            replace(
+                self.request(),
+                contains_sensitive_financial_data=False,
+                external_models_allowed=True,
+            )
+        )
+        self.assertEqual(record.output.metadata["model_status"], "completed")
+        self.assertEqual(record.output.metadata["explanation"], "model explanation")
+        self.assertNotIn("secret", model.user_prompt)
 
     def test_missing_evidence_returns_structured_refusal(self) -> None:
         request = replace(self.request(), evidence=[])
@@ -125,6 +142,16 @@ class FakeRepository:
     def save_run(self, record):
         self.runs[record.run_id] = record
         return record
+
+
+class FixtureModel:
+    user_prompt = ""
+
+    def generate(self, system_prompt, user_prompt):
+        from agents.model_router.groq_client import GroqResponse
+
+        self.user_prompt = user_prompt
+        return GroqResponse("model explanation", "fixture", 10, 2)
 
 def evidence(record_id: str) -> Evidence:
     return Evidence(

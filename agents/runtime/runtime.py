@@ -71,14 +71,19 @@ class RunRepository(Protocol):
     def save_run(self, record: RunRecord) -> RunRecord: ...
 
 
+class ModelGenerator(Protocol):
+    def generate(self, system_prompt: str, user_prompt: str) -> Any: ...
+
+
 class AgentRuntime:
-    def __init__(self, repository: RunRepository | None = None) -> None:
+    def __init__(self, repository: RunRepository | None = None, model: ModelGenerator | None = None) -> None:
         self._handlers: dict[str, AgentHandler] = {}
         self._allowed_output_types: dict[str, set[str]] = {}
         self._runs: dict[str, RunRecord] = {}
         self._idempotency: dict[tuple[str, str], str] = {}
         self._lock = RLock()
         self._repository = repository
+        self._model = model
 
     def register(
         self,
@@ -138,6 +143,7 @@ class AgentRuntime:
             allowed_types = self._allowed_output_types[request.agent_name]
             if allowed_types and output.output_type not in allowed_types:
                 raise ValueError("agent returned an unauthorized output type")
+            output = self._enrich_with_model(request, plan, output)
         output = replace(output, run_id=run_id)
         output.validate()
         record = RunRecord(
@@ -201,14 +207,53 @@ class AgentRuntime:
         return route_model(
             ModelRequest(
                 objective=request.objective,
-                contains_sensitive_financial_data=(
-                    request.contains_sensitive_financial_data or bool(request.evidence)
-                ),
+                contains_sensitive_financial_data=request.contains_sensitive_financial_data,
                 estimated_complexity=request.estimated_complexity,
                 context=request.context,
                 external_models_allowed=request.external_models_allowed,
             )
         )
+
+    def _enrich_with_model(
+        self, request: AgentRequest, plan: ModelPlan, output: AgentOutput
+    ) -> AgentOutput:
+        metadata = dict(output.metadata)
+        metadata["model_route"] = plan.route
+        if not plan.external:
+            metadata["model_status"] = "not_allowed"
+            return replace(output, metadata=metadata)
+        if self._model is None:
+            metadata["model_status"] = "unavailable"
+            return replace(output, metadata=metadata)
+        prompt = json.dumps(
+            {
+                "objective": request.objective,
+                "sanitized_context": plan.sanitized_context,
+                "deterministic_action": output.action,
+                "deterministic_explanation": metadata.get("explanation", ""),
+            },
+            sort_keys=True,
+            default=str,
+        )
+        try:
+            response = self._model.generate(
+                "You explain Kora's deterministic finance analysis. Use only the supplied JSON. "
+                "Do not invent facts, approve actions, or recommend moving money. Return a concise explanation.",
+                prompt,
+            )
+            metadata.update(
+                {
+                    "explanation": response.text,
+                    "model_status": "completed",
+                    "model_name": response.model,
+                    "model_prompt_tokens": response.prompt_tokens,
+                    "model_completion_tokens": response.completion_tokens,
+                }
+            )
+        except Exception as exc:
+            metadata["model_status"] = "failed"
+            metadata["model_error"] = type(exc).__name__
+        return replace(output, metadata=metadata)
 
     @staticmethod
     def _validate_grounding(request: AgentRequest, output: AgentOutput) -> None:

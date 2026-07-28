@@ -14,6 +14,8 @@ export interface AgentCard {
   lastRun: string;
   insight: string; // a key finding
   accuracyPct: number;
+  runtimeRunId?: string;
+  modelName?: string;
 }
 
 export const seedAgents: AgentCard[] = [

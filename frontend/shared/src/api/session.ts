@@ -16,6 +16,47 @@ export async function demoLoginSession(
   return jsonRequest<Session>(`${apiBaseUrl}/api/session/demo-login`, init);
 }
 
+export interface EnterpriseRegisterInput {
+  organization_name: string;
+  business_email: string;
+  display_name: string;
+  password: string;
+}
+
+export interface EnterpriseLoginInput {
+  business_email: string;
+  password?: string;
+  invite_code?: string;
+}
+
+export async function registerEnterpriseSession(
+  apiBaseUrl: string,
+  input: EnterpriseRegisterInput,
+  signal?: AbortSignal,
+): Promise<Session> {
+  const init: RequestInit = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  };
+  if (signal) init.signal = signal;
+  return jsonRequest<Session>(`${apiBaseUrl}/api/session/enterprise-register`, init);
+}
+
+export async function loginEnterpriseSession(
+  apiBaseUrl: string,
+  input: EnterpriseLoginInput,
+  signal?: AbortSignal,
+): Promise<Session> {
+  const init: RequestInit = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  };
+  if (signal) init.signal = signal;
+  return jsonRequest<Session>(`${apiBaseUrl}/api/session/enterprise-login`, init);
+}
+
 export async function fetchCurrentSession(
   apiBaseUrl: string,
   token: string,

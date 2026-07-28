@@ -59,6 +59,20 @@ type Server struct {
 	platformConsole      demo.PlatformConsoleData
 	accountSettings      map[string]demo.AccountSettingsData
 	mailboxes            map[string]demo.MailboxData
+	agentRuntimeURL      string
+	agentRuntimeToken    string
+	runtimeDatabaseURL   string
+	enterpriseMu         sync.RWMutex
+	pendingInvites       map[string]enterpriseInvite
+	httpClient           *http.Client
+}
+
+type enterpriseInvite struct {
+	Email          string
+	Role           access.Role
+	Token          string
+	OrganizationID string
+	DisplayName    string
 }
 
 type demoUser struct {
@@ -139,11 +153,16 @@ func New(secret []byte) (*Server, error) {
 	service := identity.NewService(store, secret)
 	connectionStore := connectors.NewMemoryConnectionStore()
 	server := &Server{
-		mux:             http.NewServeMux(),
-		identityService: service,
-		identityStore:   store,
-		connections:     connectionStore,
-		jwtSecret:       secret,
+		mux:                http.NewServeMux(),
+		identityService:    service,
+		identityStore:      store,
+		connections:        connectionStore,
+		jwtSecret:          secret,
+		agentRuntimeURL:    strings.TrimRight(os.Getenv("KORA_AGENT_RUNTIME_URL"), "/"),
+		agentRuntimeToken:  os.Getenv("KORA_AGENT_RUNTIME_TOKEN"),
+		runtimeDatabaseURL: os.Getenv("DATABASE_URL"),
+		pendingInvites:     map[string]enterpriseInvite{},
+		httpClient:         &http.Client{Timeout: 35 * time.Second},
 	}
 	if err := server.seedDemoData(); err != nil {
 		return nil, err
@@ -155,6 +174,8 @@ func New(secret []byte) (*Server, error) {
 func (s *Server) routes() {
 	s.mux.HandleFunc("/healthz", servicekit.HealthHandler("gateway"))
 	s.mux.HandleFunc("/api/session/demo-login", s.demoLogin)
+	s.mux.HandleFunc("/api/session/enterprise-register", s.enterpriseRegister)
+	s.mux.HandleFunc("/api/session/enterprise-login", s.enterpriseLogin)
 	s.mux.HandleFunc("/api/session/me", s.sessionMe)
 	s.mux.HandleFunc("/api/integrations/status", s.integrationsStatus)
 	s.mux.HandleFunc("/api/integrations/status/", s.integrationsStatusAction)
@@ -292,6 +313,120 @@ func (s *Server) demoLogin(writer http.ResponseWriter, request *http.Request) {
 	org, err := s.organizationByID(login.OrganizationID)
 	if err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(writer, http.StatusOK, buildTenantSession(user, org, login.AccessToken, login.Roles, login.Permissions))
+}
+
+func (s *Server) enterpriseRegister(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var body struct {
+		OrganizationName string `json:"organization_name"`
+		BusinessEmail    string `json:"business_email"`
+		DisplayName      string `json:"display_name"`
+		Password         string `json:"password"`
+	}
+	if err := decode(request, writer, &body); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+	allowed := []string{"gmail.com", "yahoo.com", "outlook.com", "hotmail.com"}
+	email := strings.ToLower(strings.TrimSpace(body.BusinessEmail))
+	if email == "" || !strings.Contains(email, "@") {
+		writeError(writer, http.StatusBadRequest, "business email is required")
+		return
+	}
+	domain := strings.TrimSpace(strings.SplitN(email, "@", 2)[1])
+	if domain == "" {
+		writeError(writer, http.StatusBadRequest, "business email domain is required")
+		return
+	}
+	for _, blocked := range allowed {
+		if strings.EqualFold(domain, blocked) {
+			writeError(writer, http.StatusBadRequest, "use a business email domain")
+			return
+		}
+	}
+	out, err := s.identityService.RegisterOrganization(identity.RegisterInput{
+		OrganizationName: body.OrganizationName,
+		OwnerEmail:       email,
+		OwnerDisplayName: body.DisplayName,
+		OwnerPassword:    body.Password,
+	})
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+	user, err := s.identityStore.FindUserByID(out.OwnerUserID)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+	org, err := s.organizationByID(out.OrganizationID)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+	login, err := s.identityService.Login(user.Email, body.Password)
+	if err != nil {
+		writeError(writer, http.StatusUnauthorized, err.Error())
+		return
+	}
+	writeJSON(writer, http.StatusCreated, buildTenantSession(user, org, login.AccessToken, login.Roles, login.Permissions))
+}
+
+func (s *Server) enterpriseLogin(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var body struct {
+		BusinessEmail string `json:"business_email"`
+		Password      string `json:"password,omitempty"`
+		InviteCode    string `json:"invite_code,omitempty"`
+	}
+	if err := decode(request, writer, &body); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+	email := strings.ToLower(strings.TrimSpace(body.BusinessEmail))
+	if email == "" {
+		writeError(writer, http.StatusBadRequest, "business email is required")
+		return
+	}
+	if strings.TrimSpace(body.InviteCode) != "" {
+		s.enterpriseMu.RLock()
+		invite, ok := s.pendingInvites[email]
+		s.enterpriseMu.RUnlock()
+		if !ok || invite.Token != strings.TrimSpace(body.InviteCode) {
+			writeError(writer, http.StatusUnauthorized, "invalid invite code")
+			return
+		}
+		if err := s.activateInvitedUser(invite); err != nil {
+			writeError(writer, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	login, err := s.identityService.Login(email, body.Password)
+	if err != nil {
+		writeError(writer, http.StatusUnauthorized, err.Error())
+		return
+	}
+	user, err := s.identityStore.FindUserByID(login.UserID)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+	org, err := s.organizationByID(login.OrganizationID)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if org.Domain != "" && !strings.HasSuffix(strings.ToLower(user.Email), "@"+strings.ToLower(org.Domain)) {
+		writeError(writer, http.StatusForbidden, "email domain does not match the organization")
 		return
 	}
 	writeJSON(writer, http.StatusOK, buildTenantSession(user, org, login.AccessToken, login.Roles, login.Permissions))
@@ -1546,18 +1681,37 @@ func (s *Server) agentRun(writer http.ResponseWriter, request *http.Request) {
 	if !ok {
 		return
 	}
+	if strings.TrimSpace(s.runtimeDatabaseURL) == "" {
+		writeError(writer, http.StatusNotFound, "agent not found")
+		return
+	}
+	if err := s.ensureRuntimeIdentity(request.Context(), claims); err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "agent identity sync failed: "+err.Error())
+		return
+	}
 	agentID := strings.Trim(strings.TrimPrefix(request.URL.Path, "/api/agents/run/"), "/")
 	if agentID == "" {
 		writeError(writer, http.StatusNotFound, "agent not found")
 		return
 	}
 	s.demoMu.Lock()
-	defer s.demoMu.Unlock()
 	if !s.runAgentLocked(agentID, s.sessionDisplayName(claims)) {
+		s.demoMu.Unlock()
 		writeError(writer, http.StatusNotFound, "agent not found")
 		return
 	}
-	writeJSON(writer, http.StatusOK, s.agentsState)
+	summary, agentName := s.agentSummaryLocked(agentID)
+	s.demoMu.Unlock()
+	insight, err := s.runLiveAgent(request, claims.OrganizationID, claims.Subject, agentID, summary)
+	if err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "live agent runtime failed: "+err.Error())
+		return
+	}
+	s.demoMu.Lock()
+	s.applyLiveAgentInsightLocked(agentID, agentName, insight)
+	payload := s.agentsState
+	s.demoMu.Unlock()
+	writeJSON(writer, http.StatusOK, payload)
 }
 
 func (s *Server) agentRunAll(writer http.ResponseWriter, request *http.Request) {
@@ -1569,13 +1723,33 @@ func (s *Server) agentRunAll(writer http.ResponseWriter, request *http.Request) 
 	if !ok {
 		return
 	}
-	s.demoMu.Lock()
-	defer s.demoMu.Unlock()
+	if strings.TrimSpace(s.runtimeDatabaseURL) == "" {
+		writeError(writer, http.StatusNotFound, "agent not found")
+		return
+	}
+	if err := s.ensureRuntimeIdentity(request.Context(), claims); err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "agent identity sync failed: "+err.Error())
+		return
+	}
 	actorName := s.sessionDisplayName(claims)
 	for _, agentID := range []string{"a-intake", "a-recon", "a-cfo", "a-rel", "a-contract", "a-coll", "a-credit", "a-supplier", "a-sales", "a-audit"} {
+		s.demoMu.Lock()
 		s.runAgentLocked(agentID, actorName)
+		summary, agentName := s.agentSummaryLocked(agentID)
+		s.demoMu.Unlock()
+		insight, err := s.runLiveAgent(request, claims.OrganizationID, claims.Subject, agentID, summary)
+		if err != nil {
+			writeError(writer, http.StatusServiceUnavailable, "live agent runtime failed: "+err.Error())
+			return
+		}
+		s.demoMu.Lock()
+		s.applyLiveAgentInsightLocked(agentID, agentName, insight)
+		s.demoMu.Unlock()
 	}
-	writeJSON(writer, http.StatusOK, s.agentsState)
+	s.demoMu.RLock()
+	payload := s.agentsState
+	s.demoMu.RUnlock()
+	writeJSON(writer, http.StatusOK, payload)
 }
 
 func (s *Server) agentFeedback(writer http.ResponseWriter, request *http.Request) {
@@ -2541,11 +2715,24 @@ func (s *Server) settingsUsers(writer http.ResponseWriter, request *http.Request
 		if strings.TrimSpace(body.ID) == "" {
 			body.ID = "u-" + strconv.FormatInt(time.Now().UnixNano(), 10)
 		}
+		inviteCode := ""
+		if strings.EqualFold(strings.TrimSpace(body.Status), "invited") {
+			code, err := auth.NewRefreshToken()
+			if err != nil {
+				writeError(writer, http.StatusInternalServerError, err.Error())
+				return
+			}
+			inviteCode = strings.ToUpper(strings.ReplaceAll(code[:10], "-", ""))
+			if err := s.syncInviteUser(body, inviteCode); err != nil {
+				writeError(writer, http.StatusBadRequest, err.Error())
+				return
+			}
+		}
 		s.demoMu.Lock()
 		s.orgUsers = append([]demo.OrgUserData{body}, s.orgUsers...)
 		items := append([]demo.OrgUserData(nil), s.orgUsers...)
 		s.demoMu.Unlock()
-		writeJSON(writer, http.StatusOK, map[string]any{"items": items})
+		writeJSON(writer, http.StatusOK, map[string]any{"items": items, "inviteCode": inviteCode})
 	default:
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 	}
@@ -4260,6 +4447,20 @@ func (s *Server) organizationByID(organizationID string) (identity.Organization,
 	return s.identityStore.FindOrganizationByID(organizationID)
 }
 
+func (s *Server) activeOrganizationID() string {
+	s.demoMu.RLock()
+	defer s.demoMu.RUnlock()
+	for _, user := range s.demoUsers {
+		if user.Role == access.RoleOrganizationOwner || user.Role == access.RoleFinanceLead {
+			login, err := s.identityStore.FindUserByEmail(strings.ToLower(strings.TrimSpace(user.Email)))
+			if err == nil && login.OrganizationID != "" {
+				return login.OrganizationID
+			}
+		}
+	}
+	return ""
+}
+
 func (s *Server) loginActor(email string) (access.Actor, error) {
 	output, err := s.identityService.Login(email, demoPassword)
 	if err != nil {
@@ -4564,6 +4765,27 @@ func frontendBlueprintID(role access.Role) string {
 	}
 }
 
+func frontendRoleToAccess(role string) access.Role {
+	switch strings.TrimSpace(role) {
+	case "Organization Owner":
+		return access.RoleOrganizationOwner
+	case "Finance Lead":
+		return access.RoleFinanceLead
+	case "Finance Operator":
+		return access.RoleFinanceOperator
+	case "Auditor":
+		return access.RoleAuditorCompliance
+	case "Org Admin":
+		return access.RoleOrgAdmin
+	case "External Collaborator":
+		return access.RoleExternalCollaborator
+	case "Claims Officer":
+		return access.RoleClaimsOfficer
+	default:
+		return access.RoleFinanceOperator
+	}
+}
+
 func frontendPermission(permission access.Permission) string {
 	return string(permission)
 }
@@ -4602,4 +4824,65 @@ func seedTenantUser(store *identity.MemoryStore, organizationID, email, displayN
 		Role:           role,
 		CreatedAt:      now,
 	})
+}
+
+func (s *Server) syncInviteUser(user demo.OrgUserData, inviteCode string) error {
+	org, err := s.organizationByID(s.activeOrganizationID())
+	if err != nil {
+		return err
+	}
+	if org.Domain != "" {
+		email := strings.ToLower(strings.TrimSpace(user.Email))
+		if !strings.HasSuffix(email, "@"+strings.ToLower(org.Domain)) {
+			return fmt.Errorf("invite email must use the business domain %s", org.Domain)
+		}
+	}
+	role := frontendRoleToAccess(user.Role)
+	if !access.IsTenantRole(role) {
+		role = access.RoleFinanceOperator
+	}
+	existing, err := s.identityStore.FindUserByEmail(strings.ToLower(strings.TrimSpace(user.Email)))
+	if err == nil && existing.ID != "" {
+		s.enterpriseMu.Lock()
+		s.pendingInvites[strings.ToLower(strings.TrimSpace(user.Email))] = enterpriseInvite{
+			Email:          strings.ToLower(strings.TrimSpace(user.Email)),
+			Role:           role,
+			Token:          inviteCode,
+			OrganizationID: existing.OrganizationID,
+			DisplayName:    user.Name,
+		}
+		s.enterpriseMu.Unlock()
+		return nil
+	}
+	tempPassword := inviteCode
+	if tempPassword == "" {
+		token, err := auth.NewRefreshToken()
+		if err != nil {
+			return err
+		}
+		tempPassword = token[:12]
+	}
+	if err := seedTenantUser(s.identityStore, org.ID, user.Email, user.Name, tempPassword, role); err != nil {
+		return err
+	}
+	s.enterpriseMu.Lock()
+	s.pendingInvites[strings.ToLower(strings.TrimSpace(user.Email))] = enterpriseInvite{
+		Email:          strings.ToLower(strings.TrimSpace(user.Email)),
+		Role:           role,
+		Token:          tempPassword,
+		OrganizationID: org.ID,
+		DisplayName:    user.Name,
+	}
+	s.enterpriseMu.Unlock()
+	return nil
+}
+
+func (s *Server) activateInvitedUser(inv enterpriseInvite) error {
+	s.enterpriseMu.Lock()
+	defer s.enterpriseMu.Unlock()
+	if inv.Email == "" || inv.Token == "" {
+		return errors.New("invite is incomplete")
+	}
+	s.pendingInvites[strings.ToLower(strings.TrimSpace(inv.Email))] = inv
+	return nil
 }

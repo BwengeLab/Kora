@@ -3,15 +3,13 @@ import { useEffect, useMemo, type ReactNode } from 'react';
 import { initApi } from '../api/client';
 import { fetchFeatureEntitlements } from '../api/features';
 import { fetchFinanceOperations } from '../api/financeOperations';
-import { demoLoginSession, fetchCurrentSession, sessionTokenKey } from '../api/session';
+import { fetchCurrentSession, sessionTokenKey } from '../api/session';
 import { fetchWorkflowSnapshot } from '../api/workflow';
 import { registerCanonicalBlueprints } from '../blueprints/canonical';
 import { initI18n } from '../i18n';
 import { PlatformProvider } from '../platform/context';
 import type { Platform } from '../platform/types';
-import { getSeedSession } from '../seed/sessions';
 import { createQueryClient } from '../state/queryClient';
-import { usePreviewRoleStore } from '../state/previewRoleStore';
 import { useFeatureStore } from '../state/featureStore';
 import { useGLStore } from '../state/glStore';
 import { usePayablesStore } from '../state/payablesStore';
@@ -48,10 +46,6 @@ export function AppProviders({ platform, apiBaseUrl, children }: AppProvidersPro
 
   // Seed-first bootstrap so route guards have a session on first paint. Then
   // replace it with a real backend-backed session immediately.
-  const previewRoleId = usePreviewRoleStore((s) => s.roleId);
-  useEffect(() => {
-    useSessionStore.getState().setSession(getSeedSession(previewRoleId));
-  }, [previewRoleId]);
   useEffect(() => {
     const controller = new AbortController();
     const tokenKey = sessionTokenKey();
@@ -76,15 +70,7 @@ export function AppProviders({ platform, apiBaseUrl, children }: AppProvidersPro
       }
     };
     const run = async () => {
-      const isDev = typeof import.meta !== 'undefined' ? Boolean(import.meta.env?.DEV) : false;
       try {
-        if (isDev) {
-          const session = await demoLoginSession(apiBaseUrl, previewRoleId, controller.signal);
-          await platform.store.set(tokenKey, session.token);
-          useSessionStore.getState().setSession(session);
-          await hydrateAuthorizedStores(session);
-          return;
-        }
         const persisted = await platform.store.get(tokenKey);
         if (persisted) {
           const session = await fetchCurrentSession(apiBaseUrl, persisted, controller.signal);
@@ -92,23 +78,16 @@ export function AppProviders({ platform, apiBaseUrl, children }: AppProvidersPro
           await hydrateAuthorizedStores(session);
           return;
         }
+        await platform.store.remove(tokenKey);
+        useSessionStore.getState().setSession(null);
       } catch {
         await platform.store.remove(tokenKey);
-        if (isDev) {
-          try {
-            const session = await demoLoginSession(apiBaseUrl, previewRoleId, controller.signal);
-            await platform.store.set(tokenKey, session.token);
-            useSessionStore.getState().setSession(session);
-            await hydrateAuthorizedStores(session);
-          } catch {
-            useSessionStore.getState().setSession(getSeedSession(previewRoleId));
-          }
-        }
+        useSessionStore.getState().setSession(null);
       }
     };
     void run();
     return () => controller.abort();
-  }, [apiBaseUrl, hydrateFeatures, hydrateGL, hydratePayables, hydrateTransactions, hydrateWorkflow, platform, previewRoleId]);
+  }, [apiBaseUrl, hydrateFeatures, hydrateGL, hydratePayables, hydrateTransactions, hydrateWorkflow, platform]);
 
   // App-controlled base zoom. We apply CSS `zoom` on the document root (works
   // in browsers and the Tauri WebView2 alike) and expose the factor as a CSS

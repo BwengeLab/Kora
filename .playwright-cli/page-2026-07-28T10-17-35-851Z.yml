@@ -1,0 +1,36 @@
+- generic [ref=e4]:
+  - generic [ref=e7]:
+    - generic [ref=e8]:
+      - generic [ref=e9]: Enterprise access
+      - generic [ref=e14]:
+        - heading "Sign in with your business email" [level=1] [ref=e15]
+        - paragraph [ref=e16]: Register the organization once, then invite real people by email. Every session stays tenant-scoped and audit logged.
+    - generic [ref=e17]:
+      - generic [ref=e18]: Domain-checked business email sign-in
+      - generic [ref=e22]: Invite codes for new members
+      - generic [ref=e26]: Demo mode remains available for development
+  - generic [ref=e30]:
+    - generic [ref=e31]:
+      - button "Sign in" [ref=e32] [cursor=pointer]
+      - button "Register business" [active] [ref=e33] [cursor=pointer]
+    - generic [ref=e34]:
+      - generic [ref=e61]:
+        - generic [ref=e62]: Organization name
+        - textbox "Organization name" [ref=e67]:
+          - /placeholder: Kora Holdings Ltd.
+          - text: Kora Customer
+      - generic [ref=e68]:
+        - generic [ref=e69]: Owner name
+        - textbox "Owner name" [ref=e73]:
+          - /placeholder: Aline Mukamana
+          - text: Finance Lead
+      - generic [ref=e35]:
+        - generic [ref=e36]: Business email
+        - textbox "Business email" [ref=e40]:
+          - /placeholder: you@company.com
+      - generic [ref=e74]:
+        - generic [ref=e75]: Password
+        - textbox "Password" [ref=e79]:
+          - /placeholder: Create a password
+      - button "Create organization" [ref=e80] [cursor=pointer]
+      - button "Use demo workspace" [ref=e57] [cursor=pointer]

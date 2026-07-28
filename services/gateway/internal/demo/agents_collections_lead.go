@@ -10,6 +10,8 @@ type AgentCardData struct {
 	LastRun        string `json:"lastRun"`
 	Insight        string `json:"insight"`
 	AccuracyPct    int    `json:"accuracyPct"`
+	RuntimeRunID   string `json:"runtimeRunId,omitempty"`
+	ModelName      string `json:"modelName,omitempty"`
 }
 
 type AgentStatsData struct {
@@ -76,23 +78,25 @@ type CollectionsPolicy struct {
 
 func AgentsOverviewDemoData() AgentsOverviewData {
 	return AgentsOverviewData{
-		Stats: AgentStatsData{
-			AgentsActive: 6, ProcessedToday: 1984, SuggestionsAwaiting: 250, AvgAccuracyPct: 91,
-		},
+		Stats: AgentStatsData{},
 		Agents: []AgentCardData{
-			{ID: "a-intake", Name: "Data Intake", Icon: "intake", Status: "running", Role: "Extracts & cleans documents into structured records", ProcessedToday: 412, LastRun: "now", Insight: "3 files flagged for low-confidence fields", AccuracyPct: 96},
-			{ID: "a-recon", Name: "Reconciliation", Icon: "recon", Status: "active", Role: "Matches money movement to business reality", ProcessedToday: 1248, LastRun: "2m ago", Insight: "236 suggested matches awaiting review", AccuracyPct: 94},
-			{ID: "a-cfo", Name: "CFO", Icon: "cfo", Status: "active", Role: "Cashflow forecast, margin & anomaly detection", ProcessedToday: 64, LastRun: "8m ago", Insight: "Projected $3.21M cash by May 31 (+23%)", AccuracyPct: 91},
-			{ID: "a-rel", Name: "External Relationship", Icon: "relationship", Status: "active", Role: "Builds the relationship graph & partner risk", ProcessedToday: 88, LastRun: "18m ago", Insight: "3 contracts expiring within 30 days", AccuracyPct: 92},
-			{ID: "a-contract", Name: "Contract & Obligation", Icon: "contract", Status: "idle", Role: "Extracts terms, dates, obligations & renewals", ProcessedToday: 21, LastRun: "1h ago", Insight: "Office lease renewal needs a decision in 14 days", AccuracyPct: 89},
-			{ID: "a-coll", Name: "Collections", Icon: "collections", Status: "active", Role: "Late-payer list, reminder drafts & promise-to-pay", ProcessedToday: 47, LastRun: "12m ago", Insight: "$214,890 overdue across 12 invoices", AccuracyPct: 90},
-			{ID: "a-credit", Name: "Credit Passport", Icon: "credit", Status: "idle", Role: "Assembles lender-ready credit profiles", ProcessedToday: 4, LastRun: "25m ago", Insight: "Business health score holding at 82 (Good)", AccuracyPct: 93},
-			{ID: "a-supplier", Name: "Supplier & Margin", Icon: "supplier", Status: "active", Role: "Price-creep, overcharge & delivery performance", ProcessedToday: 56, LastRun: "20m ago", Insight: "Software & subscriptions up 22% - review", AccuracyPct: 88},
-			{ID: "a-sales", Name: "Sales & Growth", Icon: "sales", Status: "idle", Role: "Best/dead customers, churn & growth signals", ProcessedToday: 12, LastRun: "40m ago", Insight: "Awaiting cleaner sales data to activate fully", AccuracyPct: 84},
-			{ID: "a-audit", Name: "Audit & Compliance", Icon: "audit", Status: "active", Role: "Missing docs, SoD violations & fraud flags", ProcessedToday: 32, LastRun: "32m ago", Insight: "2 SoD violations & 4 suspicious flags raised", AccuracyPct: 95},
+			newAgent("a-intake", "Data Intake", "intake", "Extracts & cleans documents into structured records"),
+			newAgent("a-recon", "Reconciliation", "recon", "Matches money movement to business reality"),
+			newAgent("a-cfo", "CFO", "cfo", "Cashflow forecast, margin & anomaly detection"),
+			newAgent("a-rel", "External Relationship", "relationship", "Builds the relationship graph & partner risk"),
+			newAgent("a-contract", "Contract & Obligation", "contract", "Extracts terms, dates, obligations & renewals"),
+			newAgent("a-coll", "Collections", "collections", "Late-payer list, reminder drafts & promise-to-pay"),
+			newAgent("a-credit", "Credit Passport", "credit", "Assembles lender-ready credit profiles"),
+			newAgent("a-supplier", "Supplier & Margin", "supplier", "Price-creep, overcharge & delivery performance"),
+			newAgent("a-sales", "Sales & Growth", "sales", "Best/dead customers, churn & growth signals"),
+			newAgent("a-audit", "Audit & Compliance", "audit", "Missing docs, SoD violations & fraud flags"),
 		},
 		Activity: []AgentActivityEventData{},
 	}
+}
+
+func newAgent(id, name, icon, role string) AgentCardData {
+	return AgentCardData{ID: id, Name: name, Icon: icon, Status: "idle", Role: role, LastRun: "not run", Insight: "Run this agent to generate a live analysis."}
 }
 
 func CollectionsManagementDemoData() CollectionsManagementData {

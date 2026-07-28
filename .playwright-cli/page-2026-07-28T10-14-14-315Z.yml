@@ -1,0 +1,318 @@
+- generic [ref=e3]:
+  - complementary [ref=e5]:
+    - button "Expand sidebar" [ref=e12] [cursor=pointer]
+    - navigation [ref=e16]:
+      - list [ref=e17]:
+        - listitem [ref=e18]:
+          - link "Home" [ref=e19] [cursor=pointer]:
+            - /url: /
+        - listitem [ref=e24]:
+          - link "Cash Flow" [ref=e25] [cursor=pointer]:
+            - /url: /ledger
+        - listitem [ref=e30]:
+          - link "General Ledger" [ref=e31] [cursor=pointer]:
+            - /url: /general-ledger
+        - listitem [ref=e35]:
+          - link "Financial Statements" [ref=e36] [cursor=pointer]:
+            - /url: /statements
+        - listitem [ref=e41]:
+          - link "Reconciliation" [ref=e42] [cursor=pointer]:
+            - /url: /reconciliation
+        - listitem [ref=e48]:
+          - link "Relationships" [ref=e49] [cursor=pointer]:
+            - /url: /relationships
+        - listitem [ref=e56]:
+          - link "AI Agents" [ref=e57] [cursor=pointer]:
+            - /url: /agents
+        - listitem [ref=e62]:
+          - link "Audit & Risk" [ref=e63] [cursor=pointer]:
+            - /url: /audit
+        - listitem [ref=e68]:
+          - link "Value / ROI" [ref=e69] [cursor=pointer]:
+            - /url: /roi
+        - listitem [ref=e74]:
+          - link "Reports" [ref=e75] [cursor=pointer]:
+            - /url: /reports
+        - listitem [ref=e79]:
+          - link "Collections" [ref=e80] [cursor=pointer]:
+            - /url: /collections
+    - button "Aline Mukamana" [ref=e86] [cursor=pointer]:
+      - generic [ref=e87]: AM
+  - generic [ref=e88]:
+    - banner [ref=e89]:
+      - generic [ref=e90]:
+        - searchbox "Search anything…" [ref=e94]
+        - generic [ref=e95]:
+          - generic [ref=e96]: ⌘
+          - text: K
+      - button "Tools" [ref=e97] [cursor=pointer]
+      - link "Mail" [ref=e100] [cursor=pointer]:
+        - /url: /mail
+      - button "Kora copilot" [ref=e104] [cursor=pointer]
+      - button "Notifications" [ref=e107] [cursor=pointer]:
+        - generic [ref=e111]: "9"
+      - link "Account & preferences" [ref=e112] [cursor=pointer]:
+        - /url: /account
+      - button "Acme Insurance Ltd. All entities" [ref=e116] [cursor=pointer]:
+        - generic [ref=e122]:
+          - generic [ref=e123]: Acme Insurance Ltd.
+          - generic [ref=e124]: All entities
+    - main [ref=e127]:
+      - generic [ref=e128]:
+        - generic [ref=e129]:
+          - generic [ref=e130]:
+            - heading "Good afternoon, Aline" [level=1] [ref=e131]: Good afternoon, Aline👋
+            - paragraph [ref=e132]: Here's your business overview for today.
+          - generic [ref=e133]: May 12 - May 18, 2025
+        - generic [ref=e137]:
+          - generic [ref=e138]:
+            - generic [ref=e140]:
+              - generic [ref=e141]: Total Cash Position
+              - generic [ref=e142]: $2,457,389.00
+              - generic [ref=e143]:
+                - generic [ref=e144]: 12.5%
+                - generic [ref=e149]: vs last week
+            - generic [ref=e155]:
+              - generic [ref=e156]: Revenue (MTD)
+              - generic [ref=e157]: $1,842,120.50
+              - generic [ref=e158]:
+                - generic [ref=e159]: 18.7%
+                - generic [ref=e164]: vs last month
+            - generic [ref=e170]:
+              - generic [ref=e171]: Outstanding Receivables
+              - generic [ref=e172]: $2,154,890.30
+              - generic [ref=e173]:
+                - generic [ref=e174]: 15.3%
+                - generic [ref=e179]: vs last month
+            - generic [ref=e184]:
+              - generic [ref=e185]: Upcoming Payables
+              - generic [ref=e186]: $1,324,560.40
+              - generic [ref=e187]:
+                - generic [ref=e188]: 6.2%
+                - generic [ref=e193]: vs last month
+          - generic [ref=e198]:
+            - generic [ref=e200]:
+              - generic [ref=e201]:
+                - heading "Cash Flow Overview" [level=3] [ref=e203]
+                - generic [ref=e206]:
+                  - button "This Month" [ref=e207] [cursor=pointer]
+                  - button "Expand" [ref=e210] [cursor=pointer]
+                  - button "More" [ref=e216] [cursor=pointer]
+              - generic [ref=e222]:
+                - generic [ref=e223]:
+                  - text: $2,457,389.00
+                  - paragraph [ref=e224]: Net Cash Position
+                - generic [ref=e228]:
+                  - generic [ref=e229]: Cash Inflow
+                  - generic [ref=e230]: $6,812,430.00
+                - generic [ref=e234]:
+                  - generic [ref=e235]: Cash Outflow
+                  - generic [ref=e236]: "-$4,355,041.00"
+                - generic [ref=e240]:
+                  - generic [ref=e241]: Net Cash Flow
+                  - generic [ref=e242]: $2,457,389.00
+            - generic [ref=e249]:
+              - generic [ref=e250]:
+                - heading "AI Insights" [level=3] [ref=e255]
+                - button "View all" [ref=e256] [cursor=pointer]
+              - list [ref=e257]:
+                - listitem [ref=e258]:
+                  - generic [ref=e263]:
+                    - paragraph [ref=e264]: Cash flow forecast
+                    - paragraph [ref=e265]: Projected cash position on May 31, 2025
+                    - generic [ref=e266]:
+                      - generic [ref=e267]: $3.21M
+                      - generic [ref=e268]:
+                        - generic [ref=e272]: 23%
+                        - generic [ref=e273]: vs Apr 30
+                - listitem [ref=e277]:
+                  - generic [ref=e281]:
+                    - paragraph [ref=e282]: Overdue invoices
+                    - paragraph [ref=e283]: 12 invoices overdue > 30 days
+                    - generic [ref=e284]:
+                      - generic [ref=e285]: $214,890
+                      - generic [ref=e286]:
+                        - generic [ref=e290]: 8%
+                        - generic [ref=e291]: vs last week
+                - listitem [ref=e295]:
+                  - generic [ref=e300]:
+                    - paragraph [ref=e301]: Rising expense category
+                    - paragraph [ref=e302]: Software & Subscriptions up 22%
+                    - generic [ref=e303]:
+                      - generic [ref=e304]: $48,560
+                      - generic [ref=e305]:
+                        - generic [ref=e309]: 22%
+                        - generic [ref=e310]: vs last month
+                - listitem [ref=e314]:
+                  - generic [ref=e319]:
+                    - paragraph [ref=e320]: Margin pressure
+                    - paragraph [ref=e321]: Gross margin down 2.4%
+                    - generic [ref=e322]:
+                      - generic [ref=e323]: 24.6%
+                      - generic [ref=e324]:
+                        - generic [ref=e328]: 2.4pp
+                        - generic [ref=e329]: vs last month
+            - generic [ref=e334]:
+              - generic [ref=e335]:
+                - heading "Top approvals" [level=3] [ref=e336]
+                - generic [ref=e337]: "2"
+              - list [ref=e338]:
+                - listitem [ref=e339]:
+                  - link "Payment to PT Imports PO-2025-441 · $260 over PO — overcharge? high" [ref=e340] [cursor=pointer]:
+                    - /url: /approvals
+                    - generic [ref=e344]:
+                      - paragraph [ref=e345]: Payment to PT Imports
+                      - paragraph [ref=e346]: PO-2025-441 · $260 over PO — overcharge?
+                    - generic [ref=e347]: high
+                - listitem [ref=e350]:
+                  - link "Capital equipment purchase Server infrastructure · CapEx 2025 high" [ref=e351] [cursor=pointer]:
+                    - /url: /approvals
+                    - generic [ref=e355]:
+                      - paragraph [ref=e356]: Capital equipment purchase
+                      - paragraph [ref=e357]: Server infrastructure · CapEx 2025
+                    - generic [ref=e358]: high
+              - link "Go to Action Center" [ref=e361] [cursor=pointer]:
+                - /url: /approvals
+          - generic [ref=e364]:
+            - generic [ref=e365]:
+              - generic [ref=e366]:
+                - heading "Reconciliation Snapshot" [level=3] [ref=e368]
+                - button "This Month" [ref=e371] [cursor=pointer]
+              - generic [ref=e374]:
+                - generic [ref=e375]:
+                  - generic:
+                    - generic:
+                      - generic: "10"
+                      - generic: Total
+                - list [ref=e379]:
+                  - listitem [ref=e380]:
+                    - generic [ref=e382]: Auto matched
+                    - generic [ref=e383]: "1"
+                    - generic [ref=e384]: 10%
+                  - listitem [ref=e385]:
+                    - generic [ref=e387]: Suggested
+                    - generic [ref=e388]: "5"
+                    - generic [ref=e389]: 50%
+                  - listitem [ref=e390]:
+                    - generic [ref=e392]: Needs review
+                    - generic [ref=e393]: "2"
+                    - generic [ref=e394]: 20%
+                  - listitem [ref=e395]:
+                    - generic [ref=e397]: Duplicate risk
+                    - generic [ref=e398]: "1"
+                    - generic [ref=e399]: 10%
+                  - listitem [ref=e400]:
+                    - generic [ref=e402]: Suspicious
+                    - generic [ref=e403]: "1"
+                    - generic [ref=e404]: 10%
+            - generic [ref=e405]:
+              - generic [ref=e406]:
+                - heading "External Relationships" [level=3] [ref=e407]
+                - button "View all" [ref=e408] [cursor=pointer]
+              - list [ref=e409]:
+                - listitem [ref=e410]:
+                  - generic [ref=e417]: Customers
+                  - generic [ref=e418]: "248"
+                  - generic [ref=e419]: 12 this month
+                - listitem [ref=e424]:
+                  - generic [ref=e430]: Suppliers
+                  - generic [ref=e431]: "186"
+                  - generic [ref=e432]: 5 this month
+                - listitem [ref=e437]:
+                  - generic [ref=e444]: Partners
+                  - generic [ref=e445]: "42"
+                  - generic [ref=e446]: —
+                - listitem [ref=e448]:
+                  - generic [ref=e453]: Contracts
+                  - generic [ref=e454]: "78"
+                  - generic [ref=e455]: 3 expiring soon
+                - listitem [ref=e457]:
+                  - generic [ref=e463]: Renewals
+                  - generic [ref=e464]: "9"
+                  - generic [ref=e465]: Due in 30 days
+            - generic [ref=e467]:
+              - generic [ref=e468]:
+                - heading "Credit Passport" [level=3] [ref=e469]
+                - button "View details" [ref=e470] [cursor=pointer]
+              - generic [ref=e471]:
+                - generic [ref=e472]:
+                  - generic:
+                    - generic:
+                      - generic: "82"
+                      - generic: Good
+                - list [ref=e476]:
+                  - listitem [ref=e477]:
+                    - generic [ref=e478]: Payment Behavior
+                    - generic [ref=e481]: Good
+                  - listitem [ref=e482]:
+                    - generic [ref=e483]: Financial Strength
+                    - generic [ref=e486]: Good
+                  - listitem [ref=e487]:
+                    - generic [ref=e488]: Risk Profile
+                    - generic [ref=e491]: Low
+                  - listitem [ref=e492]:
+                    - generic [ref=e493]: Credit Readiness
+                    - generic [ref=e496]: Strong
+              - paragraph [ref=e497]: Business Health Score · Updated May 18, 2025
+            - generic [ref=e498]:
+              - generic [ref=e499]:
+                - heading "AI Agent Activity" [level=3] [ref=e500]
+                - button "View all" [ref=e501] [cursor=pointer]
+              - list [ref=e502]:
+                - listitem [ref=e503]:
+                  - generic [ref=e508]: Reconciliation Agent
+                  - generic [ref=e509]: Completed
+                  - generic [ref=e510]: 2m ago
+                - listitem [ref=e511]:
+                  - generic [ref=e516]: CFO Agent
+                  - generic [ref=e517]: Completed
+                  - generic [ref=e518]: 5m ago
+                - listitem [ref=e519]:
+                  - generic [ref=e524]: Collections Agent
+                  - generic [ref=e525]: In Progress
+                  - generic [ref=e526]: 12m ago
+                - listitem [ref=e527]:
+                  - generic [ref=e532]: Relationship Agent
+                  - generic [ref=e533]: Completed
+                  - generic [ref=e534]: 18m ago
+                - listitem [ref=e535]:
+                  - generic [ref=e540]: Credit Passport Agent
+                  - generic [ref=e541]: Completed
+                  - generic [ref=e542]: 25m ago
+                - listitem [ref=e543]:
+                  - generic [ref=e548]: Audit Agent
+                  - generic [ref=e549]: Completed
+                  - generic [ref=e550]: 32m ago
+          - generic [ref=e552]:
+            - heading "Recent Documents" [level=3] [ref=e553]
+            - list [ref=e554]:
+              - listitem [ref=e555]:
+                - button [ref=e556] [cursor=pointer]:
+                  - generic [ref=e561]:
+                    - paragraph [ref=e562]: Bank Statement – May 2025
+                    - paragraph [ref=e563]: PDF · 2.4 MB · 1h ago
+              - listitem [ref=e564]:
+                - button [ref=e565] [cursor=pointer]:
+                  - generic [ref=e570]:
+                    - paragraph [ref=e571]: Invoice INV-10356
+                    - paragraph [ref=e572]: PDF · 320 KB · 2h ago
+              - listitem [ref=e573]:
+                - button [ref=e574] [cursor=pointer]:
+                  - generic [ref=e579]:
+                    - paragraph [ref=e580]: Q2 Forecast.xlsx
+                    - paragraph [ref=e581]: XLSX · 1.2 MB · 3h ago
+              - listitem [ref=e582]:
+                - button [ref=e583] [cursor=pointer]:
+                  - generic [ref=e588]:
+                    - paragraph [ref=e589]: Supplier Agreement.pdf
+                    - paragraph [ref=e590]: PDF · 850 KB · 5h ago
+              - listitem [ref=e591]:
+                - button [ref=e592] [cursor=pointer]:
+                  - generic [ref=e597]:
+                    - paragraph [ref=e598]: Audit Report – April 2025
+                    - paragraph [ref=e599]: PDF · 1.6 MB · 1d ago
+              - listitem [ref=e600]:
+                - button [ref=e601] [cursor=pointer]:
+                  - generic [ref=e606]:
+                    - paragraph [ref=e607]: Upload Document
+                    - paragraph [ref=e608]: Drag & drop or browse

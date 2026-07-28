@@ -11,6 +11,7 @@ import (
 type Organization struct {
 	ID        string
 	Name      string
+	Domain    string
 	Status    string
 	CreatedAt time.Time
 }
