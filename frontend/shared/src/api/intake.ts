@@ -14,8 +14,18 @@ export async function fetchIntakeDocs(apiBaseUrl: string, token: string, signal?
   return data.items ?? [];
 }
 
-export async function uploadIntakeDoc(apiBaseUrl: string, token: string, name: string): Promise<IntakeDoc> {
-  return mutateDoc(`${apiBaseUrl}/api/intake/upload`, token, { name });
+export async function uploadIntakeDoc(apiBaseUrl: string, token: string, file: File): Promise<IntakeDoc> {
+  const form = new FormData();
+  form.append('file', file);
+  const response = await fetch(`${apiBaseUrl}/api/intake/upload`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  if (!response.ok) {
+    throw new Error((await safePayload(response)) || `${response.status} ${response.statusText}`);
+  }
+  return response.json() as Promise<IntakeDoc>;
 }
 
 export async function matchIntakeDoc(apiBaseUrl: string, token: string, docID: string): Promise<IntakeDoc> {

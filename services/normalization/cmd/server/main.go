@@ -12,7 +12,32 @@ import (
 )
 
 func main() {
-	service := normalization.NewService(entities.NewResolver(), eventledger.NewStore())
+	databaseURL := os.Getenv("DATABASE_URL")
+
+	var entityStore entities.Store
+	var eventStore eventledger.Store
+	if databaseURL != "" {
+		pgEntities, err := entities.NewPostgresStore(databaseURL)
+		if err != nil {
+			log.Fatalf("entities postgres store: %v", err)
+		}
+		defer pgEntities.Close()
+		entityStore = pgEntities
+
+		pgEvents, err := eventledger.NewPostgresStore(databaseURL)
+		if err != nil {
+			log.Fatalf("eventledger postgres store: %v", err)
+		}
+		defer pgEvents.Close()
+		eventStore = pgEvents
+		log.Println("using postgres stores")
+	} else {
+		entityStore = entities.NewResolver()
+		eventStore = eventledger.NewStore()
+		log.Println("using memory stores")
+	}
+
+	service := normalization.NewService(entityStore, eventStore)
 	server := httpapi.New(service)
 	address := ":" + env("PORT", "8080")
 	log.Printf("normalization listening on %s", address)

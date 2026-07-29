@@ -62,6 +62,7 @@ type Document struct {
 	BatchID               string    `json:"batch_id"`
 	FileName              string    `json:"file_name"`
 	ContentType           string    `json:"content_type"`
+	ObjectKey             string    `json:"object_key"`
 	Fingerprint           string    `json:"fingerprint"`
 	SizeBytes             int       `json:"size_bytes"`
 	DuplicateOfDocumentID string    `json:"duplicate_of_document_id,omitempty"`
@@ -104,11 +105,15 @@ type Result struct {
 }
 
 type Service struct {
-	store *MemoryStore
+	store Store
 }
 
-func NewService(store *MemoryStore) *Service {
+func NewService(store Store) *Service {
 	return &Service{store: store}
+}
+
+func (s *Service) ListDocuments(orgID string) ([]Document, error) {
+	return s.store.ListDocuments(orgID)
 }
 
 func (s *Service) Ingest(input IngestInput) (Result, error) {
@@ -123,7 +128,7 @@ func (s *Service) Ingest(input IngestInput) (Result, error) {
 	}
 
 	fingerprint := idempotency.Fingerprint(input.Content)
-	if existing, ok := s.store.idempotencyResult(input.IdempotencyKey); ok {
+	if existing, ok := s.store.IdempotencyResult(input.IdempotencyKey); ok {
 		if existing.Document.Fingerprint != fingerprint {
 			return Result{}, errors.New("idempotency key reused with different content")
 		}
@@ -131,21 +136,21 @@ func (s *Service) Ingest(input IngestInput) (Result, error) {
 		return existing, nil
 	}
 
-	if existing, ok := s.store.documentByFingerprint(input.OrganizationID, fingerprint); ok && !input.ForceReprocess {
-		result, err := s.store.latestResult(existing.ID)
+	if existing, ok := s.store.DocumentByFingerprint(input.OrganizationID, fingerprint); ok && !input.ForceReprocess {
+		result, err := s.store.LatestResult(existing.ID)
 		if err != nil {
 			return Result{}, err
 		}
 		result.DuplicateSource = true
-		s.store.saveIdempotency(input.IdempotencyKey, result)
+		s.store.SaveIdempotency(input.IdempotencyKey, result)
 		return result, nil
 	}
 
-	result, err := s.store.create(input, fingerprint)
+	result, err := s.store.Create(input, fingerprint)
 	if err != nil {
 		return Result{}, err
 	}
-	s.store.saveIdempotency(input.IdempotencyKey, result)
+	s.store.SaveIdempotency(input.IdempotencyKey, result)
 	return result, nil
 }
 
@@ -172,21 +177,21 @@ func NewMemoryStore() *MemoryStore {
 	}
 }
 
-func (s *MemoryStore) idempotencyResult(key string) (Result, bool) {
+func (s *MemoryStore) IdempotencyResult(key string) (Result, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	result, ok := s.idempotencyByKey[key]
 	return result, ok
 }
 
-func (s *MemoryStore) documentByFingerprint(orgID string, fingerprint string) (Document, bool) {
+func (s *MemoryStore) DocumentByFingerprint(orgID string, fingerprint string) (Document, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	doc, ok := s.documentByOrgHash[orgHashKey(orgID, fingerprint)]
 	return doc, ok
 }
 
-func (s *MemoryStore) latestResult(documentID string) (Result, error) {
+func (s *MemoryStore) LatestResult(documentID string) (Result, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	doc, ok := s.documentsByID[documentID]
@@ -206,13 +211,13 @@ func (s *MemoryStore) latestResult(documentID string) (Result, error) {
 	}, nil
 }
 
-func (s *MemoryStore) saveIdempotency(key string, result Result) {
+func (s *MemoryStore) SaveIdempotency(key string, result Result) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.idempotencyByKey[key] = result
 }
 
-func (s *MemoryStore) create(input IngestInput, fingerprint string) (Result, error) {
+func (s *MemoryStore) Create(input IngestInput, fingerprint string) (Result, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -271,6 +276,30 @@ func (s *MemoryStore) create(input IngestInput, fingerprint string) (Result, err
 		DuplicateSource:   hasDuplicate,
 		Reprocessed:       reprocessed,
 	}, nil
+}
+
+func (s *MemoryStore) ListDocuments(orgID string) ([]Document, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var docs []Document
+	for _, doc := range s.documentsByID {
+		if doc.OrganizationID == orgID {
+			docs = append(docs, doc)
+		}
+	}
+	return docs, nil
+}
+
+func (s *MemoryStore) ListBatches(orgID string) ([]Batch, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var batches []Batch
+	for _, batch := range s.batchesByID {
+		if batch.OrganizationID == orgID {
+			batches = append(batches, batch)
+		}
+	}
+	return batches, nil
 }
 
 func (s *MemoryStore) sourceRecords(input IngestInput, documentID string, versionID string, documentQuality []string, now time.Time) ([]SourceRecord, error) {

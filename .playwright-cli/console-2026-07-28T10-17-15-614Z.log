@@ -1,1 +1,6 @@
 [    1225ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/chunk-EM65CKQS.js?v=49b4403c:21550
+[ 5719809ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/chunk-EM65CKQS.js?v=49b4403c:21550
+[ 5727494ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://localhost:8080/api/session/me:0
+[ 6315068ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:8080/api/session/enterprise-register:0
+[ 6320723ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:8080/api/session/enterprise-register:0
+[ 8110091ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/chunk-EM65CKQS.js?v=49b4403c:21550

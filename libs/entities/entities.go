@@ -60,22 +60,24 @@ type Entity struct {
 	CreatedAt            time.Time         `json:"created_at"`
 }
 
-type Resolver struct {
+var _ Store = (*MemoryResolver)(nil)
+
+type MemoryResolver struct {
 	mu       sync.RWMutex
 	byKey    map[string]Entity
 	byID     map[string]Entity
 	byTenant map[string][]string
 }
 
-func NewResolver() *Resolver {
-	return &Resolver{
+func NewResolver() Store {
+	return &MemoryResolver{
 		byKey:    map[string]Entity{},
 		byID:     map[string]Entity{},
 		byTenant: map[string][]string{},
 	}
 }
 
-func (r *Resolver) Resolve(organizationID string, entityType Type, candidate Candidate) (Entity, bool, error) {
+func (r *MemoryResolver) Resolve(organizationID string, entityType Type, candidate Candidate) (Entity, bool, error) {
 	if organizationID == "" {
 		return Entity{}, false, errors.New("organization id is required")
 	}
@@ -112,7 +114,7 @@ func (r *Resolver) Resolve(organizationID string, entityType Type, candidate Can
 	return clone(entity), true, nil
 }
 
-func (r *Resolver) Get(organizationID string, entityID string) (Entity, error) {
+func (r *MemoryResolver) Get(organizationID string, entityID string) (Entity, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	entity, ok := r.byID[entityID]
@@ -122,7 +124,7 @@ func (r *Resolver) Get(organizationID string, entityID string) (Entity, error) {
 	return clone(entity), nil
 }
 
-func (r *Resolver) List(organizationID string) []Entity {
+func (r *MemoryResolver) List(organizationID string) []Entity {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	ids := append([]string(nil), r.byTenant[organizationID]...)

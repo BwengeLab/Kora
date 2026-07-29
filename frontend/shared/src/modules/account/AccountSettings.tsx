@@ -3,15 +3,19 @@ import { Bell, Globe, LogOut, Shield, User } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { PageHeader } from '../../app/shell';
 import { fetchAccountSettings, saveAccountSettings, signOutOtherSessions, type AccountSettingsPayload } from '../../api/accountMailbox';
+import { sessionTokenKey } from '../../api/session';
 import { getApiBaseUrl } from '../../api/client';
 import { useSession } from '../../auth/hooks';
 import { GlassSurface, PartyAvatar, cn } from '../../design-system';
+import { usePlatform } from '../../platform/context';
+import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
 
 export function AccountSettings() {
   const session = useSession();
   const apiBaseUrl = getApiBaseUrl();
   const queryClient = useQueryClient();
+  const platform = usePlatform();
   const { data } = useQuery({
     queryKey: ['account-settings', session?.user.email],
     queryFn: ({ signal }) => fetchAccountSettings(apiBaseUrl, session!.token, signal),
@@ -56,6 +60,11 @@ export function AccountSettings() {
     } catch (error) {
       toast({ tone: 'warning', title: 'Session revoke failed', body: error instanceof Error ? error.message : 'Could not revoke other sessions.' });
     }
+  };
+
+  const signOut = async () => {
+    await platform.store.remove(sessionTokenKey());
+    useSessionStore.getState().clear();
   };
 
   return (
@@ -104,6 +113,10 @@ export function AccountSettings() {
               <div><p className="text-[13px] font-semibold text-ink">This session</p><p className="text-[11.5px] text-ink-muted">{session?.tenant.name ?? 'Acme'} · Kigali · started today</p></div>
               <button type="button" onClick={() => void revokeSessions()} className="inline-flex items-center gap-1.5 rounded-xl bg-white/80 px-3 py-1.5 text-[12px] font-bold text-danger ring-1 ring-white/70 hover:bg-white"><LogOut className="size-3.5" /> Sign out other sessions</button>
             </div>
+            <button type="button" onClick={() => void signOut()} className="mt-3 flex w-full items-center justify-between rounded-2xl bg-danger-soft/60 p-3.5 text-left ring-1 ring-danger/20 hover:bg-danger-soft">
+              <div><p className="text-[13px] font-semibold text-danger">Sign out</p><p className="text-[11.5px] text-ink-muted">End this session and return to the sign-in page.</p></div>
+              <LogOut className="size-4 text-danger" />
+            </button>
           </Section>
         </div>
       </div>

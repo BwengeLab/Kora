@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, FileText, Inbox, Link2, Loader2, Mail, Plus, Scan, Smartphone, Sparkles, Upload } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PageHeader } from '../../app/shell';
 import { getApiBaseUrl } from '../../api/client';
 import { connectIntakeSource, fetchIntakeDocs, fetchIntakeSources, matchIntakeDoc, postIntakeDoc, uploadIntakeDoc } from '../../api/intake';
@@ -23,6 +23,7 @@ export function DataIntakePage() {
   const apiBaseUrl = getApiBaseUrl();
   const token = useSessionStore((s) => s.session?.token ?? '');
   const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { data } = useQuery({
     queryKey: ['intake-docs', token],
     queryFn: ({ signal }) => fetchIntakeDocs(apiBaseUrl, token, signal),
@@ -43,7 +44,7 @@ export function DataIntakePage() {
   }, [docs, selectedId]);
 
   const uploadMutation = useMutation({
-    mutationFn: (name: string) => uploadIntakeDoc(apiBaseUrl, token, name),
+    mutationFn: (file: File) => uploadIntakeDoc(apiBaseUrl, token, file),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['intake-docs', token] });
       toast({ tone: 'info', title: 'Uploaded', body: 'Kora is extracting the fields...' });
@@ -68,9 +69,15 @@ export function DataIntakePage() {
         title="Data Intake"
         subtitle={<><span className="font-semibold text-ink">{pending}</span> documents waiting to be reviewed and posted. Bank feeds, email-in, scans and uploads land here.</>}
         right={
-          <button type="button" onClick={() => uploadMutation.mutate('Dropped file.pdf')} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink px-4 text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">
-            <Plus className="size-4" /> Upload document
-          </button>
+          <>
+            <input ref={fileInputRef} type="file" className="hidden" onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) uploadMutation.mutate(file);
+            }} />
+            <button type="button" onClick={() => fileInputRef.current?.click()} className="inline-flex h-11 items-center gap-2 rounded-2xl bg-gradient-to-br from-brand to-brand-ink px-4 text-[13px] font-bold text-white shadow-glass-soft hover:brightness-110">
+              <Plus className="size-4" /> Upload document
+            </button>
+          </>
         }
       />
       <div className="flex min-h-0 flex-1 gap-5 px-8 pb-6">

@@ -46,6 +46,7 @@ type RefreshSession struct {
 type Store interface {
 	CreateOrganization(org Organization) error
 	CreateUser(user User) error
+	UpdateUser(user User) error
 	CreateRoleBinding(binding RoleBinding) error
 	FindOrganizationByID(organizationID string) (Organization, error)
 	FindUserByEmail(email string) (User, error)
@@ -95,6 +96,24 @@ func (s *MemoryStore) CreateUser(user User) error {
 	}
 	s.users[user.ID] = user
 	s.usersByEmail[user.Email] = user.ID
+	return nil
+}
+
+func (s *MemoryStore) UpdateUser(user User) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	existing, exists := s.users[user.ID]
+	if !exists {
+		return errors.New("user not found")
+	}
+	if user.Email != existing.Email {
+		if _, taken := s.usersByEmail[user.Email]; taken {
+			return errors.New("email already in use")
+		}
+		delete(s.usersByEmail, existing.Email)
+		s.usersByEmail[user.Email] = user.ID
+	}
+	s.users[user.ID] = user
 	return nil
 }
 

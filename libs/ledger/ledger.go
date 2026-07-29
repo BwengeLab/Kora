@@ -61,18 +61,18 @@ type ActorContext struct {
 	Human bool         `json:"human"`
 }
 
-type Store struct {
+type memoryStore struct {
 	mu       sync.RWMutex
 	accounts map[string]Account
 	groups   map[string]Group
 	reversed map[string]string
 }
 
-func NewStore() *Store {
-	return &Store{accounts: map[string]Account{}, groups: map[string]Group{}, reversed: map[string]string{}}
+func NewStore() Store {
+	return &memoryStore{accounts: map[string]Account{}, groups: map[string]Group{}, reversed: map[string]string{}}
 }
 
-func (s *Store) CreateAccount(actor access.Actor, account Account) (Account, error) {
+func (s *memoryStore) CreateAccount(actor access.Actor, account Account) (Account, error) {
 	if err := access.Authorize(actor, access.Resource{OrganizationID: account.OrganizationID}, access.PermissionPostLedger); err != nil {
 		return Account{}, err
 	}
@@ -95,7 +95,7 @@ func (s *Store) CreateAccount(actor access.Actor, account Account) (Account, err
 	return account, nil
 }
 
-func (s *Store) Post(ctx ActorContext, task workflow.Task, entries []Entry) (Group, error) {
+func (s *memoryStore) Post(ctx ActorContext, task workflow.Task, entries []Entry) (Group, error) {
 	if !ctx.Human {
 		return Group{}, errors.New("agents cannot post ledger entries")
 	}
@@ -158,7 +158,7 @@ func (s *Store) Post(ctx ActorContext, task workflow.Task, entries []Entry) (Gro
 	return cloneGroup(group), nil
 }
 
-func (s *Store) Reverse(ctx ActorContext, organizationID, groupID string, proof evidence.Evidence) (Group, error) {
+func (s *memoryStore) Reverse(ctx ActorContext, organizationID, groupID string, proof evidence.Evidence) (Group, error) {
 	if !ctx.Human {
 		return Group{}, errors.New("agents cannot reverse ledger postings")
 	}
@@ -199,7 +199,7 @@ func (s *Store) Reverse(ctx ActorContext, organizationID, groupID string, proof 
 	return cloneGroup(reversal), nil
 }
 
-func (s *Store) Group(organizationID, groupID string) (Group, error) {
+func (s *memoryStore) Group(organizationID, groupID string) (Group, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	group, ok := s.groups[groupID]
@@ -209,7 +209,7 @@ func (s *Store) Group(organizationID, groupID string) (Group, error) {
 	return cloneGroup(group), nil
 }
 
-func (s *Store) Balance(organizationID, accountID string) (int64, error) {
+func (s *memoryStore) Balance(organizationID, accountID string) (int64, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	account, ok := s.accounts[accountID]

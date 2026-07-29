@@ -58,17 +58,17 @@ type ActorContext struct {
 	Human bool         `json:"human"`
 }
 
-type Store struct {
+type memoryStore struct {
 	mu      sync.RWMutex
 	tasks   map[string]Task
 	history map[string][]Transition
 }
 
-func NewStore() *Store {
-	return &Store{tasks: map[string]Task{}, history: map[string][]Transition{}}
+func NewStore() Store {
+	return &memoryStore{tasks: map[string]Task{}, history: map[string][]Transition{}}
 }
 
-func (s *Store) Create(actor access.Actor, task Task, rules policy.Policy) (Task, error) {
+func (s *memoryStore) Create(actor access.Actor, task Task, rules policy.Policy) (Task, error) {
 	if err := access.Authorize(actor, access.Resource{OrganizationID: task.OrganizationID}, access.PermissionCreateApproval); err != nil {
 		return Task{}, err
 	}
@@ -100,7 +100,7 @@ func (s *Store) Create(actor access.Actor, task Task, rules policy.Policy) (Task
 	return cloneTask(task), nil
 }
 
-func (s *Store) Assign(ctx ActorContext, taskID string, role access.Role, proof evidence.Evidence) (Task, error) {
+func (s *memoryStore) Assign(ctx ActorContext, taskID string, role access.Role, proof evidence.Evidence) (Task, error) {
 	return s.transition(ctx, taskID, Assigned, proof, func(task *Task) error {
 		if err := access.Authorize(ctx.Actor, access.Resource{OrganizationID: task.OrganizationID}, access.PermissionCreateApproval); err != nil {
 			return err
@@ -116,7 +116,7 @@ func (s *Store) Assign(ctx ActorContext, taskID string, role access.Role, proof 
 	})
 }
 
-func (s *Store) Approve(ctx ActorContext, taskID string, rules policy.Policy, proof evidence.Evidence) (Task, error) {
+func (s *memoryStore) Approve(ctx ActorContext, taskID string, rules policy.Policy, proof evidence.Evidence) (Task, error) {
 	if !ctx.Human {
 		return Task{}, errors.New("agents cannot approve financial actions")
 	}
@@ -150,7 +150,7 @@ func (s *Store) Approve(ctx ActorContext, taskID string, rules policy.Policy, pr
 	})
 }
 
-func (s *Store) Reject(ctx ActorContext, taskID string, proof evidence.Evidence) (Task, error) {
+func (s *memoryStore) Reject(ctx ActorContext, taskID string, proof evidence.Evidence) (Task, error) {
 	if !ctx.Human {
 		return Task{}, errors.New("agents cannot reject financial actions")
 	}
@@ -162,7 +162,7 @@ func (s *Store) Reject(ctx ActorContext, taskID string, proof evidence.Evidence)
 	})
 }
 
-func (s *Store) Escalate(ctx ActorContext, taskID string, proof evidence.Evidence) (Task, error) {
+func (s *memoryStore) Escalate(ctx ActorContext, taskID string, proof evidence.Evidence) (Task, error) {
 	return s.transition(ctx, taskID, Escalated, proof, func(task *Task) error {
 		if err := access.Authorize(ctx.Actor, access.Resource{OrganizationID: task.OrganizationID}, access.PermissionCreateApproval); err != nil {
 			return err
@@ -174,7 +174,7 @@ func (s *Store) Escalate(ctx ActorContext, taskID string, proof evidence.Evidenc
 	})
 }
 
-func (s *Store) MarkExecuted(ctx ActorContext, taskID string, proof evidence.Evidence) (Task, error) {
+func (s *memoryStore) MarkExecuted(ctx ActorContext, taskID string, proof evidence.Evidence) (Task, error) {
 	if !ctx.Human {
 		return Task{}, errors.New("agents cannot execute financial actions")
 	}
@@ -186,7 +186,7 @@ func (s *Store) MarkExecuted(ctx ActorContext, taskID string, proof evidence.Evi
 	})
 }
 
-func (s *Store) MarkReversed(ctx ActorContext, taskID string, proof evidence.Evidence) (Task, error) {
+func (s *memoryStore) MarkReversed(ctx ActorContext, taskID string, proof evidence.Evidence) (Task, error) {
 	if !ctx.Human {
 		return Task{}, errors.New("agents cannot reverse financial actions")
 	}
@@ -198,7 +198,7 @@ func (s *Store) MarkReversed(ctx ActorContext, taskID string, proof evidence.Evi
 	})
 }
 
-func (s *Store) Get(organizationID, taskID string) (Task, error) {
+func (s *memoryStore) Get(organizationID, taskID string) (Task, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	task, ok := s.tasks[taskID]
@@ -208,7 +208,7 @@ func (s *Store) Get(organizationID, taskID string) (Task, error) {
 	return cloneTask(task), nil
 }
 
-func (s *Store) History(organizationID, taskID string) ([]Transition, error) {
+func (s *memoryStore) History(organizationID, taskID string) ([]Transition, error) {
 	if _, err := s.Get(organizationID, taskID); err != nil {
 		return nil, err
 	}
@@ -221,7 +221,7 @@ type pendingApproval struct{}
 
 func (pendingApproval) Error() string { return "additional approval required" }
 
-func (s *Store) transition(ctx ActorContext, taskID string, target State, proof evidence.Evidence, mutate func(*Task) error) (Task, error) {
+func (s *memoryStore) transition(ctx ActorContext, taskID string, target State, proof evidence.Evidence, mutate func(*Task) error) (Task, error) {
 	if ctx.Actor.UserID == "" {
 		return Task{}, errors.New("actor user is required")
 	}

@@ -14,10 +14,10 @@ import (
 
 type Server struct {
 	mux   *http.ServeMux
-	store *ledger.Store
+	store ledger.Store
 }
 
-func New(store *ledger.Store) *Server {
+func New(store ledger.Store) *Server {
 	s := &Server{mux: http.NewServeMux(), store: store}
 	s.mux.HandleFunc("/healthz", servicekit.HealthHandler("ledger"))
 	s.mux.HandleFunc("/v1/accounts", s.accounts)

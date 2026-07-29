@@ -25,8 +25,13 @@ export interface EnterpriseRegisterInput {
 
 export interface EnterpriseLoginInput {
   business_email: string;
-  password?: string;
-  invite_code?: string;
+  password: string;
+}
+
+export interface SetPasswordInput {
+  business_email: string;
+  invite_code: string;
+  password: string;
 }
 
 export async function registerEnterpriseSession(
@@ -55,6 +60,20 @@ export async function loginEnterpriseSession(
   };
   if (signal) init.signal = signal;
   return jsonRequest<Session>(`${apiBaseUrl}/api/session/enterprise-login`, init);
+}
+
+export async function setPasswordSession(
+  apiBaseUrl: string,
+  input: SetPasswordInput,
+  signal?: AbortSignal,
+): Promise<Session> {
+  const init: RequestInit = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  };
+  if (signal) init.signal = signal;
+  return jsonRequest<Session>(`${apiBaseUrl}/api/session/set-password`, init);
 }
 
 export async function fetchCurrentSession(

@@ -3,6 +3,7 @@ import { AppRouter } from '../routing/router';
 import type { Platform } from '../platform/types';
 import { useSession } from '../auth/hooks';
 import { EnterpriseAuthGate } from '../modules/auth/EnterpriseAuthGate';
+import { SetPasswordPage } from '../modules/auth/SetPasswordPage';
 
 export interface AppProps {
   platform: Platform;
@@ -14,9 +15,16 @@ export interface AppProps {
 // built once the UI/UX descriptions are provided.
 export function App({ platform, apiBaseUrl }: AppProps) {
   const session = useSession();
+  const isInvitePath = typeof window !== 'undefined' && window.location.pathname.startsWith('/invite');
   return (
     <AppProviders platform={platform} apiBaseUrl={apiBaseUrl}>
-      {session ? <AppRouter /> : <EnterpriseAuthGate apiBaseUrl={apiBaseUrl} platform={platform} />}
+      {isInvitePath ? (
+        <SetPasswordPage apiBaseUrl={apiBaseUrl} platform={platform} />
+      ) : session ? (
+        <AppRouter />
+      ) : (
+        <EnterpriseAuthGate apiBaseUrl={apiBaseUrl} platform={platform} />
+      )}
     </AppProviders>
   );
 }

@@ -4,7 +4,6 @@ import { useResolvedBlueprint } from '../../blueprints/renderer';
 import { cn } from '../../design-system';
 import { useUiStore } from '../../state/uiStore';
 import { KoraGlyph, KoraLogo } from './KoraLogo';
-import { RoleSwitcher } from './RoleSwitcher';
 import { SidebarNavItem } from './SidebarNavItem';
 import { UserCard } from './UserCard';
 
@@ -53,7 +52,6 @@ export function Sidebar() {
 
         {/* Footer */}
         <div className="mt-auto flex flex-col gap-2">
-          {open ? <RoleSwitcher /> : null}
           <UserCard collapsed={!open} />
         </div>
       </aside>

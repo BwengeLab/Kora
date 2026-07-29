@@ -2,11 +2,14 @@ package httpapi
 
 import (
 	"bytes"
+	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"slices"
 	"strconv"
@@ -17,9 +20,12 @@ import (
 	"github.com/kora-finance/kora/libs/access"
 	"github.com/kora-finance/kora/libs/auth"
 	"github.com/kora-finance/kora/libs/connectors"
+	"github.com/kora-finance/kora/libs/email"
 	"github.com/kora-finance/kora/libs/identity"
+	"github.com/kora-finance/kora/libs/ingestion"
 	"github.com/kora-finance/kora/libs/servicekit"
 	"github.com/kora-finance/kora/services/gateway/internal/demo"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 const maxRequestBytes = 1 << 20
@@ -29,7 +35,7 @@ const demoPassword = "demo-pass-123"
 type Server struct {
 	mux                  *http.ServeMux
 	identityService      *identity.Service
-	identityStore        *identity.MemoryStore
+	identityStore        identity.Store
 	connections          connectors.ConnectionStore
 	jwtSecret            []byte
 	demoUsers            map[string]demoUser
@@ -62,8 +68,12 @@ type Server struct {
 	agentRuntimeURL      string
 	agentRuntimeToken    string
 	runtimeDatabaseURL   string
+	db                  *sql.DB
+	documentAIURL        string
+	ingestionServiceURL  string
 	enterpriseMu         sync.RWMutex
 	pendingInvites       map[string]enterpriseInvite
+	emailSender          *email.Sender
 	httpClient           *http.Client
 }
 
@@ -149,7 +159,17 @@ type portalAccessResponse struct {
 }
 
 func New(secret []byte) (*Server, error) {
-	store := identity.NewMemoryStore()
+	databaseURL := os.Getenv("DATABASE_URL")
+	var store identity.Store
+	if databaseURL != "" {
+		pgStore, err := identity.NewPostgresStore(databaseURL)
+		if err != nil {
+			return nil, fmt.Errorf("identity postgres store: %w", err)
+		}
+		store = pgStore
+	} else {
+		store = identity.NewMemoryStore()
+	}
 	service := identity.NewService(store, secret)
 	connectionStore := connectors.NewMemoryConnectionStore()
 	server := &Server{
@@ -158,11 +178,28 @@ func New(secret []byte) (*Server, error) {
 		identityStore:      store,
 		connections:        connectionStore,
 		jwtSecret:          secret,
-		agentRuntimeURL:    strings.TrimRight(os.Getenv("KORA_AGENT_RUNTIME_URL"), "/"),
-		agentRuntimeToken:  os.Getenv("KORA_AGENT_RUNTIME_TOKEN"),
-		runtimeDatabaseURL: os.Getenv("DATABASE_URL"),
+		agentRuntimeURL:     strings.TrimRight(os.Getenv("KORA_AGENT_RUNTIME_URL"), "/"),
+		agentRuntimeToken:   os.Getenv("KORA_AGENT_RUNTIME_TOKEN"),
+		runtimeDatabaseURL:  databaseURL,
+		documentAIURL:       strings.TrimRight(os.Getenv("KORA_DOCUMENT_AI_URL"), "/"),
+		ingestionServiceURL: strings.TrimRight(os.Getenv("KORA_INGESTION_SERVICE_URL"), "/"),
 		pendingInvites:     map[string]enterpriseInvite{},
 		httpClient:         &http.Client{Timeout: 35 * time.Second},
+		emailSender: email.NewSender(email.Config{
+			APIKey:   os.Getenv("KORA_MAILERSEND_API_KEY"),
+			FromAddr: os.Getenv("KORA_SMTP_FROM_ADDR"),
+			FromName: os.Getenv("KORA_SMTP_FROM_NAME"),
+		}),
+	}
+	if databaseURL != "" {
+		db, err := sql.Open("pgx", databaseURL)
+		if err == nil {
+			if err := db.Ping(); err == nil {
+				server.db = db
+			} else {
+				_ = db.Close()
+			}
+		}
 	}
 	if err := server.seedDemoData(); err != nil {
 		return nil, err
@@ -176,6 +213,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/session/demo-login", s.demoLogin)
 	s.mux.HandleFunc("/api/session/enterprise-register", s.enterpriseRegister)
 	s.mux.HandleFunc("/api/session/enterprise-login", s.enterpriseLogin)
+	s.mux.HandleFunc("/api/session/set-password", s.setPassword)
 	s.mux.HandleFunc("/api/session/me", s.sessionMe)
 	s.mux.HandleFunc("/api/integrations/status", s.integrationsStatus)
 	s.mux.HandleFunc("/api/integrations/status/", s.integrationsStatusAction)
@@ -229,6 +267,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/audit/investigations", s.auditInvestigations)
 	s.mux.HandleFunc("/api/audit/investigations/findings", s.auditFindingCreate)
 	s.mux.HandleFunc("/api/audit/investigations/evidence-pack", s.auditEvidencePack)
+	s.mux.HandleFunc("/api/smtp/test", s.smtpTest)
+	s.mux.HandleFunc("/api/smtp/send-invitation", s.smtpSendInvitation)
 	s.mux.HandleFunc("/api/settings/users", s.settingsUsers)
 	s.mux.HandleFunc("/api/settings/users/", s.settingsUserAction)
 	s.mux.HandleFunc("/api/settings/approval-rules", s.settingsApprovalRules)
@@ -350,6 +390,10 @@ func (s *Server) enterpriseRegister(writer http.ResponseWriter, request *http.Re
 			return
 		}
 	}
+	if existingUser, err := s.identityStore.FindUserByEmail(email); err == nil && existingUser.ID != "" {
+		writeError(writer, http.StatusConflict, "email already registered")
+		return
+	}
 	out, err := s.identityService.RegisterOrganization(identity.RegisterInput{
 		OrganizationName: body.OrganizationName,
 		OwnerEmail:       email,
@@ -385,8 +429,7 @@ func (s *Server) enterpriseLogin(writer http.ResponseWriter, request *http.Reque
 	}
 	var body struct {
 		BusinessEmail string `json:"business_email"`
-		Password      string `json:"password,omitempty"`
-		InviteCode    string `json:"invite_code,omitempty"`
+		Password      string `json:"password"`
 	}
 	if err := decode(request, writer, &body); err != nil {
 		writeError(writer, http.StatusBadRequest, err.Error())
@@ -397,18 +440,9 @@ func (s *Server) enterpriseLogin(writer http.ResponseWriter, request *http.Reque
 		writeError(writer, http.StatusBadRequest, "business email is required")
 		return
 	}
-	if strings.TrimSpace(body.InviteCode) != "" {
-		s.enterpriseMu.RLock()
-		invite, ok := s.pendingInvites[email]
-		s.enterpriseMu.RUnlock()
-		if !ok || invite.Token != strings.TrimSpace(body.InviteCode) {
-			writeError(writer, http.StatusUnauthorized, "invalid invite code")
-			return
-		}
-		if err := s.activateInvitedUser(invite); err != nil {
-			writeError(writer, http.StatusBadRequest, err.Error())
-			return
-		}
+	if body.Password == "" {
+		writeError(writer, http.StatusBadRequest, "password is required")
+		return
 	}
 	login, err := s.identityService.Login(email, body.Password)
 	if err != nil {
@@ -1663,12 +1697,19 @@ func (s *Server) agentsOverview(writer http.ResponseWriter, request *http.Reques
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant)
+	if !ok {
 		return
 	}
-	s.demoMu.RLock()
+	s.demoMu.Lock()
+	if s.db != nil {
+		actorName := s.sessionDisplayName(claims)
+		for _, agentID := range []string{"a-intake", "a-recon", "a-cfo", "a-rel", "a-contract", "a-coll", "a-credit", "a-supplier", "a-sales", "a-audit"} {
+			s.runAgentLocked(agentID, actorName, claims.OrganizationID)
+		}
+	}
 	payload := s.agentsState
-	s.demoMu.RUnlock()
+	s.demoMu.Unlock()
 	writeJSON(writer, http.StatusOK, payload)
 }
 
@@ -1685,32 +1726,31 @@ func (s *Server) agentRun(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, http.StatusNotFound, "agent not found")
 		return
 	}
-	if err := s.ensureRuntimeIdentity(request.Context(), claims); err != nil {
-		writeError(writer, http.StatusServiceUnavailable, "agent identity sync failed: "+err.Error())
-		return
-	}
 	agentID := strings.Trim(strings.TrimPrefix(request.URL.Path, "/api/agents/run/"), "/")
 	if agentID == "" {
 		writeError(writer, http.StatusNotFound, "agent not found")
 		return
 	}
 	s.demoMu.Lock()
-	if !s.runAgentLocked(agentID, s.sessionDisplayName(claims)) {
+	if !s.runAgentLocked(agentID, s.sessionDisplayName(claims), claims.OrganizationID) {
 		s.demoMu.Unlock()
 		writeError(writer, http.StatusNotFound, "agent not found")
 		return
 	}
 	summary, agentName := s.agentSummaryLocked(agentID)
 	s.demoMu.Unlock()
-	insight, err := s.runLiveAgent(request, claims.OrganizationID, claims.Subject, agentID, summary)
-	if err != nil {
-		writeError(writer, http.StatusServiceUnavailable, "live agent runtime failed: "+err.Error())
-		return
+	if s.agentRuntimeURL != "" {
+		if err := s.ensureRuntimeIdentity(request.Context(), claims); err == nil {
+			if insight, err := s.runLiveAgent(request, claims.OrganizationID, claims.Subject, agentID, summary); err == nil {
+				s.demoMu.Lock()
+				s.applyLiveAgentInsightLocked(agentID, agentName, insight)
+				s.demoMu.Unlock()
+			}
+		}
 	}
-	s.demoMu.Lock()
-	s.applyLiveAgentInsightLocked(agentID, agentName, insight)
+	s.demoMu.RLock()
 	payload := s.agentsState
-	s.demoMu.Unlock()
+	s.demoMu.RUnlock()
 	writeJSON(writer, http.StatusOK, payload)
 }
 
@@ -1727,24 +1767,22 @@ func (s *Server) agentRunAll(writer http.ResponseWriter, request *http.Request) 
 		writeError(writer, http.StatusNotFound, "agent not found")
 		return
 	}
-	if err := s.ensureRuntimeIdentity(request.Context(), claims); err != nil {
-		writeError(writer, http.StatusServiceUnavailable, "agent identity sync failed: "+err.Error())
-		return
-	}
 	actorName := s.sessionDisplayName(claims)
+	hasRuntime := s.agentRuntimeURL != ""
 	for _, agentID := range []string{"a-intake", "a-recon", "a-cfo", "a-rel", "a-contract", "a-coll", "a-credit", "a-supplier", "a-sales", "a-audit"} {
 		s.demoMu.Lock()
-		s.runAgentLocked(agentID, actorName)
+		s.runAgentLocked(agentID, actorName, claims.OrganizationID)
 		summary, agentName := s.agentSummaryLocked(agentID)
 		s.demoMu.Unlock()
-		insight, err := s.runLiveAgent(request, claims.OrganizationID, claims.Subject, agentID, summary)
-		if err != nil {
-			writeError(writer, http.StatusServiceUnavailable, "live agent runtime failed: "+err.Error())
-			return
+		if hasRuntime {
+			if err := s.ensureRuntimeIdentity(request.Context(), claims); err == nil {
+				if insight, err := s.runLiveAgent(request, claims.OrganizationID, claims.Subject, agentID, summary); err == nil {
+					s.demoMu.Lock()
+					s.applyLiveAgentInsightLocked(agentID, agentName, insight)
+					s.demoMu.Unlock()
+				}
+			}
 		}
-		s.demoMu.Lock()
-		s.applyLiveAgentInsightLocked(agentID, agentName, insight)
-		s.demoMu.Unlock()
 	}
 	s.demoMu.RLock()
 	payload := s.agentsState
@@ -2048,9 +2086,44 @@ func (s *Server) intakeDocsAPI(writer http.ResponseWriter, request *http.Request
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadEvents); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadEvents)
+	if !ok {
 		return
 	}
+
+	if s.ingestionServiceURL != "" {
+		ingestResp, err := s.httpClient.Get(s.ingestionServiceURL + "/v1/documents?organization_id=" + url.QueryEscape(claims.OrganizationID))
+		if err == nil {
+			defer ingestResp.Body.Close()
+			if ingestResp.StatusCode == http.StatusOK {
+				body, _ := io.ReadAll(ingestResp.Body)
+				writer.Header().Set("Content-Type", "application/json")
+				var response struct {
+					Items []demo.IntakeDoc `json:"items"`
+				}
+				var docsResponse struct {
+					Items []ingestion.Document `json:"items"`
+				}
+				if err := json.Unmarshal(body, &docsResponse); err == nil {
+					response.Items = make([]demo.IntakeDoc, 0, len(docsResponse.Items))
+					for _, d := range docsResponse.Items {
+						response.Items = append(response.Items, demo.IntakeDoc{
+							ID:         d.ID,
+							Name:       d.FileName,
+							Kind:       "invoice",
+							Source:     "upload",
+							ReceivedAt: d.CreatedAt.Format(time.RFC3339),
+							Stage:      "extracting",
+							SizeText:   fmt.Sprintf("%d KB", d.SizeBytes/1024),
+						})
+					}
+					writeJSON(writer, http.StatusOK, response)
+					return
+				}
+			}
+		}
+	}
+
 	s.demoMu.RLock()
 	items := append([]demo.IntakeDoc(nil), s.intakeDocs...)
 	s.demoMu.RUnlock()
@@ -2109,9 +2182,17 @@ func (s *Server) intakeUpload(writer http.ResponseWriter, request *http.Request)
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionUploadDocuments); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionUploadDocuments)
+	if !ok {
 		return
 	}
+
+	contentType := request.Header.Get("Content-Type")
+	if strings.HasPrefix(contentType, "multipart/form-data") && s.documentAIURL != "" {
+		s.intakeUploadFile(writer, request, claims)
+		return
+	}
+
 	var body struct {
 		Name string `json:"name"`
 	}
@@ -2138,6 +2219,102 @@ func (s *Server) intakeUpload(writer http.ResponseWriter, request *http.Request)
 	s.intakeDocs = append([]demo.IntakeDoc{doc}, s.intakeDocs...)
 	s.demoMu.Unlock()
 	writeJSON(writer, http.StatusOK, doc)
+}
+
+func (s *Server) intakeUploadFile(writer http.ResponseWriter, request *http.Request, claims auth.Claims) {
+	if err := request.ParseMultipartForm(32 << 20); err != nil {
+		writeError(writer, http.StatusBadRequest, "failed to parse multipart form: "+err.Error())
+		return
+	}
+	file, header, err := request.FormFile("file")
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, "file field is required")
+		return
+	}
+	defer file.Close()
+
+	content, err := io.ReadAll(file)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, "failed to read file")
+		return
+	}
+	contentBase64 := base64.StdEncoding.EncodeToString(content)
+
+	extractionInput := map[string]any{
+		"organization_id":     claims.OrganizationID,
+		"source_document_id":  "upload-" + strconv.FormatInt(time.Now().UnixNano(), 10),
+		"ingestion_batch_id":  "batch-" + strconv.FormatInt(time.Now().UnixNano(), 10),
+		"extraction_version_id": "xver-" + strconv.FormatInt(time.Now().UnixNano(), 10),
+		"file_name":           header.Filename,
+		"content_type":        header.Header.Get("Content-Type"),
+		"content_base64":      contentBase64,
+	}
+	body, _ := json.Marshal(extractionInput)
+	extractResp, err := s.httpClient.Post(s.documentAIURL+"/v1/documents/extract", "application/json", bytes.NewReader(body))
+	if err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "document AI service unreachable: "+err.Error())
+		return
+	}
+	defer extractResp.Body.Close()
+	extractBody, _ := io.ReadAll(extractResp.Body)
+
+	if extractResp.StatusCode != http.StatusOK {
+		writeError(writer, http.StatusBadGateway, "document extraction failed: "+string(extractBody))
+		return
+	}
+
+	var extractionResult struct {
+		OrganizationID     string `json:"organization_id"`
+		SourceDocumentID   string `json:"source_document_id"`
+		IngestionBatchID   string `json:"ingestion_batch_id"`
+		ExtractionVersionID string `json:"extraction_version_id"`
+		FileName           string `json:"file_name"`
+		ContentType        string `json:"content_type"`
+		Parser             string `json:"parser"`
+		SchemaVersion      string `json:"schema_version"`
+		Warnings           []string `json:"warnings"`
+		QualityFlags       []string `json:"quality_flags"`
+		Metadata           map[string]string `json:"metadata"`
+		Records            []ingestion.ExtractedRecordInput `json:"records"`
+	}
+	if err := json.Unmarshal(extractBody, &extractionResult); err != nil {
+		writeError(writer, http.StatusBadGateway, "invalid extraction response")
+		return
+	}
+
+	ingestionInput := ingestion.IngestInput{
+		OrganizationID:   claims.OrganizationID,
+		IdempotencyKey:   extractionResult.SourceDocumentID,
+		FileName:         header.Filename,
+		ContentType:      header.Header.Get("Content-Type"),
+		Content:          content,
+		Extractor:        extractionResult.Parser,
+		ExtractedRecords: extractionResult.Records,
+	}
+	ingestBody, _ := json.Marshal(ingestionInput)
+	ingestResp, err := s.httpClient.Post(s.ingestionServiceURL+"/v1/documents/ingest", "application/json", bytes.NewReader(ingestBody))
+	if err != nil {
+		writeError(writer, http.StatusServiceUnavailable, "ingestion service unreachable: "+err.Error())
+		return
+	}
+	defer ingestResp.Body.Close()
+	if ingestResp.StatusCode != http.StatusCreated {
+		ingestBodyBytes, _ := io.ReadAll(ingestResp.Body)
+		writeError(writer, http.StatusBadGateway, "ingestion failed: "+string(ingestBodyBytes))
+		return
+	}
+
+	resultDoc := demo.IntakeDoc{
+		ID:         extractionResult.SourceDocumentID,
+		Name:       header.Filename,
+		Kind:       "invoice",
+		Source:     "upload",
+		ReceivedAt: time.Now().UTC().Format(time.RFC3339),
+		Stage:      "extracting",
+		SizeText:   fmt.Sprintf("%d KB", len(content)/1024),
+		Fields:     []demo.ExtractedField{{Label: "Status", Value: "Uploaded - processing complete", Confidence: 1}},
+	}
+	writeJSON(writer, http.StatusOK, resultDoc)
 }
 
 func (s *Server) intakeDocAction(writer http.ResponseWriter, request *http.Request) {
@@ -2697,7 +2874,8 @@ func (s *Server) auditFindingCreate(writer http.ResponseWriter, request *http.Re
 }
 
 func (s *Server) settingsUsers(writer http.ResponseWriter, request *http.Request) {
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionManageUsers); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionManageUsers)
+	if !ok {
 		return
 	}
 	switch request.Method {
@@ -2723,10 +2901,11 @@ func (s *Server) settingsUsers(writer http.ResponseWriter, request *http.Request
 				return
 			}
 			inviteCode = strings.ToUpper(strings.ReplaceAll(code[:10], "-", ""))
-			if err := s.syncInviteUser(body, inviteCode); err != nil {
+			if err := s.syncInviteUser(body, inviteCode, claims.OrganizationID); err != nil {
 				writeError(writer, http.StatusBadRequest, err.Error())
 				return
 			}
+			s.sendInvitationEmail(strings.TrimSpace(body.Email), body.Name, inviteCode)
 		}
 		s.demoMu.Lock()
 		s.orgUsers = append([]demo.OrgUserData{body}, s.orgUsers...)
@@ -3874,7 +4053,7 @@ func (s *Server) seedDemoData() error {
 	return nil
 }
 
-func (s *Server) runAgentLocked(agentID string, actorName string) bool {
+func (s *Server) runAgentLocked(agentID string, actorName string, organizationID string) bool {
 	now := time.Now().UTC()
 	agentIndex := -1
 	for idx := range s.agentsState.Agents {
@@ -3905,116 +4084,27 @@ func (s *Server) runAgentLocked(agentID string, actorName string) bool {
 		tone:   "info",
 	}}
 
-	switch agentID {
-	case "a-recon":
-		moved := s.agentSuggestMatchesLocked(2)
-		processed = 18 + moved
-		if moved > 0 {
-			agent.Insight = strconv.Itoa(moved) + " fresh matches moved into review for approval."
-			events = []runEvent{{
-				action: "Suggested " + strconv.Itoa(moved) + " new matches",
-				detail: "Moved detected bank items into review for the finance team to approve.",
-				tone:   "ai",
-				link:   &demo.AgentActivityLinkData{Label: "View reconciliation", To: "/reconciliation"},
-			}}
-		} else {
-			agent.Insight = "No new unmatched items - everything is already suggested or matched."
-			events = []runEvent{{
-				action: "Swept the bank feed",
-				detail: "No new unmatched items - everything is already suggested or matched.",
-				tone:   "success",
-				link:   &demo.AgentActivityLinkData{Label: "View reconciliation", To: "/reconciliation"},
-			}}
+	if result := s.queryAgentInsight(organizationID, agentID); result != nil {
+		agent.Insight = result.insight
+		processed = result.processed
+		if len(result.events) > 0 {
+			events = make([]runEvent, len(result.events))
+			for i, e := range result.events {
+				events[i] = runEvent{
+					action: e.action,
+					detail: e.detail,
+					tone:   e.tone,
+				}
+				if e.link != "" {
+					events[i].link = &demo.AgentActivityLinkData{Label: e.link, To: e.linkTo}
+				}
+			}
 		}
-	case "a-coll":
-		totalMinor := int64(0)
-		for _, item := range s.collections {
-			amountMinor, _ := strconv.ParseInt(item.Amount.AmountMinor, 10, 64)
-			totalMinor += amountMinor
-		}
-		processed = len(s.collections)
-		agent.Insight = "$214,890 overdue across 7 invoices - reminder drafts refreshed."
+	} else {
+		agent.Insight = "Agent database is not connected. Configure DATABASE_URL to enable agent analysis."
 		events = []runEvent{{
-			action: "Drafted " + strconv.Itoa(len(s.collections)) + " reminders",
-			detail: "$" + formatMoneyMinor(totalMinor) + " overdue across " + strconv.Itoa(len(s.collections)) + " invoices - reminder drafts ready for approval.",
-			tone:   "warning",
-			link:   &demo.AgentActivityLinkData{Label: "Open collections", To: "/collections"},
-		}}
-	case "a-supplier":
-		processed = 6
-		agent.Insight = "Vendor 7741 remains unmatched - missing invoice or PO."
-		events = []runEvent{{
-			action: "Checked supplier spend",
-			detail: "Flagged Vendor 7741 for missing invoice or PO support before payment approval.",
-			tone:   "danger",
-			link:   &demo.AgentActivityLinkData{Label: "Open payables", To: "/payables"},
-		}}
-	case "a-audit":
-		processed = 32
-		agent.Insight = "OFFSHORE LTD remains flagged; no supporting contract on file."
-		events = []runEvent{
-			{
-				action: "Flagged suspicious transfer",
-				detail: "$15,400 to OFFSHORE LTD - no contract on file. Referred for review.",
-				tone:   "danger",
-				link:   &demo.AgentActivityLinkData{Label: "Open audit", To: "/audit"},
-			},
-			{
-				action: "2 SoD checks passed",
-				detail: "No preparer approved their own item this period.",
-				tone:   "success",
-			},
-		}
-	case "a-cfo":
-		processed = 12
-		agent.Insight = "Projected $3.21M cash by month-end (+23%)."
-		events = []runEvent{{
-			action: "Refreshed the forecast",
-			detail: "Projected $3.21M cash by month-end (+23%). Net positive across all entities.",
-			tone:   "ai",
-			link:   &demo.AgentActivityLinkData{Label: "Open cash flow", To: "/ledger"},
-		}}
-	case "a-intake":
-		processed = 6
-		agent.Insight = "6 documents processed; 1 low-confidence field still needs review."
-		events = []runEvent{{
-			action: "Processed the inbox",
-			detail: "6 documents extracted; 1 low-confidence field needs a human check.",
-			tone:   "info",
-			link:   &demo.AgentActivityLinkData{Label: "Open data intake", To: "/data-intake"},
-		}}
-	case "a-credit":
-		processed = 1
-		agent.Insight = "Business health score holding at 82 (Good)."
-		events = []runEvent{{
-			action: "Recomputed the score",
-			detail: "Business health score holding at 82 (Good) - lender-ready.",
-			tone:   "success",
-		}}
-	case "a-rel":
-		processed = 8
-		agent.Insight = "3 contracts expire within 30 days; PT Imports risk remains high."
-		events = []runEvent{{
-			action: "Updated the relationship graph",
-			detail: "3 contracts expiring within 30 days; PT Imports risk raised to high.",
-			tone:   "warning",
-			link:   &demo.AgentActivityLinkData{Label: "Open relationships", To: "/relationships"},
-		}}
-	case "a-contract":
-		processed = 5
-		agent.Insight = "Office lease renewal needs a decision in 14 days."
-		events = []runEvent{{
-			action: "Reviewed contract deadlines",
-			detail: "Office lease renewal needs a decision within 14 days.",
-			tone:   "warning",
-			link:   &demo.AgentActivityLinkData{Label: "Open contracts", To: "/contracts"},
-		}}
-	case "a-sales":
-		processed = 4
-		agent.Insight = "Still waiting for cleaner sales data to activate stronger recommendations."
-		events = []runEvent{{
-			action: "Scanned growth signals",
-			detail: "Insufficient structured sales data for stronger recommendations yet.",
+			action: "Agent unavailable",
+			detail: "No database connection available for agent analysis.",
 			tone:   "info",
 		}}
 	}
@@ -4790,7 +4880,7 @@ func frontendPermission(permission access.Permission) string {
 	return string(permission)
 }
 
-func seedTenantUser(store *identity.MemoryStore, organizationID, email, displayName, password string, role access.Role) error {
+func seedTenantUser(store identity.Store, organizationID, email, displayName, password string, role access.Role) error {
 	userID, err := auth.NewID("usr")
 	if err != nil {
 		return err
@@ -4826,8 +4916,8 @@ func seedTenantUser(store *identity.MemoryStore, organizationID, email, displayN
 	})
 }
 
-func (s *Server) syncInviteUser(user demo.OrgUserData, inviteCode string) error {
-	org, err := s.organizationByID(s.activeOrganizationID())
+func (s *Server) syncInviteUser(user demo.OrgUserData, inviteCode string, orgID string) error {
+	org, err := s.organizationByID(orgID)
 	if err != nil {
 		return err
 	}
@@ -4854,22 +4944,18 @@ func (s *Server) syncInviteUser(user demo.OrgUserData, inviteCode string) error 
 		s.enterpriseMu.Unlock()
 		return nil
 	}
-	tempPassword := inviteCode
-	if tempPassword == "" {
-		token, err := auth.NewRefreshToken()
-		if err != nil {
-			return err
-		}
-		tempPassword = token[:12]
+	randomPass, err := auth.NewRefreshToken()
+	if err != nil {
+		return err
 	}
-	if err := seedTenantUser(s.identityStore, org.ID, user.Email, user.Name, tempPassword, role); err != nil {
+	if err := seedTenantUser(s.identityStore, org.ID, user.Email, user.Name, randomPass[:12], role); err != nil {
 		return err
 	}
 	s.enterpriseMu.Lock()
 	s.pendingInvites[strings.ToLower(strings.TrimSpace(user.Email))] = enterpriseInvite{
 		Email:          strings.ToLower(strings.TrimSpace(user.Email)),
 		Role:           role,
-		Token:          tempPassword,
+		Token:          inviteCode,
 		OrganizationID: org.ID,
 		DisplayName:    user.Name,
 	}
@@ -4885,4 +4971,189 @@ func (s *Server) activateInvitedUser(inv enterpriseInvite) error {
 	}
 	s.pendingInvites[strings.ToLower(strings.TrimSpace(inv.Email))] = inv
 	return nil
+}
+
+func (s *Server) setPassword(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var body struct {
+		Email      string `json:"email"`
+		InviteCode string `json:"invite_code"`
+		Password   string `json:"password"`
+	}
+	if err := decode(request, writer, &body); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+	email := strings.ToLower(strings.TrimSpace(body.Email))
+	inviteCode := strings.TrimSpace(body.InviteCode)
+	password := body.Password
+	if email == "" || inviteCode == "" || password == "" {
+		writeError(writer, http.StatusBadRequest, "email, invite_code, and password are required")
+		return
+	}
+	s.enterpriseMu.RLock()
+	invite, ok := s.pendingInvites[email]
+	s.enterpriseMu.RUnlock()
+	if !ok || invite.Token != inviteCode {
+		writeError(writer, http.StatusUnauthorized, "invalid or expired invite code")
+		return
+	}
+	if len(password) < 8 {
+		writeError(writer, http.StatusBadRequest, "password must be at least 8 characters")
+		return
+	}
+	login, err := s.identityService.SetPassword(email, password)
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.enterpriseMu.Lock()
+	delete(s.pendingInvites, email)
+	s.enterpriseMu.Unlock()
+	user, err := s.identityStore.FindUserByID(login.UserID)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+	org, err := s.organizationByID(login.OrganizationID)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(writer, http.StatusOK, buildTenantSession(user, org, login.AccessToken, login.Roles, login.Permissions))
+}
+
+func (s *Server) smtpTest(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionManageUsers)
+	if !ok {
+		return
+	}
+	var body struct {
+		To string `json:"to"`
+	}
+	if err := decode(request, writer, &body); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+	to := strings.TrimSpace(body.To)
+	if to == "" {
+		user, err := s.identityStore.FindUserByID(claims.Subject)
+		if err == nil {
+			to = user.Email
+		}
+	}
+	if to == "" {
+		writeError(writer, http.StatusBadRequest, "recipient email is required")
+		return
+	}
+	subject := "Kora Finance — SMTP Test"
+	html := fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: sans-serif; padding: 40px; background: #f5f5f5;">
+<div style="max-width: 500px; margin: auto; background: white; border-radius: 12px; padding: 32px;">
+<h2 style="margin-top: 0;">SMTP Test</h2>
+<p>This is a test email from <strong>Kora Finance</strong>.</p>
+<p>If you received this, the SMTP configuration is working correctly.</p>
+<hr style="border: none; border-top: 1px solid #eee;">
+<p style="color: #666; font-size: 12px;">Sent at %s</p>
+</div>
+</body>
+</html>`, time.Now().UTC().Format(time.RFC1123))
+	if err := s.emailSender.Send(to, subject, html); err != nil {
+		writeError(writer, http.StatusInternalServerError, fmt.Sprintf("smtp error: %v", err))
+		return
+	}
+	writeJSON(writer, http.StatusOK, map[string]any{"sent": true, "to": to})
+}
+
+func (s *Server) smtpSendInvitation(writer http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodPost {
+		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionManageUsers); !ok {
+		return
+	}
+	var body struct {
+		Email      string `json:"email"`
+		Name       string `json:"name"`
+		InviteCode string `json:"invite_code"`
+	}
+	if err := decode(request, writer, &body); err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
+		return
+	}
+	body.Email = strings.ToLower(strings.TrimSpace(body.Email))
+	if body.Email == "" {
+		writeError(writer, http.StatusBadRequest, "email is required")
+		return
+	}
+	if body.InviteCode == "" {
+		writeError(writer, http.StatusBadRequest, "invite_code is required")
+		return
+	}
+	s.sendInvitationEmail(body.Email, body.Name, body.InviteCode)
+	writeJSON(writer, http.StatusOK, map[string]any{"sent": true, "to": body.Email})
+}
+
+func (s *Server) sendInvitationEmail(to, displayName, inviteCode string) {
+	if s.emailSender == nil {
+		return
+	}
+	orgName := s.activeOrganizationName()
+	if displayName == "" {
+		displayName = to
+	}
+	appURL := os.Getenv("KORA_APP_URL")
+	if appURL == "" {
+		appURL = "http://localhost:5173"
+	}
+	setupURL := fmt.Sprintf("%s/invite?email=%s&code=%s", appURL, url.QueryEscape(to), url.QueryEscape(inviteCode))
+	subject := fmt.Sprintf("You're invited to join %s on Kora Finance", orgName)
+	html := fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: sans-serif; padding: 40px; background: #f5f5f5;">
+<div style="max-width: 560px; margin: auto; background: white; border-radius: 12px; padding: 32px;">
+<div style="text-align: center; margin-bottom: 24px;">
+<span style="font-size: 24px; font-weight: bold; color: #1a1a2e;">Kora Finance</span>
+</div>
+<h2 style="margin-top: 0;">You've been invited!</h2>
+<p>Hello <strong>%s</strong>,</p>
+<p><strong>%s</strong> has invited you to join their organization on <strong>Kora Finance</strong>.</p>
+<div style="text-align: center; margin: 24px 0;">
+<a href="%s" style="display: inline-block; background: linear-gradient(135deg, #1a1a2e, #16213e); color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-size: 16px; font-weight: bold;">Accept Invitation →</a>
+</div>
+<p style="color: #666; font-size: 14px;">Or copy this link into your browser:</p>
+<p style="background: #f8f9fa; border-radius: 6px; padding: 12px; font-size: 12px; word-break: break-all; color: #1a1a2e;">%s</p>
+<hr style="border: none; border-top: 1px solid #eee;">
+<p style="color: #999; font-size: 12px;">This invitation was sent by an administrator of %s. If you weren't expecting this, you can ignore this email.</p>
+</div>
+</body>
+</html>`, displayName, orgName, setupURL, setupURL, orgName)
+	go func() {
+		if err := s.emailSender.Send(to, subject, html); err != nil {
+			fmt.Fprintf(os.Stderr, "invitation email failed for %s: %v\n", to, err)
+		}
+	}()
+}
+
+func (s *Server) activeOrganizationName() string {
+	orgID := s.activeOrganizationID()
+	if orgID == "" {
+		return "an organization"
+	}
+	org, err := s.organizationByID(orgID)
+	if err != nil {
+		return "an organization"
+	}
+	return org.Name
 }

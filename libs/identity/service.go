@@ -174,6 +174,27 @@ func (s *Service) Authorize(input AuthorizeInput) error {
 	return access.Authorize(actor, access.Resource{OrganizationID: input.ResourceOrganizationID}, input.Permission)
 }
 
+func (s *Service) SetPassword(email, password string) (LoginOutput, error) {
+	if len(password) < 8 {
+		return LoginOutput{}, errors.New("password must be at least 8 characters")
+	}
+	user, err := s.store.FindUserByEmail(strings.ToLower(strings.TrimSpace(email)))
+	if err != nil {
+		return LoginOutput{}, errors.New("user not found")
+	}
+	salt, err := auth.NewRefreshToken()
+	if err != nil {
+		return LoginOutput{}, err
+	}
+	user.PasswordHash = auth.HashSecret(password, salt)
+	user.PasswordSalt = salt
+	user.Status = "active"
+	if err := s.store.UpdateUser(user); err != nil {
+		return LoginOutput{}, err
+	}
+	return s.issueTokens(user)
+}
+
 func (s *Service) VerifyAccessToken(token string) (auth.Claims, error) {
 	return auth.VerifyJWT(token, s.jwtSecret, s.now())
 }

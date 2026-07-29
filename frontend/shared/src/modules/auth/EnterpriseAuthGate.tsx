@@ -13,17 +13,11 @@ export function EnterpriseAuthGate({ apiBaseUrl, platform }: { apiBaseUrl: strin
   const [password, setPassword] = useState('');
   const [organizationName, setOrganizationName] = useState('Kora Customer');
   const [displayName, setDisplayName] = useState('Finance Lead');
-  const [inviteCode, setInviteCode] = useState('');
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
     setBusy(true);
     try {
-      const loginInput: { business_email: string; password?: string; invite_code?: string } = {
-        business_email: businessEmail,
-      };
-      if (password.trim()) loginInput.password = password;
-      if (inviteCode.trim()) loginInput.invite_code = inviteCode;
       const session =
         mode === 'register'
           ? await registerEnterpriseSession(apiBaseUrl, {
@@ -32,7 +26,10 @@ export function EnterpriseAuthGate({ apiBaseUrl, platform }: { apiBaseUrl: strin
               display_name: displayName,
               password,
             })
-          : await loginEnterpriseSession(apiBaseUrl, loginInput);
+          : await loginEnterpriseSession(apiBaseUrl, {
+              business_email: businessEmail,
+              password,
+            });
       await platform.store.set(sessionTokenKey(), session.token);
       setSession(session);
     } catch (error) {
@@ -60,9 +57,9 @@ export function EnterpriseAuthGate({ apiBaseUrl, platform }: { apiBaseUrl: strin
   };
 
   return (
-    <div className="grid min-h-dvh place-items-center bg-backdrop px-6 py-10">
-      <GlassSurface tone="strong" className="grid w-full max-w-5xl overflow-hidden rounded-[28px] border border-white/60 md:grid-cols-[1.1fr_0.9fr]">
-        <div className="relative overflow-hidden bg-gradient-to-br from-brand to-brand-ink p-10 text-white">
+    <div className="grid min-h-dvh place-items-center px-6 py-10">
+      <GlassSurface tone="strong" className="grid w-full max-w-5xl overflow-hidden rounded-[28px] border border-white/60 backdrop-blur-xl md:grid-cols-[1.1fr_0.9fr]">
+        <div className="relative overflow-hidden bg-gradient-to-br from-brand/75 to-brand-ink/80 p-10 text-white backdrop-blur-sm">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.18),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.12),transparent_28%)]" />
           <div className="relative flex h-full flex-col justify-between gap-8">
             <div className="space-y-4">
@@ -78,7 +75,7 @@ export function EnterpriseAuthGate({ apiBaseUrl, platform }: { apiBaseUrl: strin
             </div>
             <div className="grid gap-3 text-[13px] text-white/90">
               <div className="inline-flex items-center gap-2"><ShieldCheck className="size-4" /> Domain-checked business email sign-in</div>
-              <div className="inline-flex items-center gap-2"><UserPlus className="size-4" /> Invite codes for new members</div>
+              <div className="inline-flex items-center gap-2"><UserPlus className="size-4" /> Invite and assign roles to team members</div>
               <div className="inline-flex items-center gap-2"><KeyRound className="size-4" /> Demo mode remains available for development</div>
             </div>
           </div>
@@ -99,23 +96,20 @@ export function EnterpriseAuthGate({ apiBaseUrl, platform }: { apiBaseUrl: strin
                 <Field icon={<UserPlus className="size-4" />} label="Owner name">
                   <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} className={inputCls} placeholder="Aline Mukamana" />
                 </Field>
+                <Field icon={<Mail className="size-4" />} label="Business email">
+                  <input value={businessEmail} onChange={(event) => setBusinessEmail(event.target.value)} className={inputCls} placeholder="you@company.com" />
+                </Field>
+                <Field icon={<KeyRound className="size-4" />} label="Password">
+                  <input value={password} onChange={(event) => setPassword(event.target.value)} className={inputCls} placeholder="Create a password" />
+                </Field>
               </>
-            ) : null}
-
-            <Field icon={<Mail className="size-4" />} label="Business email">
-              <input value={businessEmail} onChange={(event) => setBusinessEmail(event.target.value)} className={inputCls} placeholder="you@company.com" />
-            </Field>
-            {mode === 'register' ? (
-              <Field icon={<KeyRound className="size-4" />} label="Password">
-                <input value={password} onChange={(event) => setPassword(event.target.value)} className={inputCls} placeholder="Create a password" />
-              </Field>
             ) : (
               <>
+                <Field icon={<Mail className="size-4" />} label="Business email">
+                  <input value={businessEmail} onChange={(event) => setBusinessEmail(event.target.value)} className={inputCls} placeholder="you@company.com" />
+                </Field>
                 <Field icon={<KeyRound className="size-4" />} label="Password">
                   <input value={password} onChange={(event) => setPassword(event.target.value)} className={inputCls} placeholder="Enter your password" />
-                </Field>
-                <Field icon={<ShieldCheck className="size-4" />} label="Invite code">
-                  <input value={inviteCode} onChange={(event) => setInviteCode(event.target.value)} className={inputCls} placeholder="Optional invite code" />
                 </Field>
               </>
             )}

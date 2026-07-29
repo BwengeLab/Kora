@@ -11,7 +11,23 @@ import (
 
 func main() {
 	addr := ":" + env("PORT", "8080")
-	server := httpapi.New(ingestion.NewService(ingestion.NewMemoryStore()))
+	databaseURL := os.Getenv("DATABASE_URL")
+
+	var store ingestion.Store
+	if databaseURL != "" {
+		pgStore, err := ingestion.NewPostgresStore(databaseURL)
+		if err != nil {
+			log.Fatalf("postgres store: %v", err)
+		}
+		defer pgStore.Close()
+		store = pgStore
+		log.Println("using postgres store")
+	} else {
+		store = ingestion.NewMemoryStore()
+		log.Println("using memory store")
+	}
+
+	server := httpapi.New(ingestion.NewService(store))
 	log.Printf("ingestion listening on %s", addr)
 	if err := http.ListenAndServe(addr, server); err != nil {
 		log.Fatal(err)

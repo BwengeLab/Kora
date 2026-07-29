@@ -18,6 +18,7 @@ func New(service *ingestion.Service) *Server {
 	server := &Server{service: service, mux: http.NewServeMux()}
 	server.mux.HandleFunc("/healthz", servicekit.HealthHandler("ingestion"))
 	server.mux.HandleFunc("/v1/documents/ingest", server.ingestDocument)
+	server.mux.HandleFunc("/v1/documents", server.listDocuments)
 	return server
 }
 
@@ -70,6 +71,24 @@ func (s *Server) ingestDocument(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, result)
+}
+
+func (s *Server) listDocuments(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	orgID := r.URL.Query().Get("organization_id")
+	if orgID == "" {
+		writeError(w, http.StatusBadRequest, "organization_id is required")
+		return
+	}
+	docs, err := s.service.ListDocuments(orgID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": docs})
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {

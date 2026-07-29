@@ -96,7 +96,7 @@ func AgentsOverviewDemoData() AgentsOverviewData {
 }
 
 func newAgent(id, name, icon, role string) AgentCardData {
-	return AgentCardData{ID: id, Name: name, Icon: icon, Status: "idle", Role: role, LastRun: "not run", Insight: "Run this agent to generate a live analysis."}
+	return AgentCardData{ID: id, Name: name, Icon: icon, Status: "idle", Role: role, LastRun: "not run"}
 }
 
 func CollectionsManagementDemoData() CollectionsManagementData {

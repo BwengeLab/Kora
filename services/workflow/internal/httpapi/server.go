@@ -14,10 +14,10 @@ import (
 
 type Server struct {
 	mux   *http.ServeMux
-	store *workflow.Store
+	store workflow.Store
 }
 
-func New(store *workflow.Store) *Server {
+func New(store workflow.Store) *Server {
 	s := &Server{mux: http.NewServeMux(), store: store}
 	s.mux.HandleFunc("/healthz", servicekit.HealthHandler("workflow"))
 	s.mux.HandleFunc("/v1/approval-tasks", s.tasks)

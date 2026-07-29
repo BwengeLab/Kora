@@ -25,11 +25,11 @@ type Result struct {
 }
 
 type Service struct {
-	resolver *entities.Resolver
-	events   *eventledger.Store
+	resolver entities.Store
+	events   eventledger.Store
 }
 
-func NewService(resolver *entities.Resolver, events *eventledger.Store) *Service {
+func NewService(resolver entities.Store, events eventledger.Store) *Service {
 	return &Service{resolver: resolver, events: events}
 }
 
@@ -107,11 +107,11 @@ func (s *Service) Normalize(input Input) (Result, error) {
 	return Result{Event: appended.Event, Entities: resolved, Created: appended.Created}, nil
 }
 
-func (s *Service) EventStore() *eventledger.Store {
+func (s *Service) EventStore() eventledger.Store {
 	return s.events
 }
 
-func (s *Service) EntityResolver() *entities.Resolver {
+func (s *Service) EntityResolver() entities.Store {
 	return s.resolver
 }
 

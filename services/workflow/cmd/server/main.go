@@ -10,9 +10,25 @@ import (
 )
 
 func main() {
+	databaseURL := os.Getenv("DATABASE_URL")
+
+	var store workflow.Store
+	if databaseURL != "" {
+		pgStore, err := workflow.NewPostgresStore(databaseURL)
+		if err != nil {
+			log.Fatalf("workflow postgres store: %v", err)
+		}
+		defer pgStore.Close()
+		store = pgStore
+		log.Println("using postgres store")
+	} else {
+		store = workflow.NewStore()
+		log.Println("using memory store")
+	}
+
 	address := ":" + environment("PORT", "8080")
 	log.Printf("workflow listening on %s", address)
-	if err := http.ListenAndServe(address, httpapi.New(workflow.NewStore())); err != nil {
+	if err := http.ListenAndServe(address, httpapi.New(store)); err != nil {
 		log.Fatal(err)
 	}
 }

@@ -75,7 +75,7 @@ type AppendResult struct {
 	Created bool  `json:"created"`
 }
 
-type Store struct {
+type memoryStore struct {
 	mu                  sync.RWMutex
 	eventsByID          map[string]Event
 	eventOrderByTenant  map[string][]string
@@ -84,8 +84,8 @@ type Store struct {
 	correctionsByTarget map[string][]string
 }
 
-func NewStore() *Store {
-	return &Store{
+func NewStore() Store {
+	return &memoryStore{
 		eventsByID:          map[string]Event{},
 		eventOrderByTenant:  map[string][]string{},
 		eventByProvenance:   map[string]string{},
@@ -94,13 +94,13 @@ func NewStore() *Store {
 	}
 }
 
-func (s *Store) Append(event Event) (AppendResult, error) {
+func (s *memoryStore) Append(event Event) (AppendResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.appendLocked(event)
 }
 
-func (s *Store) appendLocked(event Event) (AppendResult, error) {
+func (s *memoryStore) appendLocked(event Event) (AppendResult, error) {
 	if event.ID == "" {
 		event.ID = newID("evt")
 	}
@@ -128,7 +128,7 @@ func (s *Store) appendLocked(event Event) (AppendResult, error) {
 	return AppendResult{Event: cloneEvent(event), Created: true}, nil
 }
 
-func (s *Store) AppendCorrection(correction corrections.Event) (corrections.Event, error) {
+func (s *memoryStore) AppendCorrection(correction corrections.Event) (corrections.Event, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if correction.ID == "" {
@@ -169,7 +169,7 @@ func (s *Store) AppendCorrection(correction corrections.Event) (corrections.Even
 	return correction, nil
 }
 
-func (s *Store) Reverse(organizationID string, eventID string, proof evidence.Evidence, reason string) (corrections.Event, error) {
+func (s *memoryStore) Reverse(organizationID string, eventID string, proof evidence.Evidence, reason string) (corrections.Event, error) {
 	return s.AppendCorrection(corrections.Event{
 		OrganizationID:  organizationID,
 		Type:            corrections.EventReversed,
@@ -179,7 +179,7 @@ func (s *Store) Reverse(organizationID string, eventID string, proof evidence.Ev
 	})
 }
 
-func (s *Store) Get(organizationID string, eventID string) (EventView, error) {
+func (s *memoryStore) Get(organizationID string, eventID string) (EventView, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	event, ok := s.eventsByID[eventID]
@@ -189,7 +189,7 @@ func (s *Store) Get(organizationID string, eventID string) (EventView, error) {
 	return s.viewLocked(event), nil
 }
 
-func (s *Store) List(organizationID string) []EventView {
+func (s *memoryStore) List(organizationID string) []EventView {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	ids := append([]string(nil), s.eventOrderByTenant[organizationID]...)
@@ -201,7 +201,7 @@ func (s *Store) List(organizationID string) []EventView {
 	return views
 }
 
-func (s *Store) viewLocked(event Event) EventView {
+func (s *memoryStore) viewLocked(event Event) EventView {
 	correctionIDs := s.correctionsByTarget[event.ID]
 	stream := make([]corrections.Event, 0, len(correctionIDs))
 	for _, correctionID := range correctionIDs {
@@ -214,7 +214,7 @@ func (s *Store) viewLocked(event Event) EventView {
 	}
 }
 
-func (s *Store) effectiveStatusLocked(organizationID string, eventID string) Status {
+func (s *memoryStore) effectiveStatusLocked(organizationID string, eventID string) Status {
 	event, ok := s.eventsByID[eventID]
 	if !ok || event.OrganizationID != organizationID {
 		return ""

@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router';
-import { AlertTriangle, Plus, Wand2 } from 'lucide-react';
+import { AlertTriangle, Plus } from 'lucide-react';
 import { GlassSurface, PartyAvatar, cn } from '../../design-system';
 import type { AdminUser } from '../../seed/adminHome';
 
@@ -15,9 +15,6 @@ export function UsersAccessCard({ users }: { users: AdminUser[] }) {
       <header className="flex items-center justify-between gap-3">
         <h3 className="font-display text-base font-bold text-ink">Users &amp; access</h3>
         <div className="flex items-center gap-2">
-          <Link to="/settings/users-and-roles" className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-white/65 px-3 text-[12px] font-bold text-ink-soft ring-1 ring-white/70 hover:bg-white hover:text-ink">
-            <Wand2 className="size-3.5" /> Role builder
-          </Link>
           <Link to="/settings/users-and-roles" className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-gradient-to-br from-brand to-brand-ink px-3 text-[12px] font-bold text-white shadow-glass-soft">
             <Plus className="size-3.5" /> Invite user
           </Link>
