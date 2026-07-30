@@ -512,6 +512,11 @@ func WorkflowSnapshotData() WorkflowSnapshot {
 	}
 }
 
+func MoneyPtr(amountMinor int64, currency string) *Money {
+	m := moneyValue(amountMinor, currency)
+	return &m
+}
+
 func money(amountMinor int64, currency string) *Money {
 	return &Money{AmountMinor: intToString(amountMinor), Currency: currency}
 }

@@ -636,28 +636,15 @@ func (s *Server) workflowSnapshot(writer http.ResponseWriter, request *http.Requ
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	token, err := bearerToken(request)
-	if err != nil {
-		writeError(writer, http.StatusUnauthorized, err.Error())
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadEvents)
+	if !ok {
 		return
 	}
-	claims, err := auth.VerifyJWT(token, s.jwtSecret, time.Now())
-	if err != nil {
-		writeError(writer, http.StatusUnauthorized, err.Error())
-		return
-	}
-	actor, err := actorFromClaims(claims)
-	if err != nil {
-		writeError(writer, http.StatusForbidden, err.Error())
-		return
-	}
-	if claims.OrganizationID == "" {
-		writeError(writer, http.StatusForbidden, "tenant session required")
-		return
-	}
-	if err := access.Authorize(actor, access.Resource{OrganizationID: claims.OrganizationID}, access.PermissionReadEvents); err != nil {
-		writeError(writer, http.StatusForbidden, err.Error())
-		return
+	if s.db != nil {
+		if q := s.queryWorkflowSnapshot(claims.OrganizationID); q != nil {
+			writeJSON(writer, http.StatusOK, q)
+			return
+		}
 	}
 	s.demoMu.RLock()
 	payload := s.workflowState
@@ -1140,12 +1127,21 @@ func (s *Server) collectionsOverdue(writer http.ResponseWriter, request *http.Re
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadEvents); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadEvents)
+	if !ok {
 		return
 	}
-	s.demoMu.RLock()
-	items := append([]demo.OverdueItem(nil), s.collections...)
-	s.demoMu.RUnlock()
+	var items []demo.OverdueItem
+	if s.db != nil {
+		if q := s.queryCollectionsOverdue(claims.OrganizationID); q != nil {
+			items = q
+		}
+	}
+	if items == nil {
+		s.demoMu.RLock()
+		items = append([]demo.OverdueItem(nil), s.collections...)
+		s.demoMu.RUnlock()
+	}
 	writeJSON(writer, http.StatusOK, map[string]any{"items": items})
 }
 
@@ -1962,8 +1958,15 @@ func (s *Server) ownerSummary(writer http.ResponseWriter, request *http.Request)
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant)
+	if !ok {
 		return
+	}
+	if s.db != nil {
+		if q := s.queryOwnerSummary(claims.OrganizationID); q != nil {
+			writeJSON(writer, http.StatusOK, q)
+			return
+		}
 	}
 	writeJSON(writer, http.StatusOK, demo.OwnerHomeSummaryData())
 }
@@ -1973,8 +1976,15 @@ func (s *Server) ownerDashboard(writer http.ResponseWriter, request *http.Reques
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant)
+	if !ok {
 		return
+	}
+	if s.db != nil {
+		if q := s.queryOwnerDashboard(claims.OrganizationID); q != nil {
+			writeJSON(writer, http.StatusOK, q)
+			return
+		}
 	}
 	writeJSON(writer, http.StatusOK, demo.OwnerDashboardCardsData())
 }
@@ -1984,8 +1994,15 @@ func (s *Server) adminDashboard(writer http.ResponseWriter, request *http.Reques
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionManageUsers); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionManageUsers)
+	if !ok {
 		return
+	}
+	if s.db != nil {
+		if q := s.queryAdminDashboard(claims.OrganizationID); q != nil {
+			writeJSON(writer, http.StatusOK, q)
+			return
+		}
 	}
 	s.demoMu.RLock()
 	payload := s.adminDashboardState
@@ -2053,8 +2070,15 @@ func (s *Server) operatorDashboard(writer http.ResponseWriter, request *http.Req
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadEvents); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadEvents)
+	if !ok {
 		return
+	}
+	if s.db != nil {
+		if q := s.queryOperatorDashboard(claims.OrganizationID); q != nil {
+			writeJSON(writer, http.StatusOK, q)
+			return
+		}
 	}
 	writeJSON(writer, http.StatusOK, demo.OperatorHomeDemoData())
 }
@@ -2064,8 +2088,36 @@ func (s *Server) auditorDashboard(writer http.ResponseWriter, request *http.Requ
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant)
+	if !ok {
 		return
+	}
+	if s.db != nil {
+		if q := s.queryAuditInvestigations(claims.OrganizationID); q != nil {
+			aud := demo.AuditorHomeData{
+				ControlHealth: demo.ControlHealthData{
+					Score:    q.ControlHealth.Score,
+					TrendPts: q.ControlHealth.TrendPts,
+					Subscores: func() []demo.ControlSubscoreData {
+						out := make([]demo.ControlSubscoreData, len(q.ControlHealth.Subscores))
+						for i, s := range q.ControlHealth.Subscores {
+							out[i] = demo.ControlSubscoreData{Label: s.Label, Value: s.Value}
+						}
+						return out
+					}(),
+				},
+				RiskStats: demo.RiskStatsData{
+					RiskFlags:     q.RiskStats.RiskFlags,
+					SODViolations: q.RiskStats.SodViolations,
+					Suspicious:    q.RiskStats.Suspicious,
+					MissingDocs:   q.RiskStats.MissingDocs,
+				},
+				SODViolations: []demo.SODViolationData{},
+				MissingDocs:   []demo.MissingDocData{},
+			}
+			writeJSON(writer, http.StatusOK, aud)
+			return
+		}
 	}
 	writeJSON(writer, http.StatusOK, demo.AuditorHomeDemoData())
 }
@@ -2516,11 +2568,20 @@ func (s *Server) financeOperations(writer http.ResponseWriter, request *http.Req
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadEvents); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadEvents)
+	if !ok {
 		return
 	}
+	var snapshot demo.FinanceOperationsSnapshot
+	if s.db != nil {
+		if q := s.queryFinanceOperations(claims.OrganizationID); q != nil {
+			snapshot = *q
+			writeJSON(writer, http.StatusOK, snapshot)
+			return
+		}
+	}
 	s.demoMu.RLock()
-	snapshot := s.financeSnapshot
+	snapshot = s.financeSnapshot
 	s.demoMu.RUnlock()
 	writeJSON(writer, http.StatusOK, snapshot)
 }
@@ -2530,8 +2591,18 @@ func (s *Server) financeCashflowView(writer http.ResponseWriter, request *http.R
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant)
+	if !ok {
 		return
+	}
+	if s.db != nil {
+		if q := s.queryFinanceCashflowView(claims.OrganizationID); q != nil {
+			s.demoMu.RLock()
+			q.Movements = append([]demo.FinanceTransaction(nil), s.financeSnapshot.Transactions...)
+			s.demoMu.RUnlock()
+			writeJSON(writer, http.StatusOK, q)
+			return
+		}
 	}
 	s.demoMu.RLock()
 	view := demo.LedgerCashflowStaticData()
@@ -2794,8 +2865,18 @@ func (s *Server) auditInvestigations(writer http.ResponseWriter, request *http.R
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadAudit); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadAudit)
+	if !ok {
 		return
+	}
+	if s.db != nil {
+		if q := s.queryAuditInvestigations(claims.OrganizationID); q != nil {
+			s.demoMu.RLock()
+			q.AuditLog = append([]demo.AuditEvent(nil), s.workflowState.AuditLog...)
+			s.demoMu.RUnlock()
+			writeJSON(writer, http.StatusOK, q)
+			return
+		}
 	}
 	s.demoMu.RLock()
 	view := s.auditViews
@@ -3605,8 +3686,15 @@ func (s *Server) financeLeadDashboard(writer http.ResponseWriter, request *http.
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant)
+	if !ok {
 		return
+	}
+	if s.db != nil {
+		if q := s.queryFinanceCashflowView(claims.OrganizationID); q != nil {
+			writeJSON(writer, http.StatusOK, q)
+			return
+		}
 	}
 	s.demoMu.RLock()
 	payload := s.financeLeadHome
@@ -3619,8 +3707,15 @@ func (s *Server) contractsOverview(writer http.ResponseWriter, request *http.Req
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadContracts); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadContracts)
+	if !ok {
 		return
+	}
+	if s.db != nil {
+		if q := s.queryContractsOverview(claims.OrganizationID); q != nil {
+			writeJSON(writer, http.StatusOK, demo.ContractsOverviewData{Items: q})
+			return
+		}
 	}
 	s.demoMu.RLock()
 	payload := s.contracts
@@ -3704,8 +3799,15 @@ func (s *Server) ownerRiskDashboard(writer http.ResponseWriter, request *http.Re
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadAudit); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadAudit)
+	if !ok {
 		return
+	}
+	if s.db != nil {
+		if q := s.queryOwnerRiskDashboard(claims.OrganizationID); q != nil {
+			writeJSON(writer, http.StatusOK, q)
+			return
+		}
 	}
 	s.demoMu.RLock()
 	payload := s.ownerRisk
@@ -3785,8 +3887,15 @@ func (s *Server) controlsCloseOverview(writer http.ResponseWriter, request *http
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant)
+	if !ok {
 		return
+	}
+	if s.db != nil {
+		if q := s.queryControlsClose(claims.OrganizationID); q != nil {
+			writeJSON(writer, http.StatusOK, q)
+			return
+		}
 	}
 	s.demoMu.RLock()
 	payload := s.controlsClose
