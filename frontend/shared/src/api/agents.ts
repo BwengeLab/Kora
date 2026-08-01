@@ -1,4 +1,4 @@
-import type { AgentCard } from '../seed/agents';
+import type { AgentCard } from '../types/api';
 
 export interface AgentActivityEvent {
   id: string;

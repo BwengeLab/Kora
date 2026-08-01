@@ -2,7 +2,6 @@ import { useQuery } from '@tanstack/react-query';
 import { PageHeader } from '../../app/shell';
 import { getApiBaseUrl } from '../../api/client';
 import { fetchOperatorDashboard } from '../../api/roleHomes';
-import { seedOperatorFocus } from '../../seed/operatorHome';
 import { useSessionStore } from '../../state/sessionStore';
 import { AgentSuggestionsCard } from './AgentSuggestionsCard';
 import { DataIntakeCard } from './DataIntakeCard';

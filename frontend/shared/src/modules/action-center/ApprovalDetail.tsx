@@ -21,8 +21,6 @@ import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
 import { useSession } from '../../auth/hooks';
 import { openDoc } from '../../state/docViewerStore';
 import { toast } from '../../state/toastStore';
-import type { ApprovalItem } from '../../seed/approvals';
-import type { EvidenceDoc, HistoryEvent } from '../../seed/reconciliation';
 import { approvalBlockReason, type ApproveResult } from '../../state/workflowStore';
 import { ApprovalChain } from './ApprovalChain';
 import { RISK_LABEL, RISK_TONE, TYPE_ICON, TYPE_TONE } from './typeMeta';

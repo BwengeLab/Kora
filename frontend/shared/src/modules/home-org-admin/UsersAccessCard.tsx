@@ -1,7 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import { AlertTriangle, Plus } from 'lucide-react';
 import { GlassSurface, PartyAvatar, cn } from '../../design-system';
-import type { AdminUser } from '../../seed/adminHome';
 
 const STATUS_TONE: Record<AdminUser['status'], string> = {
   active: 'bg-success-soft text-success',

@@ -1,6 +1,5 @@
 import { ArrowUpDown, Clock, Lock, Search, Users } from 'lucide-react';
 import { GlassSurface, MoneyCell, cn } from '../../design-system';
-import type { ApprovalItem } from '../../seed/approvals';
 import { RISK_TONE, TYPE_ICON, TYPE_TONE } from './typeMeta';
 import type { ActionVariant } from './variant';
 

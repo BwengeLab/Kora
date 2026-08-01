@@ -5,7 +5,6 @@ import { getApiBaseUrl } from '../../api/client';
 import { fetchIntegrationStatuses, type IntegrationStatusItem } from '../../api/integrations';
 import { useSession } from '../../auth/hooks';
 import { GlassSurface, cn } from '../../design-system';
-import { seedIntegrations, type IntegrationStatus } from '../../seed/adminHome';
 
 const STATUS: Record<IntegrationStatus, { label: string; icon: LucideIcon; tone: string }> = {
   connected: { label: 'Connected', icon: CheckCircle2, tone: 'text-success' },
@@ -22,7 +21,7 @@ export function IntegrationStatusCard() {
     enabled: Boolean(session?.token),
     staleTime: 30_000,
   });
-  const items = data ?? seedIntegrations.map<IntegrationStatusItem>((item) => ({
+  const items = data ?? [].map<IntegrationStatusItem>((item) => ({
     id: item.id,
     name: item.name,
     category: item.category,

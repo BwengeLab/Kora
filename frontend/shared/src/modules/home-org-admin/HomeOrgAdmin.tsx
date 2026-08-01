@@ -5,7 +5,6 @@ import { useState } from 'react';
 import { PageHeader } from '../../app/shell';
 import { getApiBaseUrl } from '../../api/client';
 import { fetchAdminDashboard, resolveAdminAccessRequest } from '../../api/dashboard';
-import { seedAccessAlerts, seedAccessRequests, seedAdminStats, seedAdminUsers, seedBilling, seedPolicies, type AccessRequest } from '../../seed/adminHome';
 import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
 import { AccessAlertsCard } from './AccessAlertsCard';
@@ -36,12 +35,12 @@ export function HomeOrgAdmin() {
     },
   });
 
-  const stats = data?.stats ?? seedAdminStats;
-  const users = data?.users ?? seedAdminUsers;
-  const accessRequests = data?.accessRequests ?? seedAccessRequests;
-  const accessAlerts = data?.accessAlerts ?? seedAccessAlerts;
-  const policies = data?.policies ?? seedPolicies;
-  const billing = data?.billing ?? seedBilling;
+  const stats = data?.stats ?? {};
+  const users = data?.users ?? [];
+  const accessRequests = data?.accessRequests ?? [];
+  const accessAlerts = data?.accessAlerts ?? [];
+  const policies = data?.policies ?? [];
+  const billing = data?.billing ?? null;
 
   async function handleResolve(request: AccessRequest, action: 'grant' | 'deny') {
     setResolvingID(request.id);

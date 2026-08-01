@@ -7,7 +7,6 @@ import { getApiBaseUrl } from '../../api/client';
 import { collectionsAction, exportCollectionsSummary, fetchOverdueItems } from '../../api/collections';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
 import type { Money } from '../../lib/money';
-import { seedOverdue, type Overdue, type RiskLevel } from '../../seed/ownerExtra';
 import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
 
@@ -28,7 +27,7 @@ export function CollectionsPage() {
     queryFn: ({ signal }) => fetchOverdueItems(apiBaseUrl, token, signal),
     enabled: Boolean(token),
   });
-  const overdue = data ?? seedOverdue;
+  const overdue = data ?? [];
   const [bucket, setBucket] = useState<Bucket>('all');
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Overdue | null>(null);

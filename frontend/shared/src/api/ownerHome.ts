@@ -1,5 +1,5 @@
 import type { Money } from '../lib/money';
-import type { KpiSeed } from '../seed/orgOwnerHome';
+import type { KpiSeed } from '../types/api';
 
 interface RawMoney {
   amountMinor: string;

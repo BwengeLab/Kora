@@ -1,5 +1,5 @@
-import type { InsightSeed, RelationshipRowSeed, DocSeed } from '../seed/orgOwnerHome';
-import type { AdminUser, AccessRequest, AccessAlert, PolicyVersion } from '../seed/adminHome';
+import type { InsightSeed, RelationshipRowSeed, DocSeed } from '../types/api';
+import type { AdminUser, AccessRequest, AccessAlert, PolicyVersion } from '../types/api';
 
 export interface OwnerDashboardPayload {
   insights: InsightSeed[];

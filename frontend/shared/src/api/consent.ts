@@ -1,4 +1,4 @@
-import type { ConsentGrant } from '../seed/consent';
+import type { ConsentGrant } from '../types/api';
 
 export interface CreateConsentGrantInput {
   grantee: string;

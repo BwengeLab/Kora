@@ -1,4 +1,4 @@
-import type { IntakeDoc } from '../seed/intake';
+import type { IntakeDoc } from '../types/api';
 
 export async function fetchIntakeDocs(apiBaseUrl: string, token: string, signal?: AbortSignal): Promise<IntakeDoc[]> {
   const init: RequestInit = {

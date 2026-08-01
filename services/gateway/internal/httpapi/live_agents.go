@@ -8,8 +8,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/kora-finance/kora/services/gateway/internal/demo"
 )
 
 var liveAgentNames = map[string]string{
@@ -108,31 +106,35 @@ func (s *Server) runLiveAgent(r *http.Request, organizationID, userID, agentID, 
 	return liveAgentInsight{RunID: result.RunID, Explanation: explanation, Model: model}, nil
 }
 
-func (s *Server) agentSummaryLocked(agentID string) (string, string) {
-	for _, agent := range s.agentsState.Agents {
-		if agent.ID == agentID {
-			return agent.Insight, agent.Name
-		}
+func (s *Server) agentSummaryFromDB(agentID, orgID string) (string, string) {
+	// Get agent insight from database
+	result := s.queryAgentInsight(orgID, agentID)
+	if result != nil {
+		return result.insight, "Agent"
 	}
 	return "", "Agent"
 }
 
-func (s *Server) applyLiveAgentInsightLocked(agentID, agentName string, insight liveAgentInsight) {
-	for idx := range s.agentsState.Agents {
-		if s.agentsState.Agents[idx].ID == agentID {
-			s.agentsState.Agents[idx].Insight = insight.Explanation
-			s.agentsState.Agents[idx].RuntimeRunID = insight.RunID
-			s.agentsState.Agents[idx].ModelName = insight.Model
-			s.agentsState.Agents[idx].AccuracyPct = 90
-			s.agentsState.Agents[idx].LastRun = "just now"
-			s.agentsState.Agents[idx].Status = "active"
-			break
-		}
+func (s *Server) applyLiveAgentInsightFromDB(agentID, agentName string, insight liveAgentInsight, orgID string) error {
+	if s.db == nil {
+		return fmt.Errorf("database not connected")
 	}
-	s.recomputeAgentStatsLocked()
-	s.agentsState.Activity = append([]demo.AgentActivityEventData{{
-		ID: "live-" + insight.RunID, AgentID: agentID, AgentName: agentName,
-		At: time.Now().UTC().Format(time.RFC3339), Action: "Live AI analysis completed",
-		Detail: insight.Explanation, Tone: "ai",
-	}}, s.agentsState.Activity...)
+	
+	now := time.Now().UTC()
+	
+	// Log the live agent insight to activity log
+	_, err := s.db.Exec(`
+		INSERT INTO agent_activity_log (id, organization_id, agent_id, action, detail, tone, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`,
+		fmt.Sprintf("la-%s", insight.RunID),
+		orgID,
+		agentID,
+		"Live AI analysis completed",
+		insight.Explanation,
+		"ai",
+		now,
+	)
+	
+	return err
 }

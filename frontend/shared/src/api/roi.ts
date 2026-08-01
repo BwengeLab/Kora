@@ -1,4 +1,4 @@
-import type { RoiItem } from '../seed/ownerExtra';
+import type { RoiItem } from '../types/api';
 
 interface RawMoney {
   amountMinor: string;

@@ -1,11 +1,10 @@
 package httpapi
 
 import (
+	"database/sql"
 	"fmt"
 	"strconv"
 	"time"
-
-	"github.com/kora-finance/kora/services/gateway/internal/demo"
 )
 
 func (s *Server) queryCollectionsOverdue(orgID string) []demo.OverdueItem {

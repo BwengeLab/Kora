@@ -1,7 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import { ArrowRight, FileWarning, GitBranch, Link2Off, Sparkles, type LucideIcon } from 'lucide-react';
 import { GlassSurface, cn } from '../../design-system';
-import { seedOperatorFocus } from '../../seed/operatorHome';
 import { useWorkflowStore } from '../../state/workflowStore';
 
 interface FocusDef {

@@ -7,7 +7,6 @@ import { fetchContractsOverview, flagContractRenewal, renewContract, setContract
 import { DateRangePill, PageHeader } from '../../app/shell';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
 import type { Money } from '../../lib/money';
-import { CONTRACT_STATUS_META, CONTRACT_TYPE_META, seedContracts, type Contract, type ContractStatus, type ContractType } from '../../seed/contracts';
 import { openDoc } from '../../state/docViewerStore';
 import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
@@ -64,7 +63,7 @@ export function ContractsView({ variant = 'manage', initialQuery = '' }: { varia
     onSuccess: (payload) => syncContracts(payload.items),
   });
 
-  const contracts = data?.items ?? seedContracts;
+  const contracts = data?.items ?? [];
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

@@ -6,9 +6,6 @@ import { getApiBaseUrl } from '../../api/client';
 import { createJournalEntry } from '../../api/financeOperations';
 import { GlassSurface, MoneyCell, cn } from '../../design-system';
 import type { Money } from '../../lib/money';
-import { ACCOUNT_TYPE_META, accountByCode, seedChartOfAccounts, type AccountType } from '../../seed/chartOfAccounts';
-import { entityName, seedCostCenters } from '../../seed/entities';
-import type { JournalEntry, JournalLine, JournalSource } from '../../seed/journals';
 import { displayBalance, linesBalanced, trialBalance, useGLStore } from '../../state/glStore';
 import { useEntityStore } from '../../state/entityStore';
 import { usePayablesStore } from '../../state/payablesStore';
@@ -114,7 +111,7 @@ function AccountsTab({ journals, scope }: { journals: JournalEntry[]; scope: Ret
   const groups = useMemo(() => {
     return (Object.keys(ACCOUNT_TYPE_META) as AccountType[]).map((type) => ({
       type,
-      accounts: seedChartOfAccounts.filter((a) => a.type === type).map((a) => ({ ...a, bal: displayBalance(a.code, journals, scope) })),
+      accounts: [].filter((a) => a.type === type).map((a) => ({ ...a, bal: displayBalance(a.code, journals, scope) })),
     }));
   }, [journals, scope]);
   return (
@@ -183,7 +180,7 @@ function EntryDrawer({ entry: e, onClose }: { entry: JournalEntry | null; onClos
                 <ul>
                   {e.lines.map((l, i) => (
                     <li key={i} className="grid grid-cols-[1fr_120px_120px] gap-x-3 border-b border-white/40 py-2.5 text-[12.5px]">
-                      <span className="min-w-0"><span className="font-mono text-ink-muted">{l.account}</span> · {accountByCode(l.account)?.name}{l.costCenter ? <span className="ml-1 rounded bg-white/70 px-1 text-[9.5px] font-bold text-ink-muted">{seedCostCenters.find((c) => c.id === l.costCenter)?.name}</span> : null}</span>
+                      <span className="min-w-0"><span className="font-mono text-ink-muted">{l.account}</span> · {accountByCode(l.account)?.name}{l.costCenter ? <span className="ml-1 rounded bg-white/70 px-1 text-[9.5px] font-bold text-ink-muted">{[].find((c) => c.id === l.costCenter)?.name}</span> : null}</span>
                       <span className="text-right tabular text-ink">{l.debit > 0n ? <MoneyCell amount={M(l.debit)} size="sm" className="!text-[12.5px]" /> : ''}</span>
                       <span className="text-right tabular text-ink">{l.credit > 0n ? <MoneyCell amount={M(l.credit)} size="sm" className="!text-[12.5px]" /> : ''}</span>
                     </li>
@@ -281,10 +278,10 @@ function JournalCreator({ scope, onClose }: { scope: ReturnType<typeof useEntity
               <div className="grid grid-cols-[1fr_130px_130px_130px_36px] gap-2 bg-white/60 px-3 py-2 text-[10.5px] font-bold uppercase tracking-wider text-ink-muted"><span>Account</span><span className="text-right">Debit</span><span className="text-right">Credit</span><span>Cost center</span><span /></div>
               {lines.map((l, i) => (
                 <div key={i} className="grid grid-cols-[1fr_130px_130px_130px_36px] items-center gap-2 border-t border-white/45 bg-white/30 px-3 py-2">
-                  <select value={l.account} onChange={(e) => setLine(i, { account: e.target.value })} className={inpSm}>{seedChartOfAccounts.map((a) => <option key={a.code} value={a.code}>{a.code} · {a.name}</option>)}</select>
+                  <select value={l.account} onChange={(e) => setLine(i, { account: e.target.value })} className={inpSm}>{[].map((a) => <option key={a.code} value={a.code}>{a.code} · {a.name}</option>)}</select>
                   <input value={l.debit} onChange={(e) => setLine(i, { debit: e.target.value.replace(/[^0-9.]/g, ''), credit: '' })} inputMode="decimal" placeholder="0.00" className={cn(inpSm, 'text-right')} />
                   <input value={l.credit} onChange={(e) => setLine(i, { credit: e.target.value.replace(/[^0-9.]/g, ''), debit: '' })} inputMode="decimal" placeholder="0.00" className={cn(inpSm, 'text-right')} />
-                  <select value={l.costCenter} onChange={(e) => setLine(i, { costCenter: e.target.value })} className={inpSm}><option value="">—</option>{seedCostCenters.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+                  <select value={l.costCenter} onChange={(e) => setLine(i, { costCenter: e.target.value })} className={inpSm}><option value="">—</option>{[].map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
                   <button type="button" onClick={() => setLines((ls) => ls.length > 2 ? ls.filter((_, idx) => idx !== i) : ls)} className="grid size-8 place-items-center rounded-lg text-ink-muted hover:bg-danger-soft hover:text-danger" title="Remove line"><Trash2 className="size-3.5" /></button>
                 </div>
               ))}

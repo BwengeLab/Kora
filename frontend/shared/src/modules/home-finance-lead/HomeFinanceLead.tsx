@@ -6,11 +6,9 @@ import { fetchFinanceLeadDashboard, type FinanceLeadDashboardPayload } from '../
 import { DateRangePill, PageHeader } from '../../app/shell';
 import { KpiCard } from '../../design-system';
 import type { Money } from '../../lib/money';
-import { seedInsights } from '../../seed/orgOwnerHome';
-import { seedCashForecast } from '../../seed/financeLeadHome';
-import { seedCloseTasks } from '../../seed/financeLeadClose';
 import { useSessionStore } from '../../state/sessionStore';
 import { useWorkflowStore } from '../../state/workflowStore';
+import { toast } from '../../state/toastStore';
 import { AIInsightsCard, ReconciliationSnapshotCard } from '../home-org-owner';
 import { ApprovalsAwaitingCard } from './ApprovalsAwaitingCard';
 import { CashForecastCard } from './CashForecastCard';
@@ -124,9 +122,9 @@ export function HomeFinanceLead() {
     },
   ];
 
-  const insights = dashboardData?.insights ?? seedInsights;
-  const cashForecast = dashboardData?.cashForecast ?? seedCashForecast;
-  const closeTasks = dashboardData?.closeTasks ?? seedCloseTasks;
+  const insights = dashboardData?.insights ?? [];
+  const cashForecast = dashboardData?.cashForecast ?? { weeks: [] };
+  const closeTasks = dashboardData?.closeTasks ?? [];
 
   return (
     <div className="flex flex-col">

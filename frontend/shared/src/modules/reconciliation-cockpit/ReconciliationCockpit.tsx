@@ -5,7 +5,6 @@ import { DateRangePill, PageHeader } from '../../app/shell';
 import { getApiBaseUrl } from '../../api/client';
 import { workflowReconciliationAction } from '../../api/workflow';
 import { useSession } from '../../auth/hooks';
-import { type ReconciliationTier } from '../../seed/reconciliation';
 import { toast } from '../../state/toastStore';
 import { useWorkflowStore } from '../../state/workflowStore';
 import { ExceptionQueue, type TabId } from './ExceptionQueue';

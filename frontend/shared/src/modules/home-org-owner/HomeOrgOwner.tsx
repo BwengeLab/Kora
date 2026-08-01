@@ -3,7 +3,6 @@ import { DateRangePill, PageHeader } from '../../app/shell';
 import { getApiBaseUrl } from '../../api/client';
 import { fetchOwnerDashboard } from '../../api/dashboard';
 import { fetchOwnerHomeSummary } from '../../api/ownerHome';
-import { seedCashFlow, seedCreditPassport, seedDocuments, seedInsights, seedKpis, seedRelationships } from '../../seed/orgOwnerHome';
 import { useSessionStore } from '../../state/sessionStore';
 import { AIAgentsActivityCard } from './AIAgentsActivityCard';
 import { AIInsightsCard } from './AIInsightsCard';
@@ -28,12 +27,12 @@ export function HomeOrgOwner() {
     queryFn: ({ signal }) => fetchOwnerDashboard(apiBaseUrl, token, signal),
     enabled: Boolean(token),
   });
-  const kpis = data?.kpis ?? seedKpis;
-  const cashFlow = data?.cashFlow ?? seedCashFlow;
-  const insights = dashboardData?.insights ?? seedInsights;
-  const relationships = dashboardData?.relationships ?? seedRelationships;
-  const creditPassport = dashboardData?.creditPassport ?? seedCreditPassport;
-  const documents = dashboardData?.documents ?? seedDocuments;
+  const kpis = data?.kpis ?? [];
+  const cashFlow = data?.cashFlow ?? [];
+  const insights = dashboardData?.insights ?? [];
+  const relationships = dashboardData?.relationships ?? [];
+  const creditPassport = dashboardData?.creditPassport ?? {};
+  const documents = dashboardData?.documents ?? [];
 
   return (
     <div className="flex flex-col">

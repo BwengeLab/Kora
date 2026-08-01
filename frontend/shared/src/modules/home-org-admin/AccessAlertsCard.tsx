@@ -1,6 +1,5 @@
 import { ShieldAlert } from 'lucide-react';
 import { GlassSurface, cn } from '../../design-system';
-import type { AccessAlert } from '../../seed/adminHome';
 
 export function AccessAlertsCard({ alerts }: { alerts: AccessAlert[] }) {
   return (

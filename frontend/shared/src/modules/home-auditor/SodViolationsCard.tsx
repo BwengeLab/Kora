@@ -1,8 +1,8 @@
 import { ChevronRight, ShieldAlert } from 'lucide-react';
 import { GlassSurface, cn } from '../../design-system';
-import { seedSodViolations } from '../../seed/auditorHome';
+import type { SodViolation } from '../../types/api';
 
-export function SodViolationsCard({ items = seedSodViolations }: { items?: typeof seedSodViolations }) {
+export function SodViolationsCard({ items = [] }: { items?: SodViolation[] }) {
   return (
     <GlassSurface tone="strong" className="flex h-full flex-col gap-3 p-6">
       <header className="flex items-center gap-2">

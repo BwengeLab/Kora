@@ -16,7 +16,6 @@ import {
   cn,
 } from '../../design-system';
 import type { Money } from '../../lib/money';
-import type { Reconciliation, ReconciliationTier } from '../../seed/reconciliation';
 
 const TIER_ICON: Record<ReconciliationTier, LucideIcon> = {
   auto: CheckCircle2,

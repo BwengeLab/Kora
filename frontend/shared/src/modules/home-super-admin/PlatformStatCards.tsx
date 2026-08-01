@@ -1,8 +1,19 @@
 import { ArrowUpRight, Building2, Gauge, Percent, Wallet } from 'lucide-react';
 import { GlassSurface, MoneyCell, cn } from '../../design-system';
-import { seedPlatformStats } from '../../seed/platformHome';
+import type { PlatformStats } from '../../types/api';
 
-export function PlatformStatCards({ stats = seedPlatformStats }: { stats?: typeof seedPlatformStats }) {
+export function PlatformStatCards({ stats }: { stats?: PlatformStats }) {
+  if (!stats) {
+    return (
+      <section className="grid grid-cols-2 gap-5 @5xl:grid-cols-4">
+        <Card icon={<Building2 className="size-[18px]" />} tone="bg-brand-soft text-brand-ink" value="-" label="Active tenants" delta="No data" good={false} />
+        <MoneyCardPlaceholder />
+        <Card icon={<Gauge className="size-[18px]" />} tone="bg-success-soft text-success" value="-" label="Uptime (30d)" delta="No data" good={false} />
+        <Card icon={<Percent className="size-[18px]" />} tone="bg-ai-soft text-ai" value="-" label="Gross margin" delta="No data" good={false} />
+      </section>
+    );
+  }
+  
   const s = stats;
   return (
     <section className="grid grid-cols-2 gap-5 @5xl:grid-cols-4">
@@ -14,7 +25,7 @@ export function PlatformStatCards({ stats = seedPlatformStats }: { stats?: typeo
   );
 }
 
-function MoneyCardItem({ stats }: { stats: typeof seedPlatformStats }) {
+function MoneyCardItem({ stats }: { stats: PlatformStats }) {
   const s = stats;
   return (
     <GlassSurface tone="strong" className="flex flex-col gap-2 p-5">
@@ -26,6 +37,19 @@ function MoneyCardItem({ stats }: { stats: typeof seedPlatformStats }) {
       <span className="inline-flex w-fit items-center gap-0.5 rounded-full bg-success-soft px-1.5 py-0.5 text-[11px] font-bold text-success">
         <ArrowUpRight className="size-3" /> {s.mrrGrowthPct}% MoM
       </span>
+    </GlassSurface>
+  );
+}
+
+function MoneyCardPlaceholder() {
+  return (
+    <GlassSurface tone="strong" className="flex flex-col gap-2 p-5">
+      <span className="grid size-10 place-items-center rounded-2xl bg-lavender-soft text-lavender">
+        <Wallet className="size-[18px]" />
+      </span>
+      <span className="h-8 w-32 bg-muted animate-pulse rounded" />
+      <span className="text-[12.5px] font-semibold text-ink">Monthly recurring revenue</span>
+      <span className="h-4 w-20 bg-muted animate-pulse rounded-full" />
     </GlassSurface>
   );
 }

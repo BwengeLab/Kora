@@ -4,8 +4,6 @@ import { useEffect, useState } from 'react';
 import { getApiBaseUrl } from '../../api/client';
 import { createApprovalRule, deleteApprovalRule, fetchApprovalRules, updateApprovalRule } from '../../api/settingsAccess';
 import { GlassSurface, cn } from '../../design-system';
-import { entityName, seedEntities, type EntityScope } from '../../seed/entities';
-import { APPROVER_ROLES, RULE_CATEGORIES, fmtBand, type ApprovalRule, type ApproverRole, type RuleCategory } from '../../seed/approvalPolicy';
 import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
 import { SettingsCard } from './primitives';
@@ -116,7 +114,7 @@ function PolicySimulator({ rules }: { rules: ApprovalRule[] }) {
       <div className="grid grid-cols-1 gap-4 @2xl:grid-cols-[1fr_1fr_1fr_1.4fr]">
         <Field label="Amount (USD)"><input value={amount} onChange={(event) => setAmount(event.target.value.replace(/[^0-9.]/g, ''))} inputMode="decimal" className={inputCls} /></Field>
         <Field label="Category"><select value={category} onChange={(event) => setCategory(event.target.value as RuleCategory)} className={inputCls}>{RULE_CATEGORIES.map((item) => <option key={item} value={item}>{item === 'all' ? 'All types' : cap(item)}</option>)}</select></Field>
-        <Field label="Entity"><select value={scope} onChange={(event) => setScope(event.target.value as EntityScope)} className={inputCls}><option value="all">All entities</option>{seedEntities.map((entity) => <option key={entity.id} value={entity.id}>{entity.name}</option>)}</select></Field>
+        <Field label="Entity"><select value={scope} onChange={(event) => setScope(event.target.value as EntityScope)} className={inputCls}><option value="all">All entities</option>{[].map((entity) => <option key={entity.id} value={entity.id}>{entity.name}</option>)}</select></Field>
         <div className="flex flex-col gap-1">
           <span className="text-[11px] font-bold uppercase tracking-wider text-ink-muted">Requires</span>
           <div className="flex min-h-[44px] flex-wrap items-center gap-1.5 rounded-xl bg-brand-soft/50 px-3 py-2 ring-1 ring-brand/15">
@@ -156,7 +154,7 @@ function RuleEditor({ rule, isNew, onCancel, onSave }: { rule: ApprovalRule; isN
             <Field label="Rule name"><input value={draft.label} onChange={(event) => set('label', event.target.value)} className={inputCls} /></Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Category"><select value={draft.category} onChange={(event) => set('category', event.target.value as RuleCategory)} className={inputCls}>{RULE_CATEGORIES.map((item) => <option key={item} value={item}>{item === 'all' ? 'All types' : cap(item)}</option>)}</select></Field>
-              <Field label="Entity"><select value={draft.scope} onChange={(event) => set('scope', event.target.value as EntityScope)} className={inputCls}><option value="all">All entities</option>{seedEntities.map((entity) => <option key={entity.id} value={entity.id}>{entity.name}</option>)}</select></Field>
+              <Field label="Entity"><select value={draft.scope} onChange={(event) => set('scope', event.target.value as EntityScope)} className={inputCls}><option value="all">All entities</option>{[].map((entity) => <option key={entity.id} value={entity.id}>{entity.name}</option>)}</select></Field>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Min amount (USD)"><input value={String(draft.minAmount)} onChange={(event) => set('minAmount', parseFloat(event.target.value.replace(/[^0-9.]/g, '')) || 0)} inputMode="decimal" className={inputCls} /></Field>

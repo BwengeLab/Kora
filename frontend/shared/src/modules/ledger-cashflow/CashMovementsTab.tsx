@@ -2,15 +2,7 @@ import { ArrowDownLeft, ArrowUpRight, ChevronRight, Search, Sparkles } from 'luc
 import { useMemo, useState } from 'react';
 import { GlassSurface, MoneyCell, cn } from '../../design-system';
 import type { Money } from '../../lib/money';
-import {
-  ACCOUNTS,
-  CATEGORY_META,
-  type Account,
-  type CashCategory,
-  type CashMovement,
-  type Direction,
-} from '../../seed/cashLedger';
-import { entityName } from '../../seed/entities';
+import type { Account, CashCategory, CashMovement, Direction } from '../../types/api';
 import { useEntityStore } from '../../state/entityStore';
 import { MovementDrawer, type LedgerMode } from './MovementDrawer';
 

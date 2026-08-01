@@ -1,6 +1,5 @@
 import { Bot } from 'lucide-react';
 import { GlassSurface, cn } from '../../design-system';
-import { seedAgents, type AgentStatus } from '../../seed/orgOwnerHome';
 
 const STATUS_TONES: Record<AgentStatus, string> = {
   Completed: 'bg-success-soft text-success',
@@ -18,7 +17,7 @@ export function AIAgentsActivityCard() {
         </button>
       </header>
       <ul className="flex flex-col">
-        {seedAgents.map((a) => (
+        {[].map((a) => (
           <li
             key={a.id}
             className="flex items-center gap-3 border-b border-white/50 py-2.5 last:border-b-0"

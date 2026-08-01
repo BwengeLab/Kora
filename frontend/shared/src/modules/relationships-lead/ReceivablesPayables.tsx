@@ -7,7 +7,6 @@ import { getApiBaseUrl } from '../../api/client';
 import { fetchRelationshipsOverview, relationshipPartyAction, type RelationshipsOverviewPayload } from '../../api/relationships';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
 import type { Money } from '../../lib/money';
-import { seedParties, type Party, type PartyType } from '../../seed/ownerExtra';
 import { openDoc } from '../../state/docViewerStore';
 import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
@@ -30,7 +29,7 @@ export function ReceivablesPayables() {
     queryFn: ({ signal }) => fetchRelationshipsOverview(apiBaseUrl, token, signal),
     enabled: Boolean(token),
   });
-  const parties = data?.parties ?? seedParties;
+  const parties = data?.parties ?? [];
   const [query, setQuery] = useState('');
   const [side, setSide] = useState<Side>('all');
   const [type, setType] = useState<PartyType | 'all'>('all');

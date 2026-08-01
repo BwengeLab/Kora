@@ -1,6 +1,6 @@
-import type { ApprovalItem } from '../seed/approvals';
-import type { AuditEvent } from '../seed/auditorHome';
-import type { Reconciliation } from '../seed/reconciliation';
+import type { ApprovalItem } from '../types/api';
+import type { AuditEvent } from '../types/api';
+import type { Reconciliation } from '../types/api';
 
 interface RawMoney {
   amountMinor: string;

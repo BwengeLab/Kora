@@ -1,9 +1,8 @@
 import { Link } from '@tanstack/react-router';
 import { CheckCircle2, Lock, XCircle } from 'lucide-react';
 import { GlassSurface, ProgressRing, cn } from '../../design-system';
-import { seedCloseTasks, type CloseTask } from '../../seed/financeLeadClose';
 
-export function CloseStatusCard({ tasks = seedCloseTasks }: { tasks?: CloseTask[] }) {
+export function CloseStatusCard({ tasks = [] }: { tasks?: CloseTask[] }) {
   const done = tasks.filter((task) => task.done).length;
   const blocked = tasks.filter((task) => task.blocked).length;
   const pct = done / tasks.length;

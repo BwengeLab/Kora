@@ -10,9 +10,10 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { GlassSurface, MoneyCell, cn } from '../../design-system';
-import { type AuditKind } from '../../seed/auditorHome';
 import { openDoc } from '../../state/docViewerStore';
 import { useWorkflowStore } from '../../state/workflowStore';
+
+type AuditKind = 'approval' | 'posting' | 'access' | 'config' | 'agent' | 'consent' | 'audit' | 'claim';
 
 const KIND: Record<AuditKind, { icon: LucideIcon; tone: string }> = {
   approval: { icon: CheckCircle2, tone: 'bg-success-soft text-success' },

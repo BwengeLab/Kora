@@ -11,6 +11,7 @@ import { IncidentsSupportCard } from './IncidentsSupportCard';
 import { PlatformStatCards } from './PlatformStatCards';
 import { TenantGrowthCard } from './TenantGrowthCard';
 import { TenantsTableCard } from './TenantsTableCard';
+import type { TenantGrowthData, SystemHealthData, SupportQueueItem, PlatformStats, PlatformTenant } from '../../types/api';
 
 // Super Admin "Platform Command Center" (doc 01). Operates the platform across
 // tenants — health, growth, cost-vs-revenue. A separate console, not tenant finance.
@@ -23,12 +24,12 @@ export function HomeSuperAdmin() {
     queryFn: ({ signal }) => fetchPlatformDashboard(apiBaseUrl, token, signal),
     enabled: Boolean(token),
   });
-  const stats = data?.stats ?? undefined;
-  const tenantGrowth = data?.tenantGrowth ?? undefined;
-  const systemHealth = data?.systemHealth ?? undefined;
-  const incidents = data?.incidents ?? undefined;
-  const supportQueue = data?.supportQueue ?? undefined;
-  const tenants = data?.tenants ?? undefined;
+  const stats = data?.stats;
+  const tenantGrowth = data?.tenantGrowth;
+  const systemHealth = data?.systemHealth;
+  const incidents = data?.incidents;
+  const supportQueue = data?.supportQueue;
+  const tenants = data?.tenants;
   const [requestingTenant, setRequestingTenant] = useState<string | undefined>();
 
   const provisionTenant = async () => {

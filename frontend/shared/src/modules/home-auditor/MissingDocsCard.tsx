@@ -1,8 +1,8 @@
 import { FileX2 } from 'lucide-react';
 import { GlassSurface, MoneyCell } from '../../design-system';
-import { seedMissingDocs } from '../../seed/auditorHome';
+import type { MissingDoc } from '../../types/api';
 
-export function MissingDocsCard({ items = seedMissingDocs }: { items?: typeof seedMissingDocs }) {
+export function MissingDocsCard({ items = [] }: { items?: MissingDoc[] }) {
   return (
     <GlassSurface tone="strong" className="flex h-full flex-col gap-3 p-6">
       <header className="flex items-center gap-2">

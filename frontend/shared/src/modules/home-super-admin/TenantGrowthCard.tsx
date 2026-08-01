@@ -1,16 +1,31 @@
 import { Activity, Gauge, Timer, Zap } from 'lucide-react';
 import { AreaChart, GlassSurface, MoneyCell } from '../../design-system';
-import { seedSystemHealth, seedTenantGrowth } from '../../seed/platformHome';
+import type { TenantGrowthData, SystemHealthData } from '../../types/api';
 
 export function TenantGrowthCard({
-  tenantGrowth = seedTenantGrowth,
-  systemHealth = seedSystemHealth,
+  tenantGrowth,
+  systemHealth,
 }: {
-  tenantGrowth?: typeof seedTenantGrowth;
-  systemHealth?: typeof seedSystemHealth;
+  tenantGrowth?: TenantGrowthData;
+  systemHealth?: SystemHealthData;
 }) {
   const g = tenantGrowth;
   const h = systemHealth;
+  
+  if (!g || !h) {
+    return (
+      <GlassSurface tone="strong" className="flex h-full flex-col gap-4 p-6">
+        <header className="flex items-center justify-between">
+          <h3 className="font-display text-base font-bold text-ink">Tenant growth</h3>
+          <span className="text-[12px] font-semibold text-ink-muted">last 6 months</span>
+        </header>
+        <div className="flex items-center justify-center h-40 text-muted-foreground">
+          No data available
+        </div>
+      </GlassSurface>
+    );
+  }
+  
   return (
     <GlassSurface tone="strong" className="flex h-full flex-col gap-4 p-6">
       <header className="flex items-center justify-between">

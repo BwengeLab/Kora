@@ -1,4 +1,4 @@
-import type { Claim, ClaimStage } from '../seed/claims';
+import type { Claim, ClaimStage } from '../types/api';
 
 interface RawMoney {
   amountMinor: string;

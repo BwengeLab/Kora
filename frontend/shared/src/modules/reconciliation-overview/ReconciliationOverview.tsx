@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react';
 import { DateRangePill, PageHeader } from '../../app/shell';
 import { ConfidenceChip, DonutChart, GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
 import type { Money } from '../../lib/money';
-import type { Reconciliation } from '../../seed/reconciliation';
 import { openDoc } from '../../state/docViewerStore';
 import { toast } from '../../state/toastStore';
 import { useWorkflowStore } from '../../state/workflowStore';

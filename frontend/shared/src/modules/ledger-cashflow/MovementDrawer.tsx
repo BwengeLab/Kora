@@ -2,7 +2,6 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { ArrowDownLeft, ArrowUpRight, Check, FileText, Flag, Link2, MessageSquare, X } from 'lucide-react';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
 import { openLinkedRecord } from '../../lib/linkedRecords';
-import { CATEGORY_META, type CashMovement } from '../../seed/cashLedger';
 import { openDoc } from '../../state/docViewerStore';
 
 export type LedgerMode = 'operate' | 'post' | 'oversight' | 'read';

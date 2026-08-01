@@ -1,6 +1,5 @@
 import { AlertTriangle, FileText, Gauge, Sparkles } from 'lucide-react';
 import { GlassSurface, MoneyCell, cn } from '../../design-system';
-import type { Claim } from '../../seed/claims';
 import { SEVERITY_TONE, fraudTone } from './claimMeta';
 
 // The Claims AI agent's output — document extraction, triage, fraud score and

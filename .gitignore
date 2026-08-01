@@ -1,12 +1,10 @@
-.venv/
-__pycache__/
-*.pyc
-.pytest_cache/
-.cache/
-coverage.out
-bin/
-gen/
-tmp/
-.env
-.env.*
-!/.env.example
+```
+# Log files
+*.log
+
+# Temporary gateway logs and output files
+gateway-runtime-*.log
+tmp-gateway-*.log
+tmp-gateway-*.out.log
+tmp-gateway-*.err.log
+```

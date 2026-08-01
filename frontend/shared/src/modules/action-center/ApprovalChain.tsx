@@ -1,6 +1,5 @@
 import { Check, Lock, User } from 'lucide-react';
 import { cn } from '../../design-system';
-import type { ApprovalItem } from '../../seed/approvals';
 
 // The approval chain: Prepared → Your approval → (2nd approval) → Executed.
 // Visualizes dual-approval progress and the SoD lock when you prepared the item.

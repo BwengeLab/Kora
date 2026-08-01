@@ -6,7 +6,6 @@ import { getApiBaseUrl } from '../../api/client';
 import { CLAIMS_PERMISSIONS } from '../../auth/catalog';
 import { usePermissions, useSession } from '../../auth/hooks';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
-import { CLAIM_STAGES, type Claim, type ClaimStage } from '../../seed/claims';
 import { useClaimsStore } from '../../state/claimsStore';
 import { openDoc } from '../../state/docViewerStore';
 import { toast } from '../../state/toastStore';

@@ -5,7 +5,6 @@ import { downloadFinancialStatementPack } from '../../api/financialStatements';
 import { DateRangePill, PageHeader } from '../../app/shell';
 import { GlassSurface, MoneyCell, cn } from '../../design-system';
 import type { Money } from '../../lib/money';
-import { entityName } from '../../seed/entities';
 import { balanceSheet, cashFlow, incomeStatement, type StatementLine } from '../../state/glStore';
 import { useEntityStore } from '../../state/entityStore';
 import { useGLStore } from '../../state/glStore';

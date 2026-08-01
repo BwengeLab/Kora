@@ -1,5 +1,5 @@
-import type { Bill } from '../seed/payables';
-import type { JournalEntry } from '../seed/journals';
+import type { Bill } from '../types/api';
+import type { JournalEntry } from '../types/api';
 import type { Txn } from '../state/transactionsStore';
 
 interface RawMoney {

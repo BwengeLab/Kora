@@ -1,7 +1,6 @@
 import { ArrowDownRight, ArrowUpRight, Receipt, TrendingUp, Wallet, Wallet2 } from 'lucide-react';
 import type { ComponentType, SVGProps } from 'react';
 import { GlassSurface, MoneyCell, cn } from '../../design-system';
-import type { KpiSeed } from '../../seed/orgOwnerHome';
 
 // 4 KPI cards across the top. Designed to mirror the reference: large bold
 // number on the left, colored icon-tile on the right, delta chip below.

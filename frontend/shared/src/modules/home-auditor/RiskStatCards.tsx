@@ -1,10 +1,25 @@
 import { AlertOctagon, FileX2, Flag, ShieldAlert, type LucideIcon } from 'lucide-react';
 import { GlassSurface, cn } from '../../design-system';
-import { seedRiskStats } from '../../seed/auditorHome';
+
+interface RiskStats {
+  riskFlags: number;
+  sodViolations: number;
+  suspicious: number;
+  missingDocs: number;
+}
 
 interface Def { label: string; sub: string; value: number; icon: LucideIcon; tone: string }
 
-export function RiskStatCards({ riskStats = seedRiskStats }: { riskStats?: typeof seedRiskStats }) {
+export function RiskStatCards({ riskStats }: { riskStats?: RiskStats }) {
+  if (!riskStats) {
+    return (
+      <div className="grid grid-cols-2 gap-4">
+        <GlassSurface tone="strong" className="flex flex-col gap-2 p-5">
+          <p className="text-sm text-ink-muted">No risk data available</p>
+        </GlassSurface>
+      </div>
+    );
+  }
   const s = riskStats;
   const cards: Def[] = [
     { label: 'Risk flags', sub: 'open · all severities', value: s.riskFlags, icon: Flag, tone: 'bg-warning-soft text-warning' },

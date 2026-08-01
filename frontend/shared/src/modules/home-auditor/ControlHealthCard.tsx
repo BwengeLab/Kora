@@ -1,8 +1,26 @@
 import { ShieldCheck } from 'lucide-react';
 import { GlassSurface, ProgressRing, cn } from '../../design-system';
-import { seedControlHealth } from '../../seed/auditorHome';
 
-export function ControlHealthCard({ controlHealth = seedControlHealth }: { controlHealth?: typeof seedControlHealth }) {
+interface ControlHealth {
+  score: number;
+  trendPts: number;
+  subscores: Array<{ label: string; value: number }>;
+}
+
+export function ControlHealthCard({ controlHealth }: { controlHealth?: ControlHealth }) {
+  if (!controlHealth) {
+    return (
+      <GlassSurface tone="strong" className="flex h-full flex-col gap-4 p-6">
+        <div className="flex items-center gap-2">
+          <span className="grid size-7 place-items-center rounded-xl bg-success-soft text-success">
+            <ShieldCheck className="size-4" />
+          </span>
+          <h3 className="font-display text-base font-bold text-ink">Control health</h3>
+        </div>
+        <p className="text-sm text-ink-muted">No control health data available</p>
+      </GlassSurface>
+    );
+  }
   const c = controlHealth;
   return (
     <GlassSurface tone="strong" className="flex h-full flex-col gap-4 p-6">

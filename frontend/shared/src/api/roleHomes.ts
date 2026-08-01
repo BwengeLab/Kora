@@ -1,7 +1,7 @@
 import type { Money } from '../lib/money';
-import type { OperatorTask, IntakeBatch } from '../seed/operatorHome';
-import type { MissingDoc, SodViolation } from '../seed/auditorHome';
-import type { Incident, PlatformTenant, SupportRequest } from '../seed/platformHome';
+import type { OperatorTask, IntakeBatch } from '../types/api';
+import type { MissingDoc, SodViolation } from '../types/api';
+import type { Incident, PlatformTenant, SupportRequest } from '../types/api';
 
 interface RawMoney {
   amountMinor: string;
