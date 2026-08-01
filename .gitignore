@@ -1,3 +1,33 @@
-```go
-
 ```
+# Compiled and binary files
+*.o
+*.obj
+*.out
+
+# Dependencies
+vendor/
+
+# Logs and temp files
+*.log
+*.tmp
+
+# Environment
+*.env.*
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Editors
+.idea/
+*.swp
+*.swo
+
+# Build artifacts
+dist/
+build/
+target/
+```
+config.bat
+node_modules

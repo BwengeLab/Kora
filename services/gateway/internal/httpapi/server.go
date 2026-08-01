@@ -688,6 +688,432 @@ type LinkedReconciliation struct {
 	Subtitle  string `json:"subtitle"`
 }
 
+// Domain query types (replacing demo package)
+type OverdueItem struct {
+	ID              string `json:"id"`
+	Customer        string `json:"customer"`
+	Invoice         string `json:"invoice"`
+	Amount          Money  `json:"amount"`
+	DaysOverdue     int    `json:"daysOverdue"`
+	Risk            string `json:"risk"`
+	ReminderDrafted bool   `json:"reminderDrafted"`
+	Contact         string `json:"contact"`
+	Email           string `json:"email"`
+	LastContact     string `json:"lastContact"`
+	ReminderCount   int    `json:"reminderCount"`
+	ActionStatus    string `json:"actionStatus"`
+}
+
+type ContractData struct {
+	ID         string `json:"id"`
+	Type       string `json:"type"`
+	Counterparty string `json:"counterparty"`
+	StartDate  string `json:"startDate"`
+	EndDate    string `json:"endDate"`
+	Value      Money  `json:"value,omitempty"`
+	AutoRenew  bool   `json:"autoRenew"`
+	Owner      string `json:"owner"`
+	Reference  string `json:"reference"`
+	Terms      string `json:"terms"`
+	Status     string `json:"status"`
+}
+
+type FinanceJournalLine struct {
+	Account string `json:"account"`
+	Debit   Money  `json:"debit,omitempty"`
+	Credit  Money  `json:"credit,omitempty"`
+}
+
+type FinanceJournalEntry struct {
+	ID     string             `json:"id"`
+	Date   string             `json:"date"`
+	Ref    string             `json:"ref"`
+	Memo   string             `json:"memo"`
+	Status string             `json:"status"`
+	Source string             `json:"source"`
+	Entity string             `json:"entity"`
+	Lines  []FinanceJournalLine `json:"lines"`
+}
+
+type FinanceBill struct {
+	ID        string `json:"id"`
+	Date      string `json:"date"`
+	Vendor    string `json:"vendor"`
+	Amount    Money  `json:"amount"`
+	Status    string `json:"status"`
+	DueDate   string `json:"dueDate"`
+	Reference string `json:"reference"`
+}
+
+type FinanceTransaction struct {
+	ID          string `json:"id"`
+	Date        string `json:"date"`
+	Description string `json:"description"`
+	Amount      Money  `json:"amount"`
+	Counterparty string `json:"counterparty"`
+	Reference   string `json:"reference"`
+	Channel     string `json:"channel"`
+	ExternalRef string `json:"externalRef"`
+	Status      string `json:"status"`
+}
+
+type FinanceOperationsSnapshot struct {
+	Journals     []FinanceJournalEntry `json:"journals"`
+	Bills        []FinanceBill         `json:"bills"`
+	Transactions []FinanceTransaction  `json:"transactions"`
+}
+
+type Trend struct {
+	Direction  string `json:"direction"`
+	ValueText  string `json:"valueText"`
+	Label      string `json:"label"`
+	Percentage string `json:"percentage,omitempty"`
+}
+
+type LedgerKPIData struct {
+	ID                string `json:"id"`
+	Label             string `json:"label"`
+	Money             *Money `json:"money,omitempty"`
+	Delta             Trend  `json:"delta"`
+	PositiveDirection string `json:"positiveDirection"`
+}
+
+type LedgerCashflowView struct {
+	KPIs           []LedgerKPIData `json:"kpis"`
+	OpeningBalance Money           `json:"openingBalance"`
+	PeriodStart    string          `json:"periodStart"`
+	PeriodEnd      string          `json:"periodEnd"`
+	Inflows        []Money         `json:"inflows"`
+	Outflows       []Money         `json:"outflows"`
+}
+
+type AuditEvent struct {
+	ID        string `json:"id"`
+	Timestamp string `json:"timestamp"`
+	Actor     string `json:"actor"`
+	Role      string `json:"role"`
+	Kind      string `json:"kind"`
+	Action    string `json:"action"`
+	Target    string `json:"target"`
+	HasEvidence bool `json:"hasEvidence"`
+}
+
+type AuditInvestigationsView struct {
+	Events []AuditEvent `json:"events"`
+}
+
+type AccessAlert struct {
+	ID        string `json:"id"`
+	Severity  string `json:"severity"`
+	Message   string `json:"message"`
+	Timestamp string `json:"timestamp"`
+}
+
+type AccessRequest struct {
+	ID        string `json:"id"`
+	Requester string `json:"requester"`
+	Resource  string `json:"resource"`
+	Reason    string `json:"reason"`
+	Status    string `json:"status"`
+	CreatedAt string `json:"createdAt"`
+}
+
+type AdminUser struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Email     string `json:"email"`
+	Role      string `json:"role"`
+	Status    string `json:"status"`
+	CreatedAt string `json:"createdAt"`
+}
+
+type AdminStats struct {
+	TotalUsers     int `json:"totalUsers"`
+	ActiveTenants  int `json:"activeTenants"`
+	PendingInvites int `json:"pendingInvites"`
+	AlertsCount    int `json:"alertsCount"`
+}
+
+type AdminDashboardData struct {
+	Stats      AdminStats   `json:"stats"`
+	Users      []AdminUser  `json:"users"`
+	Alerts     []AccessAlert `json:"alerts"`
+	Requests   []AccessRequest `json:"requests"`
+}
+
+type ApprovalItem struct {
+	ID          string   `json:"id"`
+	Type        string   `json:"type"`
+	Title       string   `json:"title"`
+	Subtitle    string   `json:"subtitle"`
+	Amount      *Money   `json:"amount,omitempty"`
+	Requester   string   `json:"requester"`
+	RequestedAt string   `json:"requestedAt"`
+	Approvers   []Approver `json:"approvers"`
+	Status      string   `json:"status"`
+}
+
+type AreaSeries struct {
+	Label string  `json:"label"`
+	Data  []float64 `json:"data"`
+}
+
+type AuditControlHealthData struct {
+	TotalControls   int     `json:"totalControls"`
+	PassingControls int     `json:"passingControls"`
+	HealthScore     float64 `json:"healthScore"`
+	Trend           []AreaSeries `json:"trend"`
+}
+
+type AuditRiskStatsData struct {
+	HighRiskCount   int `json:"highRiskCount"`
+	MediumRiskCount int `json:"mediumRiskCount"`
+	LowRiskCount    int `json:"lowRiskCount"`
+	CriticalFlags   int `json:"criticalFlags"`
+}
+
+type BankTransaction struct {
+	ID          string `json:"id"`
+	Date        string `json:"date"`
+	Description string `json:"description"`
+	Amount      Money  `json:"amount"`
+	Counterparty string `json:"counterparty"`
+	Reference   string `json:"reference"`
+	Channel     string `json:"channel"`
+	Matched     bool   `json:"matched"`
+}
+
+type BillingSummary struct {
+	CurrentCharges Money `json:"currentCharges"`
+	PreviousCharges Money `json:"previousCharges"`
+	Outstanding    Money `json:"outstanding"`
+	DueDate        string `json:"dueDate"`
+	Status         string `json:"status"`
+}
+
+type BusinessRecord struct {
+	ID        string `json:"id"`
+	Type      string `json:"type"`
+	Name      string `json:"name"`
+	Status    string `json:"status"`
+	CreatedAt string `json:"createdAt"`
+}
+
+type BusinessRiskData struct {
+	RiskScore    float64 `json:"riskScore"`
+	RiskLevel    string  `json:"riskLevel"`
+	TopRisks     []string `json:"topRisks"`
+	Trend        string  `json:"trend"`
+}
+
+type CloseTaskData struct {
+	ID          string `json:"id"`
+	Task        string `json:"task"`
+	Owner       string `json:"owner"`
+	DueDate     string `json:"dueDate"`
+	Status      string `json:"status"`
+	CompletedAt string `json:"completedAt,omitempty"`
+}
+
+type ComplianceItemData struct {
+	ID          string `json:"id"`
+	Requirement string `json:"requirement"`
+	Status      string `json:"status"`
+	Evidence    string `json:"evidence"`
+	DueDate     string `json:"dueDate"`
+}
+
+type ControlCheckData struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Status    string `json:"status"`
+	LastRun   string `json:"lastRun"`
+	Result    string `json:"result"`
+}
+
+type ControlPostureData struct {
+	TotalControls   int      `json:"totalControls"`
+	PassingControls int      `json:"passingControls"`
+	FailingControls int      `json:"failingControls"`
+	Checks          []ControlCheckData `json:"checks"`
+}
+
+type ControlSubscoreData struct {
+	Name   string  `json:"name"`
+	Score  float64 `json:"score"`
+	Status string  `json:"status"`
+}
+
+type ControlsCloseData struct {
+	Period      string             `json:"period"`
+	Status      string             `json:"status"`
+	Tasks       []CloseTaskData    `json:"tasks"`
+	Compliance  []ComplianceItemData `json:"compliance"`
+	Posture     ControlPostureData `json:"posture"`
+	Subscores   []ControlSubscoreData `json:"subscores"`
+}
+
+type CreditFactor struct {
+	Name   string  `json:"name"`
+	Score  float64 `json:"score"`
+	Weight float64 `json:"weight"`
+	Status string  `json:"status"`
+}
+
+type CreditPassportSummary struct {
+	OverallScore int           `json:"overallScore"`
+	Rating       string        `json:"rating"`
+	Factors      []CreditFactor `json:"factors"`
+	GeneratedAt  string        `json:"generatedAt"`
+}
+
+type EvidenceGapData struct {
+	ID          string `json:"id"`
+	Control     string `json:"control"`
+	Gap         string `json:"gap"`
+	Severity    string `json:"severity"`
+	Remediation string `json:"remediation"`
+	DueDate     string `json:"dueDate"`
+}
+
+type FieldDelta struct {
+	Field     string `json:"field"`
+	OldValue  string `json:"oldValue"`
+	NewValue  string `json:"newValue"`
+}
+
+type Insight struct {
+	Text      string `json:"text"`
+	Severity  string `json:"severity"`
+	ActionURL string `json:"actionUrl,omitempty"`
+}
+
+type IntakeBatchData struct {
+	ID           string `json:"id"`
+	Source       string `json:"source"`
+	DocumentCount int    `json:"documentCount"`
+	Status       string `json:"status"`
+	ProcessedAt  string `json:"processedAt"`
+	Errors       int    `json:"errors"`
+}
+
+type OperatorFocusData struct {
+	HighPriority int `json:"highPriority"`
+	MediumPriority int `json:"mediumPriority"`
+	LowPriority int `json:"lowPriority"`
+}
+
+type OperatorTaskData struct {
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Type     string `json:"type"`
+	Priority string `json:"priority"`
+	Status   string `json:"status"`
+	DueDate  string `json:"dueDate"`
+}
+
+type OperatorThroughputData struct {
+	ProcessedToday int `json:"processedToday"`
+	PendingReview  int `json:"pendingReview"`
+	AutoMatched    int `json:"autoMatched"`
+}
+
+type OperatorHomeData struct {
+	Tasks      []OperatorTaskData   `json:"tasks"`
+	Throughput OperatorThroughputData `json:"throughput"`
+	Focus      OperatorFocusData    `json:"focus"`
+	Insights   []Insight            `json:"insights"`
+}
+
+type OwnerCashFlow struct {
+	Period      string  `json:"period"`
+	Inflow      Money   `json:"inflow"`
+	Outflow     Money   `json:"outflow"`
+	Net         Money   `json:"net"`
+	Forecast    []Money `json:"forecast"`
+}
+
+type OwnerKPI struct {
+	Name      string `json:"name"`
+	Value     string `json:"value"`
+	Change    string `json:"change"`
+	Trend     string `json:"trend"`
+}
+
+type OwnerHomeSummary struct {
+	CashPosition   Money         `json:"cashPosition"`
+	MonthlyBurn    Money         `json:"monthlyBurn"`
+	RunwayMonths   float64       `json:"runwayMonths"`
+	Receivables    Money         `json:"receivables"`
+	Payables       Money         `json:"payables"`
+	KPIs           []OwnerKPI    `json:"kpis"`
+	CashFlow       OwnerCashFlow `json:"cashFlow"`
+}
+
+type OwnerRiskDashboardData struct {
+	RiskScore    float64  `json:"riskScore"`
+	RiskLevel    string   `json:"riskLevel"`
+	OpenIssues   int      `json:"openIssues"`
+	ComplianceScore float64 `json:"complianceScore"`
+	Trends       []AreaSeries `json:"trends"`
+}
+
+type OwnerDashboardData struct {
+	Summary OwnerHomeSummary      `json:"summary"`
+	Risk    OwnerRiskDashboardData `json:"risk"`
+	Alerts  []Insight             `json:"alerts"`
+}
+
+type PolicyVersion struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Version   string `json:"version"`
+	Status    string `json:"status"`
+	PublishedAt string `json:"publishedAt"`
+}
+
+type RecentDocument struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	UploadedAt string `json:"uploadedAt"`
+	Status    string `json:"status"`
+	Size      int64  `json:"size"`
+}
+
+type Reconciliation struct {
+	ID          string `json:"id"`
+	Date        string `json:"date"`
+	Source      string `json:"source"`
+	MatchedCount int    `json:"matchedCount"`
+	UnmatchedCount int  `json:"unmatchedCount"`
+	Status      string `json:"status"`
+}
+
+type RelationshipRow struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Type         string `json:"type"`
+	RiskScore    float64 `json:"riskScore"`
+	ContractStatus string `json:"contractStatus"`
+	LastInteraction string `json:"lastInteraction"`
+}
+
+type ResumeItemData struct {
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Subtitle string `json:"subtitle"`
+	Status   string `json:"status"`
+	URL      string `json:"url"`
+}
+
+type WorkflowSnapshot struct {
+	Approvals         []WorkflowApprovalItem   `json:"approvals"`
+	Reconciliations   []WorkflowReconciliation `json:"reconciliations"`
+	DismissedReconIDs []string                 `json:"dismissedReconIds"`
+	AuditLog          []WorkflowAuditEvent     `json:"auditLog"`
+}
+
 func emptyWorkflowSnapshot() *WorkflowSnapshot {
 	return &WorkflowSnapshot{
 		Approvals:       []WorkflowApprovalItem{},

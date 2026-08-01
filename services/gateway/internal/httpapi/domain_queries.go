@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func (s *Server) queryCollectionsOverdue(orgID string) []demo.OverdueItem {
+func (s *Server) queryCollectionsOverdue(orgID string) []OverdueItem {
 	rows, err := s.db.Query(`
 		SELECT
 			cc.id,
@@ -38,21 +38,21 @@ func (s *Server) queryCollectionsOverdue(orgID string) []demo.OverdueItem {
 	}
 	defer rows.Close()
 
-	var items []demo.OverdueItem
+	var items []OverdueItem
 	for rows.Next() {
-		var item demo.OverdueItem
+		var item OverdueItem
 		var amountMinor int64
 		var currency string
 		if err := rows.Scan(&item.ID, &item.Customer, &item.Invoice, &amountMinor, &currency, &item.DaysOverdue, &item.Risk, &item.ReminderDrafted, &item.Contact, &item.Email, &item.LastContact, &item.ReminderCount, &item.ActionStatus); err != nil {
 			continue
 		}
-		item.Amount = demo.Money{AmountMinor: fmt.Sprintf("%d", amountMinor), Currency: currency}
+		item.Amount = Money{AmountMinor: fmt.Sprintf("%d", amountMinor), Currency: currency}
 		items = append(items, item)
 	}
 	return items
 }
 
-func (s *Server) queryContractsOverview(orgID string) []demo.ContractData {
+func (s *Server) queryContractsOverview(orgID string) []ContractData {
 	rows, err := s.db.Query(`
 		SELECT
 			cr.id,
@@ -81,9 +81,9 @@ func (s *Server) queryContractsOverview(orgID string) []demo.ContractData {
 	}
 	defer rows.Close()
 
-	var items []demo.ContractData
+	var items []ContractData
 	for rows.Next() {
-		var item demo.ContractData
+		var item ContractData
 		var startDate, endDate time.Time
 		var valueMinor string
 		var currency, autoRenewStr, terms, owner, reference string
@@ -98,17 +98,17 @@ func (s *Server) queryContractsOverview(orgID string) []demo.ContractData {
 		item.Reference = reference
 		item.Terms = terms
 		if valueMinor != "0" {
-			item.Value = demo.Money{AmountMinor: valueMinor, Currency: currency}
+			item.Value = Money{AmountMinor: valueMinor, Currency: currency}
 		}
 		items = append(items, item)
 	}
 	return items
 }
 
-func (s *Server) queryFinanceOperations(orgID string) *demo.FinanceOperationsSnapshot {
-	var journals []demo.FinanceJournalEntry
-	var bills []demo.FinanceBill
-	var transactions []demo.FinanceTransaction
+func (s *Server) queryFinanceOperations(orgID string) *FinanceOperationsSnapshot {
+	var journals []FinanceJournalEntry
+	var bills []FinanceBill
+	var transactions []FinanceTransaction
 
 	jrows, err := s.db.Query(`
 		SELECT
@@ -125,7 +125,7 @@ func (s *Server) queryFinanceOperations(orgID string) *demo.FinanceOperationsSna
 	if err == nil {
 		defer jrows.Close()
 		for jrows.Next() {
-			var je demo.FinanceJournalEntry
+			var je FinanceJournalEntry
 			var ref, memo, status string
 			if err := jrows.Scan(&je.ID, &je.Date, &ref, &memo, &status); err != nil {
 				continue
@@ -144,17 +144,17 @@ func (s *Server) queryFinanceOperations(orgID string) *demo.FinanceOperationsSna
 				LIMIT 10`, je.ID, orgID)
 			if lerr == nil {
 				for lrows.Next() {
-					var line demo.FinanceJournalLine
+					var line FinanceJournalLine
 					var debitMinor, creditMinor int64
 					var cur string
 					if err := lrows.Scan(&line.Account, &debitMinor, &creditMinor, &cur); err != nil {
 						continue
 					}
 					if debitMinor > 0 {
-						line.Debit = demo.Money{AmountMinor: fmt.Sprintf("%d", debitMinor), Currency: cur}
+						line.Debit = Money{AmountMinor: fmt.Sprintf("%d", debitMinor), Currency: cur}
 					}
 					if creditMinor > 0 {
-						line.Credit = demo.Money{AmountMinor: fmt.Sprintf("%d", creditMinor), Currency: cur}
+						line.Credit = Money{AmountMinor: fmt.Sprintf("%d", creditMinor), Currency: cur}
 					}
 					je.Lines = append(je.Lines, line)
 				}
@@ -183,7 +183,7 @@ func (s *Server) queryFinanceOperations(orgID string) *demo.FinanceOperationsSna
 	if err == nil {
 		defer trows.Close()
 		for trows.Next() {
-			var t demo.FinanceTransaction
+			var t FinanceTransaction
 			var debitMinor, creditMinor int64
 			var cur, desc string
 			var createdAt time.Time
@@ -196,10 +196,10 @@ func (s *Server) queryFinanceOperations(orgID string) *demo.FinanceOperationsSna
 			t.Reference = t.ID
 			if debitMinor > 0 {
 				t.Direction = "in"
-				t.Amount = demo.Money{AmountMinor: fmt.Sprintf("%d", debitMinor), Currency: cur}
+				t.Amount = Money{AmountMinor: fmt.Sprintf("%d", debitMinor), Currency: cur}
 			} else {
 				t.Direction = "out"
-				t.Amount = demo.Money{AmountMinor: fmt.Sprintf("%d", creditMinor), Currency: cur}
+				t.Amount = Money{AmountMinor: fmt.Sprintf("%d", creditMinor), Currency: cur}
 			}
 			t.Reconciled = true
 			t.Review = "reviewed"
@@ -207,14 +207,14 @@ func (s *Server) queryFinanceOperations(orgID string) *demo.FinanceOperationsSna
 		}
 	}
 
-	return &demo.FinanceOperationsSnapshot{
+	return &FinanceOperationsSnapshot{
 		Journals:     journals,
 		Bills:        bills,
 		Transactions: transactions,
 	}
 }
 
-func (s *Server) queryFinanceCashflowView(orgID string) *demo.LedgerCashflowView {
+func (s *Server) queryFinanceCashflowView(orgID string) *LedgerCashflowView {
 	var revenueMinor, expenseMinor int64
 	_ = s.db.QueryRow(`
 		SELECT
@@ -226,19 +226,19 @@ func (s *Server) queryFinanceCashflowView(orgID string) *demo.LedgerCashflowView
 
 	netMinor := revenueMinor - expenseMinor
 
-	view := demo.LedgerCashflowView{
-		KPIs: []demo.LedgerKPIData{
-			{ID: "cash", Label: "Net position", Money: demo.MoneyPtr(netMinor, "USD"), Delta: demo.Trend{Direction: "up", ValueText: "Real-time", Label: "from ledger"}, PositiveDirection: "up"},
-			{ID: "revenue", Label: "Revenue", Money: demo.MoneyPtr(revenueMinor, "USD"), Delta: demo.Trend{Direction: "up", ValueText: "Aggregate", Label: "from ledger"}, PositiveDirection: "up"},
-			{ID: "expenses", Label: "Expenses", Money: demo.MoneyPtr(expenseMinor, "USD"), Delta: demo.Trend{Direction: "down", ValueText: "Aggregate", Label: "from ledger"}, PositiveDirection: "down"},
+	view := LedgerCashflowView{
+		KPIs: []LedgerKPIData{
+			{ID: "cash", Label: "Net position", Money: MoneyPtr(netMinor, "USD"), Delta: Trend{Direction: "up", ValueText: "Real-time", Label: "from ledger"}, PositiveDirection: "up"},
+			{ID: "revenue", Label: "Revenue", Money: MoneyPtr(revenueMinor, "USD"), Delta: Trend{Direction: "up", ValueText: "Aggregate", Label: "from ledger"}, PositiveDirection: "up"},
+			{ID: "expenses", Label: "Expenses", Money: MoneyPtr(expenseMinor, "USD"), Delta: Trend{Direction: "down", ValueText: "Aggregate", Label: "from ledger"}, PositiveDirection: "down"},
 		},
-		OpeningBalance: demo.Money{AmountMinor: fmt.Sprintf("%d", netMinor), Currency: "USD"},
+		OpeningBalance: Money{AmountMinor: fmt.Sprintf("%d", netMinor), Currency: "USD"},
 	}
 
 	return &view
 }
 
-func (s *Server) queryAuditInvestigations(orgID string) *demo.AuditInvestigationsView {
+func (s *Server) queryAuditInvestigations(orgID string) *AuditInvestigationsView {
 	var auditCount, riskFlagCount, sodViolations, suspicious int
 	_ = s.db.QueryRow(`SELECT COUNT(*) FROM audit_entries WHERE organization_id = $1`, orgID).Scan(&auditCount)
 	_ = s.db.QueryRow(`SELECT COUNT(*) FROM risk_flags WHERE organization_id = $1`, orgID).Scan(&riskFlagCount)
@@ -248,7 +248,7 @@ func (s *Server) queryAuditInvestigations(orgID string) *demo.AuditInvestigation
 	var missingDocs int
 	_ = s.db.QueryRow(`SELECT COUNT(*) FROM source_records WHERE organization_id = $1 AND array_length(quality_flags, 1) > 0`, orgID).Scan(&missingDocs)
 
-	var aeRows []demo.AuditEvent
+	var aeRows []AuditEvent
 	arows, err := s.db.Query(`
 		SELECT id, action, resource, actor_user_id, occurred_at
 		FROM audit_entries
@@ -258,7 +258,7 @@ func (s *Server) queryAuditInvestigations(orgID string) *demo.AuditInvestigation
 	if err == nil {
 		defer arows.Close()
 		for arows.Next() {
-			var ae demo.AuditEvent
+			var ae AuditEvent
 			var occ time.Time
 			if err := arows.Scan(&ae.ID, &ae.Action, &ae.Target, &ae.Actor, &occ); err != nil {
 				continue
@@ -271,16 +271,16 @@ func (s *Server) queryAuditInvestigations(orgID string) *demo.AuditInvestigation
 		}
 	}
 
-	return &demo.AuditInvestigationsView{
-		ControlHealth: demo.AuditControlHealthData{
+	return &AuditInvestigationsView{
+		ControlHealth: AuditControlHealthData{
 			Score:    92,
 			TrendPts: 0,
-			Subscores: []demo.ControlSubscoreData{
+			Subscores: []ControlSubscoreData{
 				{Label: "Audit trail", Value: 95},
 				{Label: "Risk coverage", Value: 85},
 			},
 		},
-		RiskStats: demo.AuditRiskStatsData{
+		RiskStats: AuditRiskStatsData{
 			RiskFlags:     riskFlagCount,
 			SodViolations: sodViolations,
 			Suspicious:    suspicious,
@@ -290,7 +290,7 @@ func (s *Server) queryAuditInvestigations(orgID string) *demo.AuditInvestigation
 	}
 }
 
-func (s *Server) queryOwnerRiskDashboard(orgID string) *demo.OwnerRiskDashboardData {
+func (s *Server) queryOwnerRiskDashboard(orgID string) *OwnerRiskDashboardData {
 	var openRisks, highRisks int
 	var riskScore string
 	_ = s.db.QueryRow(`SELECT COUNT(*) FROM risk_flags WHERE organization_id = $1`, orgID).Scan(&openRisks)
@@ -306,7 +306,7 @@ func (s *Server) queryOwnerRiskDashboard(orgID string) *demo.OwnerRiskDashboardD
 		riskScore = "High"
 	}
 
-	var complianceItems []demo.ComplianceItemData
+	var complianceItems []ComplianceItemData
 	crows, err := s.db.Query(`
 		SELECT DISTINCT flag_type, severity, reason
 		FROM risk_flags
@@ -320,7 +320,7 @@ func (s *Server) queryOwnerRiskDashboard(orgID string) *demo.OwnerRiskDashboardD
 			if err := crows.Scan(&ft, &sev, &reason); err != nil {
 				continue
 			}
-			complianceItems = append(complianceItems, demo.ComplianceItemData{
+			complianceItems = append(complianceItems, ComplianceItemData{
 				ID:    ft,
 				Label: ft,
 				OK:    sev != "HIGH" && sev != "CRITICAL",
@@ -329,22 +329,22 @@ func (s *Server) queryOwnerRiskDashboard(orgID string) *demo.OwnerRiskDashboardD
 		}
 	}
 	if complianceItems == nil {
-		complianceItems = []demo.ComplianceItemData{}
+		complianceItems = []ComplianceItemData{}
 	}
 
-	return &demo.OwnerRiskDashboardData{
-		ControlPosture: demo.ControlPostureData{
+	return &OwnerRiskDashboardData{
+		ControlPosture: ControlPostureData{
 			ControlHealth: 92,
 			ControlTrend:  0,
 			RiskScore:     riskScore,
 			OpenRisks:     openRisks,
 		},
-		Risks:      []demo.BusinessRiskData{},
+		Risks:      []BusinessRiskData{},
 		Compliance: complianceItems,
 	}
 }
 
-func (s *Server) queryOwnerSummary(orgID string) *demo.OwnerHomeSummary {
+func (s *Server) queryOwnerSummary(orgID string) *OwnerHomeSummary {
 	var revenueMinor, expenseMinor int64
 	_ = s.db.QueryRow(`
 		SELECT
@@ -360,28 +360,28 @@ func (s *Server) queryOwnerSummary(orgID string) *demo.OwnerHomeSummary {
 	var overdueCount int
 	_ = s.db.QueryRow(`SELECT COALESCE(SUM(amount_minor), 0), COUNT(*) FROM collection_cases WHERE organization_id = $1 AND state = 'OPEN'`, orgID).Scan(&overdueMinor, &overdueCount)
 
-	return &demo.OwnerHomeSummary{
-		KPIs: []demo.OwnerKPI{
-			{ID: "cash", Label: "Total Cash Position", Money: demo.Money{AmountMinor: fmt.Sprintf("%d", netMinor), Currency: "USD"}, Trend: demo.Trend{Direction: "up", ValueText: "ledger", Label: "aggregate"}, PositiveDirection: "up", IconTone: "brand"},
-			{ID: "revenue", Label: "Revenue", Money: demo.Money{AmountMinor: fmt.Sprintf("%d", revenueMinor), Currency: "USD"}, Trend: demo.Trend{Direction: "up", ValueText: "all time", Label: "aggregate"}, PositiveDirection: "up", IconTone: "lavender"},
-			{ID: "receivables", Label: "Overdue Receivables", Money: demo.Money{AmountMinor: fmt.Sprintf("%d", overdueMinor), Currency: "USD"}, Trend: demo.Trend{Direction: "up", ValueText: fmt.Sprintf("%d items", overdueCount), Label: "to collect"}, PositiveDirection: "down", IconTone: "success"},
-			{ID: "expenses", Label: "Expenses", Money: demo.Money{AmountMinor: fmt.Sprintf("%d", expenseMinor), Currency: "USD"}, Trend: demo.Trend{Direction: "down", ValueText: "all time", Label: "aggregate"}, PositiveDirection: "down", IconTone: "warning"},
+	return &OwnerHomeSummary{
+		KPIs: []OwnerKPI{
+			{ID: "cash", Label: "Total Cash Position", Money: Money{AmountMinor: fmt.Sprintf("%d", netMinor), Currency: "USD"}, Trend: Trend{Direction: "up", ValueText: "ledger", Label: "aggregate"}, PositiveDirection: "up", IconTone: "brand"},
+			{ID: "revenue", Label: "Revenue", Money: demo.Money{AmountMinor: fmt.Sprintf("%d", revenueMinor), Currency: "USD"}, Trend: Trend{Direction: "up", ValueText: "all time", Label: "aggregate"}, PositiveDirection: "up", IconTone: "lavender"},
+			{ID: "receivables", Label: "Overdue Receivables", Money: demo.Money{AmountMinor: fmt.Sprintf("%d", overdueMinor), Currency: "USD"}, Trend: Trend{Direction: "up", ValueText: fmt.Sprintf("%d items", overdueCount), Label: "to collect"}, PositiveDirection: "down", IconTone: "success"},
+			{ID: "expenses", Label: "Expenses", Money: demo.Money{AmountMinor: fmt.Sprintf("%d", expenseMinor), Currency: "USD"}, Trend: Trend{Direction: "down", ValueText: "all time", Label: "aggregate"}, PositiveDirection: "down", IconTone: "warning"},
 		},
-		CashFlow: demo.OwnerCashFlow{
-			NetPosition: demo.Money{AmountMinor: fmt.Sprintf("%d", netMinor), Currency: "USD"},
+		CashFlow: OwnerCashFlow{
+			NetPosition: Money{AmountMinor: fmt.Sprintf("%d", netMinor), Currency: "USD"},
 			Inflow:      demo.Money{AmountMinor: fmt.Sprintf("%d", revenueMinor), Currency: "USD"},
 			Outflow:     demo.Money{AmountMinor: fmt.Sprintf("%d", expenseMinor), Currency: "USD"},
-			Net:         demo.Money{AmountMinor: fmt.Sprintf("%d", netMinor), Currency: "USD"},
+			Net:         Money{AmountMinor: fmt.Sprintf("%d", netMinor), Currency: "USD"},
 			XLabels:     []string{"Today"},
-			Series: []demo.AreaSeries{
+			Series: []AreaSeries{
 				{Name: "Net Position", Color: "#4361ee", Data: []float64{float64(netMinor) / 1000000}},
 			},
 		},
 	}
 }
 
-func (s *Server) queryControlsClose(orgID string) *demo.ControlsCloseData {
-	var closeTasks []demo.CloseTaskData
+func (s *Server) queryControlsClose(orgID string) *ControlsCloseData {
+	var closeTasks []CloseTaskData
 
 	trows, err := s.db.Query(`
 		SELECT cr.id, cr.contract_number,
@@ -393,7 +393,7 @@ func (s *Server) queryControlsClose(orgID string) *demo.ControlsCloseData {
 	if err == nil {
 		defer trows.Close()
 		for trows.Next() {
-			var task demo.CloseTaskData
+			var task CloseTaskData
 			var done bool
 			if err := trows.Scan(&task.ID, &task.Label, &done); err != nil {
 				continue
@@ -419,7 +419,7 @@ func (s *Server) queryControlsClose(orgID string) *demo.ControlsCloseData {
 		})
 	}
 
-	return &demo.ControlsCloseData{
+	return &ControlsCloseData{
 		Tasks:         closeTasks,
 		EvidenceGaps:  evidenceGaps,
 		ControlChecks: []demo.ControlCheckData{},
@@ -832,7 +832,7 @@ func (s *Server) queryWorkflowSnapshot(orgID string) *demo.WorkflowSnapshot {
 				}
 				if leAmtMinor != reAmtMinor && leAmtMinor > 0 && reAmtMinor > 0 {
 					diff := leAmtMinor - reAmtMinor
-					rc.UnexplainedDifference = demo.MoneyPtr(diff, leCur)
+					rc.UnexplainedDifference = MoneyPtr(diff, leCur)
 				}
 			}
 
@@ -866,7 +866,7 @@ func (s *Server) queryWorkflowSnapshot(orgID string) *demo.WorkflowSnapshot {
 		reconciliations = []demo.Reconciliation{}
 	}
 
-	var auditLog []demo.AuditEvent
+	var auditLog []AuditEvent
 	lrows, err := s.db.Query(`
 		SELECT ae.id, ae.action, ae.resource,
 			COALESCE(u.display_name, ae.actor_user_id) AS actor_name,
@@ -879,7 +879,7 @@ func (s *Server) queryWorkflowSnapshot(orgID string) *demo.WorkflowSnapshot {
 	if err == nil {
 		defer lrows.Close()
 		for lrows.Next() {
-			var ae demo.AuditEvent
+			var ae AuditEvent
 			var occ time.Time
 			if err := lrows.Scan(&ae.ID, &ae.Action, &ae.Target, &ae.Actor, &occ); err != nil {
 				continue
@@ -892,7 +892,7 @@ func (s *Server) queryWorkflowSnapshot(orgID string) *demo.WorkflowSnapshot {
 		}
 	}
 	if auditLog == nil {
-		auditLog = []demo.AuditEvent{}
+		auditLog = []AuditEvent{}
 	}
 
 	var dismissed []string
