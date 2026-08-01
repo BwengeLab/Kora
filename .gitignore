@@ -1,10 +1,39 @@
 ```
-# Log files
+# Dependencies
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+.env
+.env.local
+.env.*
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Testing
+.coverage
+htmlcov/
+.coverage.*
+.noserc
+.tox/
+
+# Logs
 *.log
 
-# Temporary gateway logs and output files
-gateway-runtime-*.log
-tmp-gateway-*.log
-tmp-gateway-*.out.log
-tmp-gateway-*.err.log
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
 ```
