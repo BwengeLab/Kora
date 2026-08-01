@@ -208,7 +208,7 @@ func parseMinorUnits(value string, precision int) (int64, error) {
 		}
 	}
 	scale := int64(1)
-	for range precision {
+	for i := 0; i < precision; i++ {
 		scale *= 10
 	}
 	if whole > math.MaxInt64/scale {
