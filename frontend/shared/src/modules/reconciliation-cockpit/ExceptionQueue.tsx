@@ -1,6 +1,5 @@
 import { ArrowDownLeft, ArrowUpRight, CheckCircle2, ListChecks, Search, X } from 'lucide-react';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
-import type { Reconciliation, ReconciliationTier } from '../../seed/reconciliation';
 
 const TIER_LABEL: Record<ReconciliationTier, string> = {
   auto: 'Auto',

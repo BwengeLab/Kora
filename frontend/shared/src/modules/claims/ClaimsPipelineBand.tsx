@@ -1,6 +1,5 @@
 import { Clock, FileSearch, Layers, ShieldAlert, TrendingDown } from 'lucide-react';
 import { GlassSurface, MoneyCell, cn } from '../../design-system';
-import { CLAIM_STAGES, type ClaimStage } from '../../seed/claims';
 import { useClaimsStore } from '../../state/claimsStore';
 
 export interface ClaimsPipelineBandProps {

@@ -5,8 +5,6 @@ import { downloadCashflowSummary, fetchFinanceCashflowView, flagCashMovement, ho
 import { DateRangePill, PageHeader } from '../../app/shell';
 import { AreaChart, GlassSurface, KpiCard, MoneyCell, cn } from '../../design-system';
 import type { Money } from '../../lib/money';
-import { seedCashMovements, type CashMovement } from '../../seed/cashLedger';
-import { seedLedgerCashflow, seedLedgerKpis, seedMarginBySegment, seedPnl, type LedgerKpi } from '../../seed/ownerLedger';
 import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
 import { CashMovementsTab } from './CashMovementsTab';
@@ -55,11 +53,11 @@ export function LedgerCashflow({ mode = 'oversight' }: { mode?: LedgerMode }) {
     return () => controller.abort();
   }, [apiBaseUrl, token]);
 
-  const kpis = view?.kpis ?? seedLedgerKpis;
-  const forecast = view?.forecast ?? seedLedgerCashflow;
-  const pnl = view?.pnl ?? seedPnl;
-  const marginBySegment = view?.marginBySegment ?? seedMarginBySegment;
-  const movements = view?.movements ?? seedCashMovements;
+  const kpis = view?.kpis ?? [];
+  const forecast = view?.forecast ?? [];
+  const pnl = view?.pnl ?? [];
+  const marginBySegment = view?.marginBySegment ?? [];
+  const movements = view?.movements ?? [];
   const openingBalance = view?.openingBalance ?? { amountMinor: 198000000n, currency: 'USD' };
 
   const refresh = async (runner: () => Promise<FinanceCashflowViewPayload>, success: { title: string; body: string }) => {

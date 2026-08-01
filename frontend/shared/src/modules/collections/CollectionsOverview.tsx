@@ -7,7 +7,6 @@ import { getApiBaseUrl } from '../../api/client';
 import { collectionsAction, exportCollectionsSummary, fetchOverdueItems } from '../../api/collections';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
 import type { Money } from '../../lib/money';
-import { seedOverdue, type Overdue, type RiskLevel } from '../../seed/ownerExtra';
 import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
 
@@ -23,7 +22,7 @@ export function CollectionsOverview() {
     queryFn: ({ signal }) => fetchOverdueItems(apiBaseUrl, token, signal),
     enabled: Boolean(token),
   });
-  const overdue = data ?? seedOverdue;
+  const overdue = data ?? [];
   const [selected, setSelected] = useState<Overdue | null>(null);
   const actionMutation = useMutation({
     mutationFn: ({ itemID, action }: { itemID: string; action: 'hand-to-finance' | 'flag-owner-call' | 'request-update' }) => collectionsAction(apiBaseUrl, token, itemID, action),

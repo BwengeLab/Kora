@@ -1,4 +1,4 @@
-import type { ReportDef } from '../seed/ownerExtra';
+import type { ReportDef } from '../types/api';
 
 export interface ReportContent {
   kpis: { label: string; value: string; tone?: string }[];

@@ -4,7 +4,6 @@ import { DateRangePill, PageHeader } from '../../app/shell';
 import { getApiBaseUrl } from '../../api/client';
 import { downloadRoiSummary, fetchRoiSummary } from '../../api/roi';
 import { AreaChart, GlassSurface, MoneyCell, cn } from '../../design-system';
-import { seedRoi, type RoiItem } from '../../seed/ownerExtra';
 import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
 

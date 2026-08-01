@@ -21,14 +21,8 @@ import {
 import { useMemo, useState } from 'react';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
 import { openDoc } from '../../state/docViewerStore';
-import type {
-  BankTransaction,
-  BusinessRecord,
-  EvidenceDoc,
-  FieldDelta,
-  HistoryEvent,
-  Reconciliation,
-} from '../../seed/reconciliation';
+import type { FieldDelta, Reconciliation } from '../../types/api';
+import type { BankTransaction, BusinessRecord, EvidenceDoc, HistoryEvent } from './reconciliationTypes';
 import { StageStepper } from './StageStepper';
 
 type DetailTab = 'details' | 'evidence' | 'history' | 'notes';

@@ -5,7 +5,6 @@ import { PageHeader } from '../../app/shell';
 import { getApiBaseUrl } from '../../api/client';
 import { connectIntakeSource, fetchIntakeDocs, fetchIntakeSources, matchIntakeDoc, postIntakeDoc, uploadIntakeDoc } from '../../api/intake';
 import { GlassSurface, cn } from '../../design-system';
-import { SOURCE_META, seedIntake, type IntakeDoc, type IntakeSource, type IntakeStage } from '../../seed/intake';
 import { openDoc } from '../../state/docViewerStore';
 import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';

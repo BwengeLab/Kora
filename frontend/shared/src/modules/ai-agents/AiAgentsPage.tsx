@@ -26,7 +26,6 @@ import { DateRangePill, PageHeader } from '../../app/shell';
 import { fetchAgentsOverview, runAgent, runAllAgents, submitAgentFeedback, type AgentActivityEvent } from '../../api/agents';
 import { getApiBaseUrl } from '../../api/client';
 import { GlassSurface, cn } from '../../design-system';
-import type { AgentCard } from '../../seed/agents';
 import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
 

@@ -1,7 +1,6 @@
 import { Clock, Flame, Layers, ShieldAlert, Users } from 'lucide-react';
 import { GlassSurface, MoneyCell, Sparkline, cn } from '../../design-system';
 import type { Money } from '../../lib/money';
-import type { ApprovalItem } from '../../seed/approvals';
 import type { ActionVariant } from './variant';
 
 function sum(items: ApprovalItem[]): Money {

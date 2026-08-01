@@ -7,7 +7,6 @@ import {
   Undo2,
   type LucideIcon,
 } from 'lucide-react';
-import type { ApprovalRisk, ApprovalType } from '../../seed/approvals';
 
 export const TYPE_ICON: Record<ApprovalType, LucideIcon> = {
   match: GitBranch,

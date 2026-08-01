@@ -1,4 +1,4 @@
-import type { Party, Renewal } from '../seed/ownerExtra';
+import type { Party, Renewal } from '../types/api';
 
 interface RawMoney {
   amountMinor: string;

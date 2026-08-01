@@ -4,9 +4,8 @@ import { BarChart3, Briefcase, Clock, CreditCard, Download, FileStack, FileWarni
 import { useState } from 'react';
 import { DateRangePill, PageHeader } from '../../app/shell';
 import { getApiBaseUrl } from '../../api/client';
-import { buildBoardPack, exportReport, fetchReportDetail, fetchReports, generateReport, scheduleReport, type ReportContent } from '../../api/reports';
+import { buildBoardPack, exportReport, fetchReportDetail, fetchReports, generateReport, scheduleReport, type ReportContent, type ReportDef, type ReportKind } from '../../api/reports';
 import { GlassSurface, cn } from '../../design-system';
-import { seedReports, type ReportDef, type ReportKind } from '../../seed/ownerExtra';
 import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
 
@@ -23,7 +22,7 @@ export function ReportsPage({ variant = 'read' }: { variant?: 'read' | 'produce'
     queryFn: ({ signal }) => fetchReports(apiBaseUrl, token, signal),
     enabled: Boolean(token),
   });
-  const reports = data ?? seedReports;
+  const reports = data ?? [];
   const produce = variant === 'produce';
   const generateMutation = useMutation({
     mutationFn: (reportID: string) => generateReport(apiBaseUrl, token, reportID),

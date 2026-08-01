@@ -3,8 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { DateRangePill, PageHeader } from '../../app/shell';
 import { getApiBaseUrl } from '../../api/client';
 import { fetchClaimsWorkspace } from '../../api/claims';
-import { seedClaims, seedClaimsStats, type ClaimStage } from '../../seed/claims';
 import { useFeatureStore } from '../../state/featureStore';
+import { toast } from '../../state/toastStore';
 import { useSessionStore } from '../../state/sessionStore';
 import { useClaimsStore } from '../../state/claimsStore';
 import { ClaimDetail } from './ClaimDetail';
@@ -26,8 +26,8 @@ export function ClaimsWorkspace() {
     queryFn: ({ signal }) => fetchClaimsWorkspace(apiBaseUrl, token, signal),
     enabled: Boolean(token) && enabled,
   });
-  const claims = data?.claims ?? seedClaims;
-  const stats = data?.stats ?? seedClaimsStats;
+  const claims = data?.claims ?? [];
+  const stats = data?.stats ?? []Stats;
   const [selectedId, setSelectedId] = useState<string>(claims[0]?.id ?? '');
   const [stageFilter, setStageFilter] = useState<ClaimStage | 'all'>('all');
 

@@ -1,6 +1,5 @@
 import { FileSpreadsheet, FileText, Image as ImageIcon, Upload } from 'lucide-react';
 import { GlassSurface, cn } from '../../design-system';
-import type { DocSeed } from '../../seed/orgOwnerHome';
 
 const EXT_ICON = {
   PDF: { Icon: FileText, tone: 'bg-danger-soft text-danger' },

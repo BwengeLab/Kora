@@ -1,7 +1,7 @@
-import type { Contract } from '../seed/contracts';
-import type { CloseTask, ControlCheck, EvidenceGap } from '../seed/financeLeadClose';
-import type { InsightSeed } from '../seed/orgOwnerHome';
-import type { BusinessRisk, ComplianceItem } from '../seed/ownerRisk';
+import type { Contract } from '../types/api';
+import type { CloseTask, ControlCheck, EvidenceGap } from '../types/api';
+import type { InsightSeed } from '../types/api';
+import type { BusinessRisk, ComplianceItem } from '../types/api';
 
 interface RawMoney {
   amountMinor: string;

@@ -9,7 +9,6 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { GlassSurface, Sparkline, cn } from '../../design-system';
-import type { InsightSeed } from '../../seed/orgOwnerHome';
 
 const ICON_MAP: Record<InsightSeed['iconKey'], LucideIcon> = {
   forecast: LineChart,

@@ -6,7 +6,6 @@ import { acceptRisk, assignRisk, downloadOwnerRiskPack, fetchOwnerRiskDashboard,
 import { getApiBaseUrl } from '../../api/client';
 import { DateRangePill, PageHeader } from '../../app/shell';
 import { GlassSurface, MoneyCell, ProgressRing, cn } from '../../design-system';
-import { seedBusinessRisks, seedCompliance, seedControlPosture, type BusinessRisk, type ComplianceItem, type RiskSeverity } from '../../seed/ownerRisk';
 import { openDoc } from '../../state/docViewerStore';
 import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
@@ -45,9 +44,9 @@ export function OwnerAuditRisk() {
     onSuccess: syncPayload,
   });
 
-  const controlPosture = data?.controlPosture ?? seedControlPosture;
-  const risks: RiskItem[] = data?.risks ?? seedBusinessRisks.map((risk) => ({ ...risk }));
-  const compliance = data?.compliance ?? seedCompliance;
+  const controlPosture = data?.controlPosture ?? { score: 0, controls: [] };
+  const risks: RiskItem[] = data?.risks ?? [].map((risk) => ({ ...risk }));
+  const compliance = data?.compliance ?? { compliant: 0, total: 0 };
   const selectedRisk = selectedRiskID ? risks.find((item) => item.id === selectedRiskID) ?? null : null;
 
   const handleAssign = async (risk: RiskItem) => {
@@ -132,7 +131,7 @@ export function OwnerAuditRisk() {
   );
 }
 
-function ControlPostureCard({ posture }: { posture: typeof seedControlPosture }) {
+function ControlPostureCard({ posture }: { posture: typeof { score: 0, controls: [] } }) {
   return (
     <GlassSurface tone="strong" className="flex h-full items-center gap-5 p-6">
       <ProgressRing value={posture.controlHealth / 100} size={128} thickness={13} color="#16a37b">

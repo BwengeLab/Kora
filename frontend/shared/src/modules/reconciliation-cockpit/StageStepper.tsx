@@ -1,6 +1,5 @@
 import { Check, Lock } from 'lucide-react';
 import { cn } from '../../design-system';
-import type { ReconStage } from '../../seed/reconciliation';
 
 // The lifecycle stepper — the single element that removes all "am I allowed
 // to do this?" confusion. Operator owns Review + Prepare; the locked steps

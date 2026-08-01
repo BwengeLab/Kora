@@ -4,7 +4,6 @@ import { getApiBaseUrl } from '../../api/client';
 import { fetchControlsClose, lockClosePeriod, requestEvidenceGap, toggleCloseTask, type ControlsClosePayload } from '../../api/governanceOps';
 import { DateRangePill, PageHeader } from '../../app/shell';
 import { GlassSurface, ProgressRing, cn } from '../../design-system';
-import { seedCloseTasks, seedControlChecks, seedEvidenceGaps } from '../../seed/financeLeadClose';
 import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
 
@@ -36,7 +35,7 @@ export function ControlsClose() {
     onSuccess: syncPayload,
   });
 
-  const tasks = data?.tasks ?? seedCloseTasks;
+  const tasks = data?.tasks ?? [];
   const evidenceGaps = data?.evidenceGaps ?? seedEvidenceGaps;
   const controlChecks = data?.controlChecks ?? seedControlChecks;
   const done = tasks.filter((t) => t.done).length;

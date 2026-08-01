@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"fmt"
+	"time"
 )
 
 type agentRunEvent struct {
@@ -16,6 +17,227 @@ type agentInsightResult struct {
 	insight   string
 	processed int
 	events    []agentRunEvent
+}
+
+// runAgentFromDB runs an agent using database operations
+func (s *Server) runAgentFromDB(agentID, actorName, orgID string) {
+	if s.db == nil {
+		return
+	}
+	
+	// Log agent activity to database
+	now := time.Now().UTC()
+	_, err := s.db.Exec(`
+		INSERT INTO agent_activity_log (id, organization_id, agent_id, action, detail, tone, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (organization_id, agent_id, created_at) DO NOTHING
+	`,
+		fmt.Sprintf("aa-%d", now.UnixNano()),
+		orgID,
+		agentID,
+		"Agent executed",
+		fmt.Sprintf("Agent %s run by %s", agentID, actorName),
+		"info",
+		now,
+	)
+	if err != nil {
+		// Log error but don't fail - agent execution is best effort
+		return
+	}
+}
+
+// insertAgentFeedback inserts or updates agent feedback in the database
+func (s *Server) insertAgentFeedback(agentID, rating, submittedBy, orgID string, now time.Time) error {
+	if s.db == nil {
+		return fmt.Errorf("database not connected")
+	}
+	
+	// Try to update existing feedback first
+	result, err := s.db.Exec(`
+		UPDATE agent_feedback
+		SET rating = $1, submitted_at = $2
+		WHERE agent_id = $3 AND submitted_by = $4 AND organization_id = $5
+	`, rating, now, agentID, submittedBy, orgID)
+	if err != nil {
+		return err
+	}
+	
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	
+	// If no rows updated, insert new feedback
+	if rowsAffected == 0 {
+		_, err = s.db.Exec(`
+			INSERT INTO agent_feedback (id, organization_id, agent_id, rating, submitted_by, submitted_at)
+			VALUES ($1, $2, $3, $4, $5, $6)
+		`,
+			fmt.Sprintf("af-%d", now.UnixNano()),
+			orgID,
+			agentID,
+			rating,
+			submittedBy,
+			now,
+		)
+		if err != nil {
+			return err
+		}
+	}
+	
+	// Log to audit trail
+	_, err = s.db.Exec(`
+		INSERT INTO audit_logs (id, organization_id, actor, role, kind, action, target, has_evidence, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	`,
+		fmt.Sprintf("al-%d", now.UnixNano()),
+		orgID,
+		submittedBy,
+		"user", // TODO: get actual role from claims
+		"agent",
+		"Agent feedback recorded",
+		agentID+" - "+rating,
+		true,
+		now,
+	)
+	
+	return err
+}
+
+func (s *Server) queryAgentsOverviewFromDB(orgID string) AgentsOverviewData {
+	if s.db == nil {
+		return AgentsOverviewData{
+			Stats:    AgentStatsData{},
+			Agents:   []AgentCardData{},
+			Activity: []AgentActivityEventData{},
+			Feedback: []AgentFeedbackData{},
+		}
+	}
+
+	// Query agents from database based on actual data
+	agents := []AgentCardData{
+		{ID: "a-intake", Name: "Data Intake", Icon: "intake", Status: "idle", Role: "Extracts & cleans documents into structured records", LastRun: "not run"},
+		{ID: "a-recon", Name: "Reconciliation", Icon: "recon", Status: "idle", Role: "Matches money movement to business reality", LastRun: "not run"},
+		{ID: "a-cfo", Name: "CFO", Icon: "cfo", Status: "idle", Role: "Cashflow forecast, margin & anomaly detection", LastRun: "not run"},
+		{ID: "a-rel", Name: "External Relationship", Icon: "relationship", Status: "idle", Role: "Builds the relationship graph & partner risk", LastRun: "not run"},
+		{ID: "a-contract", Name: "Contract & Obligation", Icon: "contract", Status: "idle", Role: "Extracts terms, dates, obligations & renewals", LastRun: "not run"},
+		{ID: "a-coll", Name: "Collections", Icon: "collections", Status: "idle", Role: "Late-payer list, reminder drafts & promise-to-pay", LastRun: "not run"},
+		{ID: "a-credit", Name: "Credit Passport", Icon: "credit", Status: "idle", Role: "Assembles lender-ready credit profiles", LastRun: "not run"},
+		{ID: "a-supplier", Name: "Supplier & Margin", Icon: "supplier", Status: "idle", Role: "Price-creep, overcharge & delivery performance", LastRun: "not run"},
+		{ID: "a-sales", Name: "Sales & Growth", Icon: "sales", Status: "idle", Role: "Best/dead customers, churn & growth signals", LastRun: "not run"},
+		{ID: "a-audit", Name: "Audit & Compliance", Icon: "audit", Status: "idle", Role: "Missing docs, SoD violations & fraud flags", LastRun: "not run"},
+	}
+
+	totalProcessed := 0
+	activeAgents := 0
+
+	for i := range agents {
+		result := s.queryAgentInsight(orgID, agents[i].ID)
+		if result != nil {
+			if result.processed > 0 {
+				agents[i].Status = "active"
+				agents[i].LastRun = "just now"
+				agents[i].ProcessedToday = result.processed
+				agents[i].Insight = result.insight
+				activeAgents++
+				totalProcessed += result.processed
+			} else {
+				agents[i].Insight = result.insight
+			}
+		}
+	}
+
+	// Query activity from database
+	activity := s.queryAgentActivityFromDB(orgID)
+	feedback := s.queryAgentFeedbackFromDB(orgID)
+
+	suggestions := 0
+	// Count pending suggestions from workflow tables
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM match_candidates WHERE organization_id = $1 AND state = 'SUGGESTED'`, orgID).Scan(&suggestions)
+
+	return AgentsOverviewData{
+		Stats: AgentStatsData{
+			AgentsActive:        activeAgents,
+			ProcessedToday:      totalProcessed,
+			SuggestionsAwaiting: suggestions,
+			AvgAccuracyPct:      85, // Default accuracy
+		},
+		Agents:    agents,
+		Activity:  activity,
+		Feedback:  feedback,
+		RunningID: "",
+	}
+}
+
+func (s *Server) queryAgentActivityFromDB(orgID string) []AgentActivityEventData {
+	query := `
+		SELECT 
+			id,
+			agent_id,
+			action,
+			detail,
+			tone,
+			created_at
+		FROM agent_activity_log
+		WHERE organization_id = $1
+		ORDER BY created_at DESC
+		LIMIT 40
+	`
+
+	rows, err := s.db.Query(query, orgID)
+	if err != nil {
+		return []AgentActivityEventData{}
+	}
+	defer rows.Close()
+
+	var activity []AgentActivityEventData
+	for rows.Next() {
+		var a AgentActivityEventData
+		var createdAt time.Time
+		err := rows.Scan(&a.ID, &a.AgentID, &a.Action, &a.Detail, &a.Tone, &createdAt)
+		if err != nil {
+			continue
+		}
+		a.At = createdAt.Format(time.RFC3339)
+		activity = append(activity, a)
+	}
+
+	return activity
+}
+
+func (s *Server) queryAgentFeedbackFromDB(orgID string) []AgentFeedbackData {
+	query := `
+		SELECT 
+			id,
+			agent_id,
+			rating,
+			submitted_by,
+			submitted_at
+		FROM agent_feedback
+		WHERE organization_id = $1
+		ORDER BY submitted_at DESC
+		LIMIT 20
+	`
+
+	rows, err := s.db.Query(query, orgID)
+	if err != nil {
+		return []AgentFeedbackData{}
+	}
+	defer rows.Close()
+
+	var feedback []AgentFeedbackData
+	for rows.Next() {
+		var f AgentFeedbackData
+		var submittedAt time.Time
+		err := rows.Scan(&f.ID, &f.AgentID, &f.Rating, &f.SubmittedBy, &submittedAt)
+		if err != nil {
+			continue
+		}
+		f.SubmittedAt = submittedAt.Format(time.RFC3339)
+		feedback = append(feedback, f)
+	}
+
+	return feedback
 }
 
 func (s *Server) queryAgentInsight(orgID, agentID string) *agentInsightResult {

@@ -1,6 +1,5 @@
 import { Check, Loader2, UserCheck, X } from 'lucide-react';
 import { GlassSurface } from '../../design-system';
-import type { AccessRequest } from '../../seed/adminHome';
 
 export function AccessRequestsCard({
   items,

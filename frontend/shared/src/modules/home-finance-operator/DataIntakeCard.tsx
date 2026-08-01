@@ -1,7 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import { CheckCircle2, FileWarning, Loader, type LucideIcon, Upload } from 'lucide-react';
 import { GlassSurface, cn } from '../../design-system';
-import { seedIntakeBatches, type BatchStatus } from '../../seed/operatorHome';
 
 const STATUS: Record<BatchStatus, { label: string; icon: LucideIcon; tone: string }> = {
   processed: { label: 'Processed', icon: CheckCircle2, tone: 'text-success' },

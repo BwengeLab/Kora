@@ -1,7 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import { CreditCard, SlidersHorizontal } from 'lucide-react';
 import { GlassSurface, cn } from '../../design-system';
-import type { PolicyVersion } from '../../seed/adminHome';
 
 export function PolicyBillingCard({ policies, billing }: { policies: PolicyVersion[]; billing: { plan: string; seats: number; seatsIncluded: number; usagePct: number; renews: string } }) {
   return (

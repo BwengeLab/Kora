@@ -8,7 +8,6 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { GlassSurface, cn } from '../../design-system';
-import type { RelationshipRowSeed } from '../../seed/orgOwnerHome';
 
 const ICON_MAP: Record<RelationshipRowSeed['iconKey'], LucideIcon> = {
   customers: Users,

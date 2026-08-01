@@ -5,7 +5,6 @@ import { connectMailbox } from '../../api/accountMailbox';
 import { getApiBaseUrl } from '../../api/client';
 import { useSession } from '../../auth/hooks';
 import { GlassSurface, cn } from '../../design-system';
-import { MAIL_PROVIDERS } from '../../seed/mail';
 import { toast } from '../../state/toastStore';
 
 export function ConnectMail() {

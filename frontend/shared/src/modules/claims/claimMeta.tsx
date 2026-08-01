@@ -1,5 +1,4 @@
 import { Building2, Car, HeartPulse, Scale, Shield, type LucideIcon } from 'lucide-react';
-import type { ClaimType, Severity } from '../../seed/claims';
 
 export const TYPE_ICON: Record<ClaimType, LucideIcon> = {
   motor: Car,

@@ -4,8 +4,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { getApiBaseUrl } from '../../api/client';
 import { createSettingsUser, deleteSettingsUser, fetchSettingsUsers, updateSettingsUser } from '../../api/settingsAccess';
 import { GlassSurface, PartyAvatar, cn } from '../../design-system';
-import { entityName, seedCostCenters, seedEntities, type EntityScope } from '../../seed/entities';
-import { ASSIGNABLE_ROLES, seedOrgUsers, type OrgUser, type UserStatus } from '../../seed/orgUsers';
 import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
 import { SettingsCard, StatPill } from './primitives';
@@ -19,14 +17,14 @@ const ROLE_TONE: Record<string, string> = {
   'Org Admin': 'bg-lavender-soft text-lavender',
   'Claims Officer': 'bg-ai-soft text-ai',
 };
-const DEPARTMENTS = ['All', ...seedCostCenters.map((c) => c.name)];
+const DEPARTMENTS = ['All'];
 
 const blankUser = (): OrgUser => ({ id: `u-${Date.now()}`, name: '', email: '', role: 'Finance Operator', department: 'Finance & Admin', scope: 'ent-rw', status: 'invited', lastActive: '-' });
 
 export function UsersRoles() {
   const token = useSessionStore((s) => s.session?.token ?? '');
   const apiBaseUrl = getApiBaseUrl();
-  const [users, setUsers] = useState<OrgUser[]>(seedOrgUsers);
+  const [users, setUsers] = useState<OrgUser[]>([]);
   const [editing, setEditing] = useState<OrgUser | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [roleFilter, setRoleFilter] = useState<string | 'all'>('all');
@@ -117,7 +115,7 @@ export function UsersRoles() {
                 <button type="button" onClick={() => { setEditing(user); setIsNew(false); }} className="grid w-full grid-cols-[1.6fr_1.1fr_1.2fr_1fr_auto] items-center gap-3 border-t border-white/45 bg-white/30 px-4 py-3 text-left transition-colors hover:bg-white/60">
                   <div className="flex min-w-0 items-center gap-2.5"><PartyAvatar name={user.name || user.email} size="sm" /><div className="min-w-0"><p className="truncate text-[13px] font-semibold text-ink">{user.name || '—'}</p><p className="truncate text-[11px] text-ink-muted">{user.email}</p></div></div>
                   <span><span className={cn('rounded-full px-2 py-0.5 text-[10.5px] font-bold', ROLE_TONE[user.role] ?? 'bg-white/70 text-ink-soft')}>{user.role}</span></span>
-                  <span className="inline-flex items-center gap-1.5 text-[12px] text-ink-soft">{user.scope === 'all' ? <Layers className="size-3.5 text-brand" /> : <span>{seedEntities.find((entity) => entity.id === user.scope)?.flag}</span>}{user.scope === 'all' ? 'All entities' : entityName(user.scope)}<span className="text-ink-muted">· {user.department}</span></span>
+                  <span className="inline-flex items-center gap-1.5 text-[12px] text-ink-soft">{user.scope === 'all' ? <Layers className="size-3.5 text-brand" /> : <span>{[].find((entity) => entity.id === user.scope)?.flag}</span>}{user.scope === 'all' ? 'All entities' : entityName(user.scope)}<span className="text-ink-muted">· {user.department}</span></span>
                   <span><span className={cn('rounded-full px-2 py-0.5 text-[10px] font-bold uppercase', STATUS_TONE[user.status])}>{user.status}</span></span>
                   <span className="text-[11px] text-ink-muted tabular">{user.lastActive}</span>
                 </button>
@@ -150,7 +148,7 @@ function UserEditor({ user, isNew, onCancel, onSave, onRemove }: { user: OrgUser
             <Field label="Work email"><input value={draft.email} onChange={(event) => set('email', event.target.value)} className={inputCls} placeholder="jane@acme.local" /></Field>
             <Field label="Role"><select value={draft.role} onChange={(event) => set('role', event.target.value)} className={inputCls}>{ASSIGNABLE_ROLES.map((role) => <option key={role} value={role}>{role}</option>)}</select></Field>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Entity scope"><select value={draft.scope} onChange={(event) => set('scope', event.target.value as EntityScope)} className={inputCls}><option value="all">All entities</option>{seedEntities.map((entity) => <option key={entity.id} value={entity.id}>{entity.name}</option>)}</select></Field>
+              <Field label="Entity scope"><select value={draft.scope} onChange={(event) => set('scope', event.target.value as EntityScope)} className={inputCls}><option value="all">All entities</option>{[].map((entity) => <option key={entity.id} value={entity.id}>{entity.name}</option>)}</select></Field>
               <Field label="Department"><select value={draft.department} onChange={(event) => set('department', event.target.value)} className={inputCls}>{DEPARTMENTS.map((dep) => <option key={dep} value={dep}>{dep}</option>)}</select></Field>
             </div>
             <Field label="Status"><select value={draft.status} onChange={(event) => set('status', event.target.value as UserStatus)} className={inputCls}><option value="active">Active</option><option value="invited">Invited</option><option value="suspended">Suspended</option></select></Field>

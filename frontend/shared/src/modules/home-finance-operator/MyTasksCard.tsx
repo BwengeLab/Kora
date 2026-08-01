@@ -1,7 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import { Clock, type LucideIcon, MailQuestion, PenLine, RotateCcw, Send } from 'lucide-react';
 import { GlassSurface, cn } from '../../design-system';
-import { seedOperatorTasks, type TaskStatus } from '../../seed/operatorHome';
 
 const STATUS: Record<TaskStatus, { label: string; icon: LucideIcon; tone: string }> = {
   assigned: { label: 'Assigned', icon: PenLine, tone: 'bg-brand-soft text-brand-ink' },

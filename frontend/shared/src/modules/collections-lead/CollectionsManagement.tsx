@@ -6,7 +6,6 @@ import { getApiBaseUrl } from '../../api/client';
 import { decideCollectionsEscalation, fetchCollectionsManagement, updateCollectionsPolicy, type EscalationItem } from '../../api/collectionsManagement';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
 import type { Money } from '../../lib/money';
-import { seedOverdue } from '../../seed/ownerExtra';
 import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
 
@@ -50,7 +49,7 @@ export function CollectionsManagement() {
     onSuccess: syncPayload,
   });
 
-  const overdue = data?.overdue ?? seedOverdue;
+  const overdue = data?.overdue ?? [];
   const escalations = data?.escalations ?? FALLBACK_ESCALATIONS;
   const policy = data?.policy ?? { reminderCadence: 'Day 7, 14, 30', dsoTarget: '<= 35 days', autoEscalateAt: '90 days' };
 

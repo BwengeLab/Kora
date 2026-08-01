@@ -2,7 +2,6 @@ import { Link } from '@tanstack/react-router';
 import { CalendarClock, Check, FileText, Plus, ShieldCheck } from 'lucide-react';
 import { GlassSurface } from '../../design-system';
 import { openDoc } from '../../state/docViewerStore';
-import type { EvidenceFactor } from '../../seed/portalHome';
 
 export function EvidenceScopeCard({
   evidencePack,

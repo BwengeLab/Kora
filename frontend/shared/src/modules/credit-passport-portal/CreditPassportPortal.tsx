@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query';
 import { PageHeader } from '../../app/shell';
 import { getApiBaseUrl } from '../../api/client';
 import { downloadPortalCreditPassport, fetchPortalCreditPassport } from '../../api/portal';
-import { seedAffordability, seedEvidencePack, seedGrant, seedPassport, seedPassportTrends, seedSubScores } from '../../seed/portalHome';
 import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
 import { AffordabilityCard } from './AffordabilityCard';
@@ -26,12 +25,12 @@ export function CreditPassportPortal() {
     queryFn: ({ signal }) => fetchPortalCreditPassport(apiBaseUrl, token, signal),
     enabled: Boolean(token),
   });
-  const p = data?.passport ?? seedPassport;
-  const grant = data?.grant ?? seedGrant;
-  const subScores = data?.subScores ?? seedSubScores;
-  const trends = data?.trends ?? seedPassportTrends;
-  const affordability = data?.affordability ?? seedAffordability;
-  const evidencePack = data?.evidencePack ?? seedEvidencePack;
+  const p = data?.passport ?? {};
+  const grant = data?.grant ?? [];
+  const subScores = data?.subScores ?? [];
+  const trends = data?.trends ?? {}Trends;
+  const affordability = data?.affordability ?? {};
+  const evidencePack = data?.evidencePack ?? [];
 
   const downloadPassport = async () => {
     setDownloading(true);

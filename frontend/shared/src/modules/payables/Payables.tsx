@@ -6,9 +6,6 @@ import { getApiBaseUrl } from '../../api/client';
 import { approveBill, payBill } from '../../api/financeOperations';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
 import type { Money } from '../../lib/money';
-import { accountByCode } from '../../seed/chartOfAccounts';
-import { entityName, seedCostCenters } from '../../seed/entities';
-import { matchStatus, type Bill, type BillStatus, type MatchStatus } from '../../seed/payables';
 import { resolveChainFrom, useApprovalPolicyStore } from '../../state/approvalPolicyStore';
 import { useEntityStore } from '../../state/entityStore';
 import { openDoc } from '../../state/docViewerStore';
@@ -156,7 +153,7 @@ function BillDrawer({ bill: b, canApprove, rules, onClose, onApprove, onPay }: {
   const ms = matchStatus(b);
   const chain = resolveChainFrom(rules, b.amount);
   const acct = accountByCode(b.account);
-  const cc = seedCostCenters.find((c) => c.id === b.costCenter);
+  const cc = [].find((c) => c.id === b.costCenter);
   return (
     <Dialog.Root open={b !== null} onOpenChange={(o) => !o && onClose()}>
       <Dialog.Portal>

@@ -1,19 +1,33 @@
 import { ChevronRight } from 'lucide-react';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
-import { seedPlatformTenants, type TenantStatus } from '../../seed/platformHome';
+import type { PlatformTenant } from '../../types/api';
 
-const STATUS_TONE: Record<TenantStatus, string> = {
+const STATUS_TONE: Record<string, string> = {
   active: 'bg-success-soft text-success',
   trial: 'bg-warning-soft text-warning',
   suspended: 'bg-danger-soft text-danger',
 };
 
-export function TenantsTableCard({ tenants = seedPlatformTenants }: { tenants?: typeof seedPlatformTenants }) {
+export function TenantsTableCard({ tenants }: { tenants?: PlatformTenant[] }) {
+  if (!tenants || tenants.length === 0) {
+    return (
+      <GlassSurface tone="strong" className="flex h-full min-h-0 flex-col gap-3 p-6">
+        <header className="flex items-center justify-between gap-3">
+          <h3 className="font-display text-base font-bold text-ink">Tenants</h3>
+          <button type="button" className="text-xs font-semibold text-brand hover:text-brand-ink">View all</button>
+        </header>
+        <div className="flex items-center justify-center h-40 text-muted-foreground">
+          No tenants available
+        </div>
+      </GlassSurface>
+    );
+  }
+  
   return (
     <GlassSurface tone="strong" className="flex h-full min-h-0 flex-col gap-3 p-6">
       <header className="flex items-center justify-between gap-3">
         <h3 className="font-display text-base font-bold text-ink">Tenants</h3>
-        <button type="button" className="text-xs font-semibold text-brand hover:text-brand-ink">View all 142</button>
+        <button type="button" className="text-xs font-semibold text-brand hover:text-brand-ink">View all {tenants.length}</button>
       </header>
       <ul className="scrollbar-thin flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-0.5">
         {tenants.map((t) => (

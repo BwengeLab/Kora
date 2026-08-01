@@ -1,6 +1,5 @@
 import { RefreshCw } from 'lucide-react';
 import { GaugeChart, GlassSurface, cn } from '../../design-system';
-import type { Rating, SubScore } from '../../seed/portalHome';
 
 const RATING_TONE: Record<Rating, string> = {
   Strong: 'text-success',

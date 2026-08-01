@@ -4,7 +4,6 @@ import { getApiBaseUrl } from '../../api/client';
 import { classifyTransaction, flagTransaction, prepareTransaction } from '../../api/financeOperations';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
 import { openLinkedRecord } from '../../lib/linkedRecords';
-import { CATEGORY_META, type CashCategory } from '../../seed/cashLedger';
 import { useSessionStore } from '../../state/sessionStore';
 import { REVIEW_META, useTransactionsStore, type Txn } from '../../state/transactionsStore';
 import { openDoc } from '../../state/docViewerStore';

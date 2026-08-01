@@ -3,7 +3,6 @@ import { useMemo, useState } from 'react';
 import { DateRangePill, PageHeader } from '../../app/shell';
 import { GlassSurface, MoneyCell, cn } from '../../design-system';
 import type { Money } from '../../lib/money';
-import { ACCOUNTS, CATEGORY_META, type Account, type CashCategory, type Direction } from '../../seed/cashLedger';
 import { REVIEW_META, useTransactionsStore, type ReviewState, type Txn } from '../../state/transactionsStore';
 import { TxnDrawer } from './TxnDrawer';
 

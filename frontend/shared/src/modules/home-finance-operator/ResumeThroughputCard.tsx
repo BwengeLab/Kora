@@ -1,7 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import { Flame, Play, Target } from 'lucide-react';
 import { AreaChart, ConfidenceChip, GlassSurface, MoneyCell, cn } from '../../design-system';
-import { seedOperatorThroughput, seedResume } from '../../seed/operatorHome';
 
 // "Resume where I left off" + throughput, combined into one motivating card.
 export function ResumeThroughputCard({

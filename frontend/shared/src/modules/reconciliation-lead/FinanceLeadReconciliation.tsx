@@ -7,7 +7,6 @@ import { getApiBaseUrl } from '../../api/client';
 import { workflowReconciliationAction } from '../../api/workflow';
 import { ConfidenceChip, GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
 import { useSession } from '../../auth/hooks';
-import type { FieldDelta, Reconciliation, ReconciliationTier } from '../../seed/reconciliation';
 import { openDoc } from '../../state/docViewerStore';
 import { toast } from '../../state/toastStore';
 import { useWorkflowStore } from '../../state/workflowStore';

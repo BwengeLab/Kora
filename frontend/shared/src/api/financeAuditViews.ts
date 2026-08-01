@@ -1,7 +1,7 @@
 import type { Money } from '../lib/money';
-import type { CashMovement } from '../seed/cashLedger';
-import type { AuditEvent, MissingDoc, SodViolation } from '../seed/auditorHome';
-import type { LedgerKpi, PnlLine, SegmentMargin } from '../seed/ownerLedger';
+import type { CashMovement } from '../types/api';
+import type { AuditEvent, MissingDoc, SodViolation } from '../types/api';
+import type { LedgerKpi, PnlLine, SegmentMargin } from '../types/api';
 
 interface RawMoney {
   amountMinor: string;

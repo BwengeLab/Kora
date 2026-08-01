@@ -6,7 +6,6 @@ import { getApiBaseUrl } from '../../api/client';
 import { createAuditFinding, exportAuditEvidencePack, fetchAuditInvestigations, type AuditInvestigationsPayload } from '../../api/financeAuditViews';
 import { DateRangePill, PageHeader } from '../../app/shell';
 import { GlassSurface, MoneyCell, PartyAvatar, ProgressRing, cn } from '../../design-system';
-import { seedControlHealth, seedMissingDocs, seedSodViolations, type AuditEvent, type AuditKind } from '../../seed/auditorHome';
 import { openDoc } from '../../state/docViewerStore';
 import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
@@ -73,10 +72,10 @@ export function AuditInvestigations() {
   }, [apiBaseUrl, token]);
 
   const auditLog = data?.auditLog ?? (workflowAuditLog as AuditEvent[]);
-  const controlHealth = data?.controlHealth ?? seedControlHealth;
-  const riskStats = data?.riskStats ?? { riskFlags: 11, sodViolations: seedSodViolations.length, suspicious: 4, missingDocs: seedMissingDocs.length };
-  const sodViolations = data?.sodViolations ?? seedSodViolations;
-  const missingDocs = data?.missingDocs ?? seedMissingDocs;
+  const controlHealth = data?.controlHealth ?? { score: 0, issues: [] };
+  const riskStats = data?.riskStats ?? { riskFlags: 11, sodViolations: [].length, suspicious: 4, missingDocs: [].length };
+  const sodViolations = data?.sodViolations ?? [];
+  const missingDocs = data?.missingDocs ?? [];
 
   const trail = useMemo(() => {
     const normalized = query.trim().toLowerCase();

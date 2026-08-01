@@ -1,5 +1,5 @@
-import type { ApprovalRule } from '../seed/approvalPolicy';
-import type { OrgUser } from '../seed/orgUsers';
+import type { ApprovalRule } from '../types/api';
+import type { OrgUser } from '../types/api';
 
 export async function fetchSettingsUsers(apiBaseUrl: string, token: string, signal?: AbortSignal): Promise<OrgUser[]> {
   const data = await getJson<{ items: OrgUser[] }>(`${apiBaseUrl}/api/settings/users`, token, signal);

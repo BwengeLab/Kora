@@ -1,6 +1,5 @@
 import { Search } from 'lucide-react';
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
-import type { Claim, ClaimStage } from '../../seed/claims';
 import { useClaimsStore } from '../../state/claimsStore';
 import { SEVERITY_TONE, TYPE_ICON, TYPE_TONE, fraudTone } from './claimMeta';
 

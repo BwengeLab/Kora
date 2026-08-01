@@ -1,4 +1,4 @@
-import type { Overdue } from '../seed/ownerExtra';
+import type { Overdue } from '../types/api';
 
 interface RawMoney {
   amountMinor: string;

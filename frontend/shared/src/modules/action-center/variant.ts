@@ -1,4 +1,3 @@
-import type { ApprovalItem } from '../../seed/approvals';
 
 // The Action Center serves two roles with DIFFERENT scope (per docs 02 & 03):
 //  • finance_lead — the operational control point: the FULL approval queue.

@@ -8,7 +8,6 @@ import { fetchRelationshipsOverview, relationshipPartyAction, type Relationships
 import { GlassSurface, MoneyCell, PartyAvatar, cn } from '../../design-system';
 import type { Money } from '../../lib/money';
 import { ContractsView } from '../contracts';
-import { seedParties, seedRenewals, type Party, type PartyType, type RiskLevel } from '../../seed/ownerExtra';
 import { openDoc } from '../../state/docViewerStore';
 import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
@@ -32,8 +31,8 @@ export function RelationshipsPage({ readOnly = false }: { readOnly?: boolean }) 
     queryFn: ({ signal }) => fetchRelationshipsOverview(apiBaseUrl, token, signal),
     enabled: Boolean(token),
   });
-  const parties = data?.parties ?? seedParties;
-  const renewals = data?.renewals ?? seedRenewals;
+  const parties = data?.parties ?? [];
+  const renewals = data?.renewals ?? [];
   const [lens, setLens] = useState<Lens>('parties');
   const [contractQuery, setContractQuery] = useState('');
   const [query, setQuery] = useState('');

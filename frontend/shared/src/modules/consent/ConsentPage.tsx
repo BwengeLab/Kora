@@ -6,7 +6,6 @@ import { approveConsentGrant, createConsentGrant, fetchConsentGrants, revokeCons
 import { getApiBaseUrl } from '../../api/client';
 import { DateRangePill, PageHeader } from '../../app/shell';
 import { GlassSurface, PartyAvatar, cn } from '../../design-system';
-import { CONSENT_STATUS_META, SCOPE_LABEL, seedConsents, type ConsentGrant, type ConsentScope, type ConsentStatus } from '../../seed/consent';
 import { useSessionStore } from '../../state/sessionStore';
 import { toast } from '../../state/toastStore';
 
