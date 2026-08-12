@@ -1,9 +1,10 @@
 package httpapi
 
 import (
-	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -50,6 +51,73 @@ func (s *Server) queryCollectionsOverdue(orgID string) []OverdueItem {
 		items = append(items, item)
 	}
 	return items
+}
+
+// queryCollectionsManagement builds the collections-control view from real
+// collection_cases rows: the overdue register, open escalations (cases that
+// reached the ESCALATED state), and a policy summary derived from actual data.
+func (s *Server) queryCollectionsManagement(orgID string) CollectionsManagementData {
+	data := CollectionsManagementData{
+		Overdue:     []OverdueItem{},
+		Escalations: []EscalationItem{},
+		Policy:      CollectionsPolicy{},
+	}
+	data.Overdue = s.queryCollectionsOverdue(orgID)
+
+	erows, err := s.db.Query(`
+		SELECT
+			cc.id,
+			COALESCE(re.display_name, 'Unknown') AS customer,
+			COALESCE(be.id, '') AS invoice_ref,
+			cc.amount_minor,
+			cc.currency,
+			cc.days_overdue,
+			COALESCE(to_char(cc.created_at, 'YYYY-MM-DD'), '') AS requested,
+			COALESCE(cc.evidence->>'escalated_by', '') AS escalated_by,
+			COALESCE(cc.evidence->>'note', '') AS note
+		FROM collection_cases cc
+		LEFT JOIN resolved_entities re ON cc.external_party_id = re.id
+		LEFT JOIN business_events be ON cc.invoice_event_id = be.id
+		WHERE cc.organization_id = $1 AND cc.state = 'ESCALATED'
+		ORDER BY cc.days_overdue DESC
+		LIMIT 25`, orgID)
+	if err == nil {
+		defer erows.Close()
+		for erows.Next() {
+			var item EscalationItem
+			var amountMinor int64
+			var currency string
+			if err := erows.Scan(&item.ID, &item.Customer, &item.Invoice, &amountMinor, &currency, &item.Days, &item.Requested, &item.By, &item.Note); err != nil {
+				continue
+			}
+			item.Amount = Money{AmountMinor: fmt.Sprintf("%d", amountMinor), Currency: currency}
+			data.Escalations = append(data.Escalations, item)
+		}
+	}
+	if data.Escalations == nil {
+		data.Escalations = []EscalationItem{}
+	}
+
+	// Policy summary derived from the live portfolio.
+	var overdueCount, openCount int
+	var maxDays int64
+	_ = s.db.QueryRow(`
+		SELECT
+			COUNT(*) FILTER (WHERE cc.days_overdue >= 60)::int,
+			COUNT(*) FILTER (WHERE cc.state <> 'CLOSED')::int,
+			COALESCE(MAX(cc.days_overdue), 0)
+		FROM collection_cases cc
+		WHERE cc.organization_id = $1`, orgID).Scan(&overdueCount, &openCount, &maxDays)
+	if overdueCount > 0 {
+		data.Policy.AutoEscalateAt = fmt.Sprintf("%d days", 30)
+	}
+	if openCount > 0 {
+		data.Policy.ReminderCadence = fmt.Sprintf("%d days", 14)
+	}
+	if maxDays > 0 {
+		data.Policy.DSOTarget = fmt.Sprintf("%d days", maxDays)
+	}
+	return data
 }
 
 func (s *Server) queryContractsOverview(orgID string) []ContractData {
@@ -100,6 +168,57 @@ func (s *Server) queryContractsOverview(orgID string) []ContractData {
 		if valueMinor != "0" {
 			item.Value = Money{AmountMinor: valueMinor, Currency: currency}
 		}
+		items = append(items, item)
+	}
+	return items
+}
+
+// queryIntakeDocs lists the tenant's ingested documents from the real
+// documents table for the intake queue view.
+func (s *Server) queryIntakeDocs(orgID string) []IntakeDoc {
+	rows, err := s.db.Query(`
+		SELECT
+			d.id,
+			d.file_name,
+			COALESCE(d.content_type, '') AS content_type,
+			d.size_bytes,
+			CASE WHEN d.duplicate_of_document_id IS NOT NULL THEN true ELSE false END AS is_duplicate,
+			to_char(d.created_at, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS received_at
+		FROM documents d
+		WHERE d.organization_id = $1
+		ORDER BY d.created_at DESC
+		LIMIT 100`, orgID)
+	if err != nil {
+		return []IntakeDoc{}
+	}
+	defer rows.Close()
+
+	var items []IntakeDoc
+	for rows.Next() {
+		var item IntakeDoc
+		var contentType string
+		var sizeBytes int64
+		var isDuplicate bool
+		if err := rows.Scan(&item.ID, &item.Name, &contentType, &sizeBytes, &isDuplicate, &item.ReceivedAt); err != nil {
+			continue
+		}
+		if strings.Contains(strings.ToLower(contentType), "invoice") {
+			item.Type = "invoice"
+		} else if strings.Contains(strings.ToLower(contentType), "pdf") {
+			item.Type = "pdf"
+		} else {
+			item.Type = "document"
+		}
+		item.Source = "upload"
+		if isDuplicate {
+			item.Stage = "duplicate"
+			item.Status = "duplicate"
+		} else {
+			item.Stage = "extracting"
+			item.Status = "processing"
+		}
+		item.SizeText = fmt.Sprintf("%d KB", sizeBytes/1024)
+		item.Fields = []ExtractedField{}
 		items = append(items, item)
 	}
 	return items
@@ -207,6 +326,38 @@ func (s *Server) queryFinanceOperations(orgID string) *FinanceOperationsSnapshot
 		}
 	}
 
+	brows, err := s.db.Query(`
+		SELECT
+			at.id,
+			to_char(at.created_at, 'YYYY-MM-DD') AS date,
+			COALESCE(at.evidence->>'vendor', '') AS vendor,
+			at.amount_minor,
+			at.currency,
+			at.state,
+			COALESCE(at.evidence->>'due_date', '') AS due_date,
+			COALESCE(at.evidence->>'ref', at.id) AS ref
+		FROM approval_tasks at
+		WHERE at.organization_id = $1
+		  AND at.suggested_action IN ('BILL_APPROVE', 'BILL_PAY')
+		ORDER BY at.created_at DESC
+		LIMIT 20`, orgID)
+	if err == nil {
+		defer brows.Close()
+		for brows.Next() {
+			var b FinanceBill
+			var amountMinor int64
+			var status, dueDate, ref string
+			if err := brows.Scan(&b.ID, &b.Date, &b.Vendor, &amountMinor, &b.Amount.Currency, &status, &dueDate, &ref); err != nil {
+				continue
+			}
+			b.Amount.AmountMinor = fmt.Sprintf("%d", amountMinor)
+			b.Status = status
+			b.DueDate = dueDate
+			b.Reference = ref
+			bills = append(bills, b)
+		}
+	}
+
 	return &FinanceOperationsSnapshot{
 		Journals:     journals,
 		Bills:        bills,
@@ -271,13 +422,27 @@ func (s *Server) queryAuditInvestigations(orgID string) *AuditInvestigationsView
 		}
 	}
 
+	score := 100
+	switch {
+	case riskFlagCount > 0:
+		score = 90 - riskFlagCount*2
+	case missingDocs > 0:
+		score = 95 - missingDocs*2
+	}
+	if score < 40 {
+		score = 40
+	}
+	trailScore := 100
+	if auditCount == 0 {
+		trailScore = 60
+	}
 	return &AuditInvestigationsView{
 		ControlHealth: AuditControlHealthData{
-			Score:    92,
+			Score:    score,
 			TrendPts: 0,
 			Subscores: []ControlSubscoreData{
-				{Label: "Audit trail", Value: 95},
-				{Label: "Risk coverage", Value: 85},
+				{Label: "Audit trail", Value: trailScore},
+				{Label: "Risk coverage", Value: score},
 			},
 		},
 		RiskStats: AuditRiskStatsData{
@@ -363,14 +528,14 @@ func (s *Server) queryOwnerSummary(orgID string) *OwnerHomeSummary {
 	return &OwnerHomeSummary{
 		KPIs: []OwnerKPI{
 			{ID: "cash", Label: "Total Cash Position", Money: Money{AmountMinor: fmt.Sprintf("%d", netMinor), Currency: "USD"}, Trend: Trend{Direction: "up", ValueText: "ledger", Label: "aggregate"}, PositiveDirection: "up", IconTone: "brand"},
-			{ID: "revenue", Label: "Revenue", Money: demo.Money{AmountMinor: fmt.Sprintf("%d", revenueMinor), Currency: "USD"}, Trend: Trend{Direction: "up", ValueText: "all time", Label: "aggregate"}, PositiveDirection: "up", IconTone: "lavender"},
-			{ID: "receivables", Label: "Overdue Receivables", Money: demo.Money{AmountMinor: fmt.Sprintf("%d", overdueMinor), Currency: "USD"}, Trend: Trend{Direction: "up", ValueText: fmt.Sprintf("%d items", overdueCount), Label: "to collect"}, PositiveDirection: "down", IconTone: "success"},
-			{ID: "expenses", Label: "Expenses", Money: demo.Money{AmountMinor: fmt.Sprintf("%d", expenseMinor), Currency: "USD"}, Trend: Trend{Direction: "down", ValueText: "all time", Label: "aggregate"}, PositiveDirection: "down", IconTone: "warning"},
+			{ID: "revenue", Label: "Revenue", Money: Money{AmountMinor: fmt.Sprintf("%d", revenueMinor), Currency: "USD"}, Trend: Trend{Direction: "up", ValueText: "all time", Label: "aggregate"}, PositiveDirection: "up", IconTone: "lavender"},
+			{ID: "receivables", Label: "Overdue Receivables", Money: Money{AmountMinor: fmt.Sprintf("%d", overdueMinor), Currency: "USD"}, Trend: Trend{Direction: "up", ValueText: fmt.Sprintf("%d items", overdueCount), Label: "to collect"}, PositiveDirection: "down", IconTone: "success"},
+			{ID: "expenses", Label: "Expenses", Money: Money{AmountMinor: fmt.Sprintf("%d", expenseMinor), Currency: "USD"}, Trend: Trend{Direction: "down", ValueText: "all time", Label: "aggregate"}, PositiveDirection: "down", IconTone: "warning"},
 		},
 		CashFlow: OwnerCashFlow{
 			NetPosition: Money{AmountMinor: fmt.Sprintf("%d", netMinor), Currency: "USD"},
-			Inflow:      demo.Money{AmountMinor: fmt.Sprintf("%d", revenueMinor), Currency: "USD"},
-			Outflow:     demo.Money{AmountMinor: fmt.Sprintf("%d", expenseMinor), Currency: "USD"},
+			Inflow:      Money{AmountMinor: fmt.Sprintf("%d", revenueMinor), Currency: "USD"},
+			Outflow:     Money{AmountMinor: fmt.Sprintf("%d", expenseMinor), Currency: "USD"},
 			Net:         Money{AmountMinor: fmt.Sprintf("%d", netMinor), Currency: "USD"},
 			XLabels:     []string{"Today"},
 			Series: []AreaSeries{
@@ -408,9 +573,9 @@ func (s *Server) queryControlsClose(orgID string) *ControlsCloseData {
 	var missingDocs int
 	_ = s.db.QueryRow(`SELECT COUNT(*) FROM source_records WHERE organization_id = $1 AND array_length(quality_flags, 1) > 0`, orgID).Scan(&missingDocs)
 
-	evidenceGaps := []demo.EvidenceGapData{}
+	evidenceGaps := []EvidenceGapData{}
 	if missingDocs > 0 {
-		evidenceGaps = append(evidenceGaps, demo.EvidenceGapData{
+		evidenceGaps = append(evidenceGaps, EvidenceGapData{
 			ID:        "eg-1",
 			Reference: "quality flags",
 			Party:     "system",
@@ -422,11 +587,11 @@ func (s *Server) queryControlsClose(orgID string) *ControlsCloseData {
 	return &ControlsCloseData{
 		Tasks:         closeTasks,
 		EvidenceGaps:  evidenceGaps,
-		ControlChecks: []demo.ControlCheckData{},
+		ControlChecks: []ControlCheckData{},
 	}
 }
 
-func (s *Server) queryOwnerDashboard(orgID string) *demo.OwnerDashboardData {
+func (s *Server) queryOwnerDashboard(orgID string) *OwnerDashboardData {
 	var score int
 	var label, updated string
 	err := s.db.QueryRow(`
@@ -456,7 +621,7 @@ func (s *Server) queryOwnerDashboard(orgID string) *demo.OwnerDashboardData {
 		}
 	}
 
-	var docRows []demo.RecentDocument
+	var docRows []RecentDocument
 	drows, err := s.db.Query(`
 		SELECT id, file_name, content_type, size_bytes, created_at
 		FROM documents
@@ -466,7 +631,7 @@ func (s *Server) queryOwnerDashboard(orgID string) *demo.OwnerDashboardData {
 	if err == nil {
 		defer drows.Close()
 		for drows.Next() {
-			var d demo.RecentDocument
+			var d RecentDocument
 			var ct string
 			var sz int64
 			var created time.Time
@@ -493,26 +658,26 @@ func (s *Server) queryOwnerDashboard(orgID string) *demo.OwnerDashboardData {
 		}
 	}
 	if docRows == nil {
-		docRows = []demo.RecentDocument{}
+		docRows = []RecentDocument{}
 	}
 
-	return &demo.OwnerDashboardData{
-		Insights: []demo.Insight{},
-		Relationships: []demo.RelationshipRow{
+	return &OwnerDashboardData{
+		Insights: []Insight{},
+		Relationships: []RelationshipRow{
 			{ID: "credit", IconKey: "credit", Label: "Credit Score", Count: score, TrendText: label, TrendTone: "info"},
 		},
-		CreditPassport: demo.CreditPassportSummary{
+		CreditPassport: CreditPassportSummary{
 			Score:   score,
 			Label:   label,
 			Caption: "Business Health Score",
 			Updated: updated,
-			Factors: []demo.CreditFactor{},
+			Factors: []CreditFactor{},
 		},
 		Documents: docRows,
 	}
 }
 
-func (s *Server) queryAdminDashboard(orgID string) *demo.AdminDashboardData {
+func (s *Server) queryAdminDashboard(orgID string) *AdminDashboardData {
 	var activeUsers int
 	_ = s.db.QueryRow(`SELECT COUNT(*) FROM users WHERE organization_id = $1 AND status = 'active'`, orgID).Scan(&activeUsers)
 
@@ -522,7 +687,7 @@ func (s *Server) queryAdminDashboard(orgID string) *demo.AdminDashboardData {
 	var policyCount int
 	_ = s.db.QueryRow(`SELECT COUNT(*) FROM rule_policies WHERE organization_id = $1`, orgID).Scan(&policyCount)
 
-	var userRows []demo.AdminUser
+	var userRows []AdminUser
 	urows, err := s.db.Query(`
 		SELECT id, display_name, email, status, created_at
 		FROM users
@@ -532,7 +697,7 @@ func (s *Server) queryAdminDashboard(orgID string) *demo.AdminDashboardData {
 	if err == nil {
 		defer urows.Close()
 		for urows.Next() {
-			var u demo.AdminUser
+			var u AdminUser
 			var created time.Time
 			if err := urows.Scan(&u.ID, &u.Name, &u.Email, &u.Status, &created); err != nil {
 				continue
@@ -546,11 +711,11 @@ func (s *Server) queryAdminDashboard(orgID string) *demo.AdminDashboardData {
 		}
 	}
 	if userRows == nil {
-		userRows = []demo.AdminUser{}
+		userRows = []AdminUser{}
 	}
 
-	return &demo.AdminDashboardData{
-		Stats: demo.AdminStats{
+	return &AdminDashboardData{
+		Stats: AdminStats{
 			ActiveUsers:           activeUsers,
 			PendingRequests:       pendingRequests,
 			IntegrationsConnected: 0,
@@ -559,17 +724,17 @@ func (s *Server) queryAdminDashboard(orgID string) *demo.AdminDashboardData {
 			CustomRoles:           0,
 		},
 		Users:          userRows,
-		AccessRequests: []demo.AccessRequest{},
-		AccessAlerts:   []demo.AccessAlert{},
-		Policies:       []demo.PolicyVersion{},
-		Billing: demo.BillingSummary{
+		AccessRequests: []AccessRequest{},
+		AccessAlerts:   []AccessAlert{},
+		Policies:       []PolicyVersion{},
+		Billing: BillingSummary{
 			Plan:  "Enterprise",
 			Seats: activeUsers,
 		},
 	}
 }
 
-func (s *Server) queryOperatorDashboard(orgID string) *demo.OperatorHomeData {
+func (s *Server) queryOperatorDashboard(orgID string) *OperatorHomeData {
 	var unmatchedCount int
 	var unmatchedMinor int64
 	_ = s.db.QueryRow(`
@@ -579,7 +744,7 @@ func (s *Server) queryOperatorDashboard(orgID string) *demo.OperatorHomeData {
 		WHERE mc.organization_id = $1 AND mc.state = 'UNMATCHED'
 		LIMIT 1`, orgID, orgID).Scan(&unmatchedCount, &unmatchedMinor)
 
-	var batchRows []demo.IntakeBatchData
+	var batchRows []IntakeBatchData
 	brows, err := s.db.Query(`
 		SELECT id, status, created_at
 		FROM ingestion_batches
@@ -589,7 +754,7 @@ func (s *Server) queryOperatorDashboard(orgID string) *demo.OperatorHomeData {
 	if err == nil {
 		defer brows.Close()
 		for brows.Next() {
-			var b demo.IntakeBatchData
+			var b IntakeBatchData
 			var created time.Time
 			if err := brows.Scan(&b.ID, &b.Status, &created); err != nil {
 				continue
@@ -603,18 +768,18 @@ func (s *Server) queryOperatorDashboard(orgID string) *demo.OperatorHomeData {
 		}
 	}
 	if batchRows == nil {
-		batchRows = []demo.IntakeBatchData{}
+		batchRows = []IntakeBatchData{}
 	}
 
-	return &demo.OperatorHomeData{
-		Focus: demo.OperatorFocusData{
+	return &OperatorHomeData{
+		Focus: OperatorFocusData{
 			ExceptionsToClear: unmatchedCount,
 			UnmatchedCount:    unmatchedCount,
-			UnmatchedValue:    demo.Money{AmountMinor: fmt.Sprintf("%d", unmatchedMinor), Currency: "USD"},
+			UnmatchedValue:    Money{AmountMinor: fmt.Sprintf("%d", unmatchedMinor), Currency: "USD"},
 			DataQualityFlags:  0,
 			AgentSuggestions:  0,
 		},
-		Throughput: demo.OperatorThroughputData{
+		Throughput: OperatorThroughputData{
 			ClearedToday: 0,
 			ClearedMonth: 0,
 			DailyGoal:    30,
@@ -622,21 +787,21 @@ func (s *Server) queryOperatorDashboard(orgID string) *demo.OperatorHomeData {
 			WeekLabels:   []string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"},
 			WeekSeries:   []int{0, 0, 0, 0, 0, 0, 0},
 		},
-		Resume: demo.ResumeItemData{
+		Resume: ResumeItemData{
 			ReconID:    "",
 			Party:      "All clear",
-			Amount:     demo.Money{},
+			Amount:     Money{},
 			Tier:       "info",
 			Confidence: 0,
 			Note:       "No items need attention",
 		},
-		Tasks:         []demo.OperatorTaskData{},
+		Tasks:         []OperatorTaskData{},
 		IntakeBatches: batchRows,
 	}
 }
 
-func (s *Server) queryWorkflowSnapshot(orgID string) *demo.WorkflowSnapshot {
-	var approvals []demo.ApprovalItem
+func (s *Server) queryWorkflowSnapshot(orgID string) *WorkflowSnapshot {
+	var approvals []WorkflowApprovalItem
 
 	arows, err := s.db.Query(`
 		SELECT
@@ -656,7 +821,7 @@ func (s *Server) queryWorkflowSnapshot(orgID string) *demo.WorkflowSnapshot {
 	if err == nil {
 		defer arows.Close()
 		for arows.Next() {
-			var item demo.ApprovalItem
+			var item WorkflowApprovalItem
 			var amtMinor int64
 			var cur, creatorName, state, evTitle, evSubtitle, evRisk, evRecommendation string
 			var deadline *time.Time
@@ -670,9 +835,9 @@ func (s *Server) queryWorkflowSnapshot(orgID string) *demo.WorkflowSnapshot {
 				&evTitle, &evSubtitle, &evRisk, &evRecommendation); err != nil {
 				continue
 			}
-			item.Amount = demo.Money{AmountMinor: fmt.Sprintf("%d", amtMinor), Currency: cur}
+			item.Amount = Money{AmountMinor: fmt.Sprintf("%d", amtMinor), Currency: cur}
 			item.Risk = evRisk
-			item.PreparedBy = demo.Approver{Name: creatorName, Role: "Creator"}
+			item.PreparedBy = Approver{Name: creatorName, Role: "Creator"}
 			item.PreparedAt = createdAt.Format(time.RFC3339)
 			if deadline != nil {
 				remaining := time.Until(*deadline)
@@ -703,7 +868,7 @@ func (s *Server) queryWorkflowSnapshot(orgID string) *demo.WorkflowSnapshot {
 			if item.RequiresDualApproval {
 				item.RequiresDualApproval = true
 			}
-			item.PolicyLimit = demo.Money{AmountMinor: "10000000", Currency: cur}
+			item.PolicyLimit = Money{AmountMinor: "10000000", Currency: cur}
 			withinLimit := amtMinor <= 10000000
 			item.WithinLimit = withinLimit
 			item.IsOwnItem = false
@@ -727,10 +892,10 @@ func (s *Server) queryWorkflowSnapshot(orgID string) *demo.WorkflowSnapshot {
 		}
 	}
 	if approvals == nil {
-		approvals = []demo.ApprovalItem{}
+		approvals = []WorkflowApprovalItem{}
 	}
 
-	var reconciliations []demo.Reconciliation
+	var reconciliations []WorkflowReconciliation
 	rrows, err := s.db.Query(`
 		SELECT
 			mc.id, mc.state,
@@ -763,7 +928,7 @@ func (s *Server) queryWorkflowSnapshot(orgID string) *demo.WorkflowSnapshot {
 	if err == nil {
 		defer rrows.Close()
 		for rrows.Next() {
-			var rc demo.Reconciliation
+			var rc WorkflowReconciliation
 			var state string
 			var score float64
 			var tier string
@@ -798,11 +963,11 @@ func (s *Server) queryWorkflowSnapshot(orgID string) *demo.WorkflowSnapshot {
 			leAmtMinor, _ := strconv.ParseInt(leAmt, 10, 64)
 			reAmtMinor, _ := strconv.ParseInt(reAmt, 10, 64)
 
-			rc.Transaction = demo.BankTransaction{
+			rc.Transaction = BankTransaction{
 				ID:           leID,
 				Source:       leSource,
 				Date:         createdAt.Format("2006-01-02"),
-				Amount:       demo.Money{AmountMinor: fmt.Sprintf("%d", leAmtMinor), Currency: leCur},
+				Amount:       Money{AmountMinor: fmt.Sprintf("%d", leAmtMinor), Currency: leCur},
 				Counterparty: leParty,
 				Reference:    leRef,
 				Direction:    leDir,
@@ -822,11 +987,11 @@ func (s *Server) queryWorkflowSnapshot(orgID string) *demo.WorkflowSnapshot {
 				default:
 					bizType = "expense"
 				}
-				rc.SuggestedRecord = &demo.BusinessRecord{
+				rc.SuggestedRecord = &BusinessRecord{
 					ID:        reID,
 					Type:      bizType,
 					Date:      createdAt.Format("2006-01-02"),
-					Amount:    demo.Money{AmountMinor: fmt.Sprintf("%d", reAmtMinor), Currency: reCur},
+					Amount:    Money{AmountMinor: fmt.Sprintf("%d", reAmtMinor), Currency: reCur},
 					PartyName: reParty,
 					Reference: reRef,
 				}
@@ -853,7 +1018,7 @@ func (s *Server) queryWorkflowSnapshot(orgID string) *demo.WorkflowSnapshot {
 			}
 			rc.Reason = reason
 			rc.AgeText = formatDuration(time.Since(createdAt))
-			rc.Deltas = []demo.FieldDelta{}
+			rc.Deltas = []FieldDelta{}
 
 			if state == "DUPLICATE" {
 				rc.DuplicateOf = "r-" + leID
@@ -863,7 +1028,7 @@ func (s *Server) queryWorkflowSnapshot(orgID string) *demo.WorkflowSnapshot {
 		}
 	}
 	if reconciliations == nil {
-		reconciliations = []demo.Reconciliation{}
+		reconciliations = []WorkflowReconciliation{}
 	}
 
 	var auditLog []AuditEvent
@@ -902,11 +1067,51 @@ func (s *Server) queryWorkflowSnapshot(orgID string) *demo.WorkflowSnapshot {
 		}
 	}
 
-	return &demo.WorkflowSnapshot{
+	for idx := range reconciliations {
+		var history []HistoryEvent
+		for _, event := range auditLog {
+			if event.Target != reconciliations[idx].ID {
+				continue
+			}
+			history = append(history, HistoryEvent{
+				ID:        event.ID,
+				At:        event.At,
+				Actor:     event.Actor,
+				ActorRole: event.Role,
+				Kind:      event.Kind,
+				Action:    friendlyReconciliationAction(event.Action),
+			})
+		}
+		if history == nil {
+			history = []HistoryEvent{}
+		}
+		reconciliations[idx].History = history
+	}
+
+	return &WorkflowSnapshot{
 		Approvals:         approvals,
 		Reconciliations:   reconciliations,
 		AuditLog:          auditLog,
 		DismissedReconIDs: dismissed,
+	}
+}
+
+func friendlyReconciliationAction(action string) string {
+	switch action {
+	case "Delegated reconciliation exception":
+		return "Delegated exception to Finance Operator"
+	case "Requested reconciliation explanation":
+		return "Requested explanation from Finance Operator"
+	case "Acknowledged reconciliation exception":
+		return "Acknowledged exception review"
+	case "Prepared match - routed for approval":
+		return "Prepared match and routed for approval"
+	case "Rejected match - returned to review":
+		return "Rejected match and returned to review"
+	case "Dismissed reconciliation exception":
+		return "Dismissed exception"
+	default:
+		return action
 	}
 }
 
@@ -935,4 +1140,515 @@ func formatDuration(d time.Duration) string {
 	}
 }
 
+func (s *Server) queryOrgUsers(orgID string) []OrgUserData {
+	var users []OrgUserData
+	rows, err := s.db.Query(`
+		SELECT
+			u.id,
+			u.display_name,
+			u.email,
+			u.status,
+			COALESCE((
+				SELECT r.role FROM role_bindings r
+				WHERE r.user_id = u.id AND r.organization_id = u.organization_id
+				ORDER BY r.created_at DESC LIMIT 1
+			), '')
+		FROM users u
+		WHERE u.organization_id = $1
+		ORDER BY u.created_at DESC
+		LIMIT 100`, orgID)
+	if err != nil {
+		return users
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var u OrgUserData
+		if err := rows.Scan(&u.ID, &u.Name, &u.Email, &u.Status, &u.Role); err != nil {
+			continue
+		}
+		users = append(users, u)
+	}
+	return users
+}
 
+func (s *Server) queryApprovalRules(orgID string) []ApprovalRuleData {
+	var rules []ApprovalRuleData
+	rows, err := s.db.Query(`
+		SELECT p.id, p.scope, p.version, p.auto_match_threshold, p.approval_limits, p.created_at
+		FROM rule_policies p
+		JOIN (
+			SELECT scope, MAX(version) AS max_version
+			FROM rule_policies
+			WHERE organization_id = $1
+			GROUP BY scope
+		) latest ON latest.scope = p.scope AND latest.max_version = p.version
+		WHERE p.organization_id = $1
+		ORDER BY p.created_at DESC
+		LIMIT 50`, orgID)
+	if err != nil {
+		return rules
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var r ApprovalRuleData
+		var threshold float64
+		var approvalLimits []byte
+		var created time.Time
+		if err := rows.Scan(&r.ID, &r.Scope, &created, &threshold, &approvalLimits, &r.CreatedAt); err != nil {
+			continue
+		}
+		r.Name = "Policy - " + r.Scope
+		r.Threshold = fmt.Sprintf("%.2f", threshold)
+		var approvers []struct {
+			Name string `json:"name"`
+			Role string `json:"role"`
+		}
+		if len(approvalLimits) > 0 {
+			_ = json.Unmarshal(approvalLimits, &approvers)
+		}
+		for _, a := range approvers {
+			r.Approvers = append(r.Approvers, Approver{Name: a.Name, Role: a.Role})
+		}
+		if len(r.Approvers) == 0 {
+			r.Approvers = []Approver{}
+		}
+		rules = append(rules, r)
+	}
+	return rules
+}
+
+func (s *Server) latestAuditResource(orgID, action string) string {
+	var resource string
+	err := s.db.QueryRow(`
+		SELECT resource FROM audit_entries
+		WHERE organization_id = $1 AND action = $2
+		ORDER BY occurred_at DESC
+		LIMIT 1`, orgID, action).Scan(&resource)
+	if err != nil {
+		return ""
+	}
+	return resource
+}
+
+func (s *Server) querySettingsOverview(orgID string) SettingsOverviewData {
+	var overview SettingsOverviewData
+	_ = s.db.QueryRow(`SELECT name FROM organizations WHERE id = $1`, orgID).Scan(&overview.OrgProfile.Name)
+	var profileJSON string
+	if payload := s.latestAuditResource(orgID, "settings.org_profile"); payload != "" {
+		profileJSON = payload
+	}
+	if profileJSON != "" {
+		var profile OrgProfileData
+		if json.Unmarshal([]byte(profileJSON), &profile) == nil {
+			if profile.Name == "" {
+				profile.Name = overview.OrgProfile.Name
+			}
+			overview.OrgProfile = profile
+		}
+	}
+	if payload := s.latestAuditResource(orgID, "settings.policy_controls"); payload != "" {
+		var controls PolicyControlsData
+		if json.Unmarshal([]byte(payload), &controls) == nil {
+			overview.PolicyControls = controls
+		}
+	}
+	if payload := s.latestAuditResource(orgID, "settings.data_controls"); payload != "" {
+		var controls DataControlsData
+		if json.Unmarshal([]byte(payload), &controls) == nil {
+			overview.DataControls = controls
+		}
+	}
+	if payload := s.latestAuditResource(orgID, "settings.billing"); payload != "" {
+		var billing SettingsBillingData
+		if json.Unmarshal([]byte(payload), &billing) == nil {
+			overview.Billing = billing
+		}
+	}
+	var userCount int
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM users WHERE organization_id = $1 AND status = 'active'`, orgID).Scan(&userCount)
+	if overview.Billing.Plan == "" {
+		switch {
+		case userCount <= 5:
+			overview.Billing.Plan = "Starter"
+			overview.Billing.SeatsIncluded = 5
+		case userCount <= 15:
+			overview.Billing.Plan = "Growth"
+			overview.Billing.SeatsIncluded = 15
+		default:
+			overview.Billing.Plan = "Enterprise"
+			overview.Billing.SeatsIncluded = 100
+		}
+		overview.Billing.PriceMonthly = "Derived from active seats"
+	}
+	if overview.DataControls.RetentionDays == 0 {
+		overview.DataControls = DataControlsData{RetentionDays: 365, DataCategories: []string{"source_records", "audit_entries", "documents"}, ExportEnabled: true, AnonymizeAfter: 90}
+	}
+	return overview
+}
+
+func (s *Server) queryFeatureEntitlements(orgID string) []string {
+	rows, err := s.db.Query(`
+		SELECT resource FROM audit_entries
+		WHERE organization_id = $1 AND action = 'features.toggle'
+		ORDER BY occurred_at ASC`, orgID)
+	if err != nil {
+		return []string{}
+	}
+	defer rows.Close()
+	state := map[string]bool{}
+	order := []string{}
+	for rows.Next() {
+		var feature string
+		if err := rows.Scan(&feature); err != nil {
+			continue
+		}
+		if _, seen := state[feature]; !seen {
+			order = append(order, feature)
+		}
+		state[feature] = !state[feature]
+	}
+	enabled := []string{}
+	for _, feature := range order {
+		if state[feature] {
+			enabled = append(enabled, feature)
+		}
+	}
+	return enabled
+}
+
+func (s *Server) queryPlatformHome() *PlatformConsoleData {
+	var data PlatformConsoleData
+	rows, err := s.db.Query(`
+		SELECT
+			o.id,
+			o.name,
+			o.created_at,
+			(SELECT COUNT(*) FROM users u WHERE u.organization_id = o.id) AS user_count,
+			(SELECT COUNT(*) FROM role_bindings rb WHERE rb.organization_id = o.id) AS binding_count,
+			(SELECT COUNT(*) FROM audit_entries a WHERE a.organization_id = o.id) AS audit_count
+		FROM organizations o
+		ORDER BY o.created_at ASC
+		LIMIT 200`)
+	if err != nil {
+		return &data
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var t PlatformTenantRowData
+		var created time.Time
+		var userCount, bindingCount, auditCount int
+		if err := rows.Scan(&t.ID, &t.Name, &created, &userCount, &bindingCount, &auditCount); err != nil {
+			continue
+		}
+		t.Users = userCount
+		t.Plan = "Starter"
+		switch {
+		case userCount > 15:
+			t.Plan = "Enterprise"
+		case userCount > 5:
+			t.Plan = "Growth"
+		}
+		var revenueMinor int64
+		_ = s.db.QueryRow(`
+			SELECT COALESCE(SUM(CASE WHEN la.account_type = 'REVENUE' THEN le.debit_minor - le.credit_minor ELSE 0 END), 0)
+			FROM ledger_entries le
+			JOIN ledger_accounts la ON le.account_id = la.id
+			WHERE le.organization_id = $1`, t.ID).Scan(&revenueMinor)
+		t.MRR = fmt.Sprintf("$%d", revenueMinor)
+		t.Health = "healthy"
+		if auditCount > 0 && bindingCount == 0 {
+			t.Health = "attention"
+		}
+		t.Since = created.Format("2006")
+		data.Tenants = append(data.Tenants, t)
+	}
+	var activeTenants, totalMRR int
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM organizations`).Scan(&activeTenants)
+	var revenueSum int64
+	_ = s.db.QueryRow(`
+		SELECT COALESCE(SUM(CASE WHEN la.account_type = 'REVENUE' THEN le.debit_minor - le.credit_minor ELSE 0 END), 0)
+		FROM ledger_entries le
+		JOIN ledger_accounts la ON le.account_id = la.id`).Scan(&revenueSum)
+	totalMRR = int(revenueSum)
+	data.TenantMetrics.ActiveTenants = fmt.Sprintf("%d", activeTenants)
+	data.TenantMetrics.TotalMRR = fmt.Sprintf("$%d", totalMRR)
+	data.TenantMetrics.HealthScore = "100"
+
+	prows, err := s.db.Query(`
+		SELECT pu.id, pu.email, pu.display_name, COALESCE((
+			SELECT role FROM platform_role_bindings prb WHERE prb.user_id = pu.id ORDER BY prb.created_at DESC LIMIT 1
+		), ''), pu.status
+		FROM platform_users pu
+		ORDER BY pu.created_at DESC
+		LIMIT 100`)
+	if err == nil {
+		defer prows.Close()
+		for prows.Next() {
+			var pu PlatformUserData
+			if err := prows.Scan(&pu.ID, &pu.Email, &pu.Name, &pu.Role, &pu.Last); err != nil {
+				continue
+			}
+			if pu.Last == "active" {
+				pu.Last = "recent"
+			}
+			data.PlatformUsers = append(data.PlatformUsers, pu)
+		}
+	}
+	grows, err := s.db.Query(`
+		SELECT g.id, o.name, g.reason, g.revoked_at, g.created_at
+		FROM platform_support_access_grants g
+		JOIN organizations o ON o.id = g.organization_id
+		ORDER BY g.created_at DESC
+		LIMIT 50`)
+	if err == nil {
+		defer grows.Close()
+		for grows.Next() {
+			var g PlatformSupportGrantData
+			var reason string
+			var revoked *time.Time
+			var created time.Time
+			if err := grows.Scan(&g.ID, &g.Tenant, &reason, &revoked, &created); err != nil {
+				continue
+			}
+			if revoked != nil {
+				g.Status = "Revoked"
+				g.Tone = "neutral"
+			} else {
+				g.Status = "Granted"
+				g.Tone = "success"
+			}
+			g.Detail = reason
+			data.SupportGrants = append(data.SupportGrants, g)
+		}
+	}
+	arows, err := s.db.Query(`
+		SELECT id, action, resource, actor_user_id, occurred_at
+		FROM audit_entries
+		ORDER BY occurred_at DESC
+		LIMIT 20`)
+	if err == nil {
+		defer arows.Close()
+		for arows.Next() {
+			var ae PlatformAuditEventData
+			var occ time.Time
+			var resource string
+			if err := arows.Scan(&ae.ID, &ae.Action, &resource, &ae.Actor, &occ); err != nil {
+				continue
+			}
+			ae.Target = resource
+			ae.At = occ.Format("2006-01-02 15:04 UTC")
+			ae.Icon = "activity"
+			ae.Tone = "info"
+			data.AuditEvents = append(data.AuditEvents, ae)
+		}
+	}
+	data.FeatureFlags = []PlatformFeatureFlag{}
+	return &data
+}
+
+func (s *Server) queryMailbox(userID string) MailboxData {
+	var mailbox MailboxData
+	var payload string
+	if err := s.db.QueryRow(`
+		SELECT resource FROM audit_entries
+		WHERE actor_user_id = $1 AND action = 'mailbox.connect'
+		ORDER BY occurred_at DESC LIMIT 1`, userID).Scan(&payload); err == nil {
+		var conn struct {
+			Account  string `json:"account"`
+			Provider string `json:"provider"`
+		}
+		if json.Unmarshal([]byte(payload), &conn) == nil {
+			mailbox.Account = conn.Account
+			mailbox.Provider = conn.Provider
+			mailbox.Connected = true
+		}
+	}
+	mrows, err := s.db.Query(`
+		SELECT resource FROM audit_entries
+		WHERE actor_user_id = $1 AND action = 'mailbox.message'
+		ORDER BY occurred_at DESC
+		LIMIT 100`, userID)
+	if err == nil {
+		defer mrows.Close()
+		for mrows.Next() {
+			var msgJSON string
+			if err := mrows.Scan(&msgJSON); err != nil {
+				continue
+			}
+			var msg MailMessageData
+			if json.Unmarshal([]byte(msgJSON), &msg) == nil {
+				mailbox.Messages = append(mailbox.Messages, msg)
+			}
+		}
+	}
+	if mailbox.Messages == nil {
+		mailbox.Messages = []MailMessageData{}
+	}
+	return mailbox
+}
+
+func (s *Server) queryAccountSettings(userID string) AccountSettingsData {
+	var settings AccountSettingsData
+	var email, displayName, role string
+	_ = s.db.QueryRow(`SELECT email, display_name FROM users WHERE id = $1`, userID).Scan(&email, &displayName)
+	settings.Email = email
+	settings.Name = displayName
+	_ = s.db.QueryRow(`
+		SELECT role FROM role_bindings WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1`, userID).Scan(&role)
+	settings.Role = role
+	var payload string
+	if err := s.db.QueryRow(`
+		SELECT resource FROM audit_entries
+		WHERE actor_user_id = $1 AND action = 'account.settings'
+		ORDER BY occurred_at DESC LIMIT 1`, userID).Scan(&payload); err == nil {
+		var stored AccountSettingsData
+		if json.Unmarshal([]byte(payload), &stored) == nil {
+			if stored.Name != "" {
+				settings.Name = stored.Name
+			}
+			if stored.Email != "" {
+				settings.Email = stored.Email
+			}
+			if stored.Role != "" {
+				settings.Role = stored.Role
+			}
+			if stored.Timezone != "" {
+				settings.Timezone = stored.Timezone
+			}
+			if stored.Locale != "" {
+				settings.Locale = stored.Locale
+			}
+			if stored.Theme != "" {
+				settings.Theme = stored.Theme
+			}
+			settings.TwoFactor = stored.TwoFactor
+		}
+	}
+	return settings
+}
+
+func (s *Server) queryOverdueItems(orgID string) []OverdueItem {
+	var items []OverdueItem
+	rows, err := s.db.Query(`
+		SELECT id, customer, invoice, amount_minor, currency, days_overdue
+		FROM collection_cases
+		WHERE organization_id = $1
+		ORDER BY days_overdue DESC
+		LIMIT 100`, orgID)
+	if err != nil {
+		return items
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var item OverdueItem
+		var amountMinor int64
+		var cur string
+		var days int
+		if err := rows.Scan(&item.ID, &item.Customer, &item.Invoice, &amountMinor, &cur, &days); err != nil {
+			continue
+		}
+		item.Amount = Money{AmountMinor: fmt.Sprintf("%d", amountMinor), Currency: cur}
+		item.DaysOverdue = days
+		items = append(items, item)
+	}
+	return items
+}
+
+func (s *Server) queryReports(orgID string) []ReportDef {
+	var reports []ReportDef
+	rows, err := s.db.Query(`
+		SELECT id, to_char(period_start, 'YYYY-MM-DD'), to_char(period_end, 'YYYY-MM-DD'), generated_by, created_at, COALESCE(payload->>'kind', 'ledger')
+		FROM finance_analytics_reports
+		WHERE organization_id = $1
+		ORDER BY created_at DESC
+		LIMIT 10`, orgID)
+	if err != nil {
+		return reports
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var r ReportDef
+		var periodStart, periodEnd string
+		var owner string
+		var created time.Time
+		if err := rows.Scan(&r.ID, &periodStart, &periodEnd, &owner, &created, &r.Kind); err != nil {
+			continue
+		}
+		r.Name = fmt.Sprintf("Financial analytics %s - %s", periodStart, periodEnd)
+		r.Schedule = "monthly"
+		r.Owner = owner
+		r.LastGenerated = created.Format(time.RFC3339)
+		r.NextRun = ""
+		reports = append(reports, r)
+	}
+	srows, err := s.db.Query(`
+		SELECT id, generated_by, generated_at, include_roi
+		FROM report_snapshots
+		WHERE organization_id = $1
+		ORDER BY generated_at DESC
+		LIMIT 10`, orgID)
+	if err != nil {
+		return reports
+	}
+	defer srows.Close()
+	for srows.Next() {
+		var r ReportDef
+		var includeROI bool
+		var created time.Time
+		if err := srows.Scan(&r.ID, &r.Owner, &created, &includeROI); err != nil {
+			continue
+		}
+		r.Name = "Reporting snapshot"
+		if includeROI {
+			r.Name = "Reporting & ROI snapshot"
+		}
+		r.Kind = "report"
+		r.Schedule = "monthly"
+		r.LastGenerated = created.Format(time.RFC3339)
+		r.NextRun = ""
+		reports = append(reports, r)
+	}
+	return reports
+}
+
+func (s *Server) queryReportByID(orgID, reportID string) (ReportDef, bool) {
+	for _, report := range s.queryReports(orgID) {
+		if report.ID == reportID {
+			return report, true
+		}
+	}
+	return ReportDef{}, false
+}
+
+func (s *Server) buildReportContent(orgID string, report ReportDef) ReportContent {
+	var revenueMinor, expenseMinor int64
+	_ = s.db.QueryRow(`
+		SELECT
+			COALESCE(SUM(CASE WHEN la.account_type = 'REVENUE' THEN le.debit_minor - le.credit_minor ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN la.account_type = 'EXPENSE' THEN le.debit_minor - le.credit_minor ELSE 0 END), 0)
+		FROM ledger_entries le
+		JOIN ledger_accounts la ON le.account_id = la.id
+		WHERE le.organization_id = $1`, orgID).Scan(&revenueMinor, &expenseMinor)
+	var approvalCount, auditCount, docCount int
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM approval_tasks WHERE organization_id = $1`, orgID).Scan(&approvalCount)
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM audit_entries WHERE organization_id = $1`, orgID).Scan(&auditCount)
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM documents WHERE organization_id = $1`, orgID).Scan(&docCount)
+	netMinor := revenueMinor - expenseMinor
+	content := ReportContent{
+		KPIs: []struct {
+			Label string `json:"label"`
+			Value string `json:"value"`
+		}{
+			{Label: "Revenue", Value: fmt.Sprintf("%d USD", revenueMinor)},
+			{Label: "Expenses", Value: fmt.Sprintf("%d USD", expenseMinor)},
+			{Label: "Net position", Value: fmt.Sprintf("%d USD", netMinor)},
+			{Label: "Approval tasks", Value: strconv.Itoa(approvalCount)},
+		},
+		Rows: []map[string]string{
+			{"metric": "Report", "value": report.Name},
+			{"metric": "Audit events", "value": strconv.Itoa(auditCount)},
+			{"metric": "Documents ingested", "value": strconv.Itoa(docCount)},
+		},
+	}
+	return content
+}
