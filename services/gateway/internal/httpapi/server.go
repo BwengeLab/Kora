@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/kora-finance/kora/libs/access"
 	"github.com/kora-finance/kora/libs/auth"
 	"github.com/kora-finance/kora/libs/connectors"
@@ -24,7 +25,6 @@ import (
 	"github.com/kora-finance/kora/libs/identity"
 	"github.com/kora-finance/kora/libs/ingestion"
 	"github.com/kora-finance/kora/libs/servicekit"
-	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 const maxRequestBytes = 1 << 20
@@ -32,24 +32,21 @@ const maxRequestBytes = 1 << 20
 const demoPassword = "demo-pass-123"
 
 type Server struct {
-	mux                  *http.ServeMux
-	identityService      *identity.Service
-	identityStore        identity.Store
-	connections          connectors.ConnectionStore
-	jwtSecret            []byte
-	intakeSources        map[string]bool
-	featureEntitlements  []string
-	integrationOverrides map[string]integrationStatusOverride
-	agentRuntimeURL      string
-	agentRuntimeToken    string
-	runtimeDatabaseURL   string
-	db                   *sql.DB
-	documentAIURL        string
-	ingestionServiceURL  string
-	enterpriseMu         sync.RWMutex
-	pendingInvites       map[string]enterpriseInvite
-	emailSender          *email.Sender
-	httpClient           *http.Client
+	mux                 *http.ServeMux
+	identityService     *identity.Service
+	identityStore       identity.Store
+	connections         connectors.ConnectionStore
+	jwtSecret           []byte
+	agentRuntimeURL     string
+	agentRuntimeToken   string
+	runtimeDatabaseURL  string
+	db                  *sql.DB
+	documentAIURL       string
+	ingestionServiceURL string
+	enterpriseMu        sync.RWMutex
+	pendingInvites      map[string]enterpriseInvite
+	emailSender         *email.Sender
+	httpClient          *http.Client
 }
 
 type enterpriseInvite struct {
@@ -121,18 +118,6 @@ type portalAccessActivity struct {
 	At     string `json:"at"`
 }
 
-type ConsentGrantData struct {
-	ID             string   `json:"id"`
-	Grantee        string   `json:"grantee"`
-	GranteeType    string   `json:"granteeType"`
-	Purpose        string   `json:"purpose"`
-	DataCategories []string `json:"dataCategories"`
-	GrantedAt      string   `json:"grantedAt"`
-	ExpiresAt      string   `json:"expiresAt"`
-	Revoked        bool     `json:"revoked"`
-	Status         string   `json:"status"`
-}
-
 type portalAccessResponse struct {
 	OrganizationName string                 `json:"organizationName"`
 	Grants           []ConsentGrantData     `json:"grants"`
@@ -154,18 +139,18 @@ func New(secret []byte) (*Server, error) {
 	service := identity.NewService(store, secret)
 	connectionStore := connectors.NewMemoryConnectionStore()
 	server := &Server{
-		mux:                http.NewServeMux(),
-		identityService:    service,
-		identityStore:      store,
-		connections:        connectionStore,
-		jwtSecret:          secret,
+		mux:                 http.NewServeMux(),
+		identityService:     service,
+		identityStore:       store,
+		connections:         connectionStore,
+		jwtSecret:           secret,
 		agentRuntimeURL:     strings.TrimRight(os.Getenv("KORA_AGENT_RUNTIME_URL"), "/"),
 		agentRuntimeToken:   os.Getenv("KORA_AGENT_RUNTIME_TOKEN"),
 		runtimeDatabaseURL:  databaseURL,
 		documentAIURL:       strings.TrimRight(os.Getenv("KORA_DOCUMENT_AI_URL"), "/"),
 		ingestionServiceURL: strings.TrimRight(os.Getenv("KORA_INGESTION_SERVICE_URL"), "/"),
-		pendingInvites:     map[string]enterpriseInvite{},
-		httpClient:         &http.Client{Timeout: 35 * time.Second},
+		pendingInvites:      map[string]enterpriseInvite{},
+		httpClient:          &http.Client{Timeout: 35 * time.Second},
 		emailSender: email.NewSender(email.Config{
 			APIKey:   os.Getenv("KORA_MAILERSEND_API_KEY"),
 			FromAddr: os.Getenv("KORA_SMTP_FROM_ADDR"),
@@ -487,6 +472,10 @@ func (s *Server) integrationsStatusAction(writer http.ResponseWriter, request *h
 	if !ok {
 		return
 	}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
 	path := strings.TrimPrefix(request.URL.Path, "/api/integrations/status/")
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	if len(parts) != 2 {
@@ -540,22 +529,8 @@ func (s *Server) integrationsStatusAction(writer http.ResponseWriter, request *h
 		writeError(writer, http.StatusNotFound, "unknown integration action")
 		return
 	}
-	s.demoMu.Lock()
-	if s.integrationOverrides == nil {
-		s.integrationOverrides = map[string]integrationStatusOverride{}
-	}
-	s.integrationOverrides[integrationID] = override
-	s.workflowState.AuditLog = append([]demo.AuditEvent{{
-		ID:          "al-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-		At:          time.Now().UTC().Format(time.RFC3339),
-		Actor:       s.sessionDisplayName(claims),
-		Role:        s.sessionRoleName(claims),
-		Kind:        "integration",
-		Action:      actionLabel,
-		Target:      current.Name,
-		HasEvidence: true,
-	}}, s.workflowState.AuditLog...)
-	s.demoMu.Unlock()
+	_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, actionLabel, current.Name)
+	s.persistIntegrationOverride(claims.OrganizationID, integrationID, override)
 	updated, err := s.integrationStatusesForActor(actor, claims.OrganizationID)
 	if err != nil {
 		writeError(writer, http.StatusBadRequest, err.Error())
@@ -585,544 +560,6 @@ func (s *Server) workflowSnapshot(writer http.ResponseWriter, request *http.Requ
 	writeJSON(writer, http.StatusOK, q)
 }
 
-type WorkflowSnapshot struct {
-	Approvals       []WorkflowApprovalItem    `json:"approvals"`
-	Reconciliations []WorkflowReconciliation  `json:"reconciliations"`
-	DismissedReconIDs []string               `json:"dismissedReconIds"`
-	AuditLog        []WorkflowAuditEvent      `json:"auditLog"`
-}
-
-type WorkflowApprovalItem struct {
-	ID                   string                 `json:"id"`
-	Title                string                 `json:"title"`
-	Subtitle             string                 `json:"subtitle"`
-	Status               string                 `json:"status"`
-	CreatedAt            string                 `json:"createdAt"`
-	Amount               Money                  `json:"amount"`
-	Category             string                 `json:"category"`
-	Requestor            Approver               `json:"requestor"`
-	PreparedBy           Approver               `json:"preparedBy"`
-	PolicyLimit          Money                  `json:"policyLimit"`
-	RequiresTwoPerson    bool                   `json:"requiresTwoPerson"`
-	Approvals            []Approver             `json:"approvals"`
-	Evidence             []EvidenceDoc          `json:"evidence"`
-	History              []HistoryEvent         `json:"history"`
-	LinkedReconciliation *LinkedReconciliation  `json:"linkedReconciliation,omitempty"`
-}
-
-type WorkflowReconciliation struct {
-	ID              string          `json:"id"`
-	Title           string          `json:"title"`
-	Subtitle        string          `json:"subtitle"`
-	Status          string          `json:"status"`
-	Transaction     TransactionData `json:"transaction"`
-	MatchCandidates []MatchCandidate `json:"matchCandidates"`
-	History         []HistoryEvent  `json:"history"`
-	Evidence        []EvidenceDoc   `json:"evidence"`
-}
-
-type WorkflowAuditEvent struct {
-	ID          string  `json:"id"`
-	At          string  `json:"at"`
-	Actor       string  `json:"actor"`
-	Role        string  `json:"role"`
-	Kind        string  `json:"kind"`
-	Action      string  `json:"action"`
-	Target      string  `json:"target"`
-	Amount      *Money  `json:"amount,omitempty"`
-	HasEvidence bool    `json:"hasEvidence"`
-}
-
-type Money struct {
-	AmountMinor string `json:"amountMinor"`
-	Currency    string `json:"currency"`
-}
-
-type Approver struct {
-	Name string `json:"name"`
-	Role string `json:"role"`
-	At   string `json:"at,omitempty"`
-}
-
-type EvidenceDoc struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	URL       string `json:"url"`
-	UploadedAt string `json:"uploadedAt"`
-}
-
-type HistoryEvent struct {
-	ID        string `json:"id"`
-	At        string `json:"at"`
-	Actor     string `json:"actor"`
-	ActorRole string `json:"actorRole"`
-	Kind      string `json:"kind"`
-	Action    string `json:"action"`
-}
-
-type TransactionData struct {
-	ID            string `json:"id"`
-	Date          string `json:"date"`
-	Description   string `json:"description"`
-	Amount        Money  `json:"amount"`
-	Counterparty  string `json:"counterparty"`
-	Reference     string `json:"reference"`
-	Channel       string `json:"channel"`
-	ExternalRef   string `json:"externalRef"`
-}
-
-type MatchCandidate struct {
-	ID           string `json:"id"`
-	Type         string `json:"type"`
-	Title        string `json:"title"`
-	Subtitle     string `json:"subtitle"`
-	Confidence   string `json:"confidence"`
-	Amount       Money  `json:"amount"`
-	Date         string `json:"date"`
-	Counterparty string `json:"counterparty"`
-}
-
-type LinkedReconciliation struct {
-	ID        string `json:"id"`
-	Title     string `json:"title"`
-	Subtitle  string `json:"subtitle"`
-}
-
-// Domain query types (replacing demo package)
-type OverdueItem struct {
-	ID              string `json:"id"`
-	Customer        string `json:"customer"`
-	Invoice         string `json:"invoice"`
-	Amount          Money  `json:"amount"`
-	DaysOverdue     int    `json:"daysOverdue"`
-	Risk            string `json:"risk"`
-	ReminderDrafted bool   `json:"reminderDrafted"`
-	Contact         string `json:"contact"`
-	Email           string `json:"email"`
-	LastContact     string `json:"lastContact"`
-	ReminderCount   int    `json:"reminderCount"`
-	ActionStatus    string `json:"actionStatus"`
-}
-
-type ContractData struct {
-	ID         string `json:"id"`
-	Type       string `json:"type"`
-	Counterparty string `json:"counterparty"`
-	StartDate  string `json:"startDate"`
-	EndDate    string `json:"endDate"`
-	Value      Money  `json:"value,omitempty"`
-	AutoRenew  bool   `json:"autoRenew"`
-	Owner      string `json:"owner"`
-	Reference  string `json:"reference"`
-	Terms      string `json:"terms"`
-	Status     string `json:"status"`
-}
-
-type FinanceJournalLine struct {
-	Account string `json:"account"`
-	Debit   Money  `json:"debit,omitempty"`
-	Credit  Money  `json:"credit,omitempty"`
-}
-
-type FinanceJournalEntry struct {
-	ID     string             `json:"id"`
-	Date   string             `json:"date"`
-	Ref    string             `json:"ref"`
-	Memo   string             `json:"memo"`
-	Status string             `json:"status"`
-	Source string             `json:"source"`
-	Entity string             `json:"entity"`
-	Lines  []FinanceJournalLine `json:"lines"`
-}
-
-type FinanceBill struct {
-	ID        string `json:"id"`
-	Date      string `json:"date"`
-	Vendor    string `json:"vendor"`
-	Amount    Money  `json:"amount"`
-	Status    string `json:"status"`
-	DueDate   string `json:"dueDate"`
-	Reference string `json:"reference"`
-}
-
-type FinanceTransaction struct {
-	ID          string `json:"id"`
-	Date        string `json:"date"`
-	Description string `json:"description"`
-	Amount      Money  `json:"amount"`
-	Counterparty string `json:"counterparty"`
-	Reference   string `json:"reference"`
-	Channel     string `json:"channel"`
-	ExternalRef string `json:"externalRef"`
-	Status      string `json:"status"`
-}
-
-type FinanceOperationsSnapshot struct {
-	Journals     []FinanceJournalEntry `json:"journals"`
-	Bills        []FinanceBill         `json:"bills"`
-	Transactions []FinanceTransaction  `json:"transactions"`
-}
-
-type Trend struct {
-	Direction  string `json:"direction"`
-	ValueText  string `json:"valueText"`
-	Label      string `json:"label"`
-	Percentage string `json:"percentage,omitempty"`
-}
-
-type LedgerKPIData struct {
-	ID                string `json:"id"`
-	Label             string `json:"label"`
-	Money             *Money `json:"money,omitempty"`
-	Delta             Trend  `json:"delta"`
-	PositiveDirection string `json:"positiveDirection"`
-}
-
-type LedgerCashflowView struct {
-	KPIs           []LedgerKPIData `json:"kpis"`
-	OpeningBalance Money           `json:"openingBalance"`
-	PeriodStart    string          `json:"periodStart"`
-	PeriodEnd      string          `json:"periodEnd"`
-	Inflows        []Money         `json:"inflows"`
-	Outflows       []Money         `json:"outflows"`
-}
-
-type AuditEvent struct {
-	ID        string `json:"id"`
-	Timestamp string `json:"timestamp"`
-	Actor     string `json:"actor"`
-	Role      string `json:"role"`
-	Kind      string `json:"kind"`
-	Action    string `json:"action"`
-	Target    string `json:"target"`
-	HasEvidence bool `json:"hasEvidence"`
-}
-
-type AuditInvestigationsView struct {
-	Events []AuditEvent `json:"events"`
-}
-
-type AccessAlert struct {
-	ID        string `json:"id"`
-	Severity  string `json:"severity"`
-	Message   string `json:"message"`
-	Timestamp string `json:"timestamp"`
-}
-
-type AccessRequest struct {
-	ID        string `json:"id"`
-	Requester string `json:"requester"`
-	Resource  string `json:"resource"`
-	Reason    string `json:"reason"`
-	Status    string `json:"status"`
-	CreatedAt string `json:"createdAt"`
-}
-
-type AdminUser struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Email     string `json:"email"`
-	Role      string `json:"role"`
-	Status    string `json:"status"`
-	CreatedAt string `json:"createdAt"`
-}
-
-type AdminStats struct {
-	TotalUsers     int `json:"totalUsers"`
-	ActiveTenants  int `json:"activeTenants"`
-	PendingInvites int `json:"pendingInvites"`
-	AlertsCount    int `json:"alertsCount"`
-}
-
-type AdminDashboardData struct {
-	Stats      AdminStats   `json:"stats"`
-	Users      []AdminUser  `json:"users"`
-	Alerts     []AccessAlert `json:"alerts"`
-	Requests   []AccessRequest `json:"requests"`
-}
-
-type ApprovalItem struct {
-	ID          string   `json:"id"`
-	Type        string   `json:"type"`
-	Title       string   `json:"title"`
-	Subtitle    string   `json:"subtitle"`
-	Amount      *Money   `json:"amount,omitempty"`
-	Requester   string   `json:"requester"`
-	RequestedAt string   `json:"requestedAt"`
-	Approvers   []Approver `json:"approvers"`
-	Status      string   `json:"status"`
-}
-
-type AreaSeries struct {
-	Label string  `json:"label"`
-	Data  []float64 `json:"data"`
-}
-
-type AuditControlHealthData struct {
-	TotalControls   int     `json:"totalControls"`
-	PassingControls int     `json:"passingControls"`
-	HealthScore     float64 `json:"healthScore"`
-	Trend           []AreaSeries `json:"trend"`
-}
-
-type AuditRiskStatsData struct {
-	HighRiskCount   int `json:"highRiskCount"`
-	MediumRiskCount int `json:"mediumRiskCount"`
-	LowRiskCount    int `json:"lowRiskCount"`
-	CriticalFlags   int `json:"criticalFlags"`
-}
-
-type BankTransaction struct {
-	ID          string `json:"id"`
-	Date        string `json:"date"`
-	Description string `json:"description"`
-	Amount      Money  `json:"amount"`
-	Counterparty string `json:"counterparty"`
-	Reference   string `json:"reference"`
-	Channel     string `json:"channel"`
-	Matched     bool   `json:"matched"`
-}
-
-type BillingSummary struct {
-	CurrentCharges Money `json:"currentCharges"`
-	PreviousCharges Money `json:"previousCharges"`
-	Outstanding    Money `json:"outstanding"`
-	DueDate        string `json:"dueDate"`
-	Status         string `json:"status"`
-}
-
-type BusinessRecord struct {
-	ID        string `json:"id"`
-	Type      string `json:"type"`
-	Name      string `json:"name"`
-	Status    string `json:"status"`
-	CreatedAt string `json:"createdAt"`
-}
-
-type BusinessRiskData struct {
-	RiskScore    float64 `json:"riskScore"`
-	RiskLevel    string  `json:"riskLevel"`
-	TopRisks     []string `json:"topRisks"`
-	Trend        string  `json:"trend"`
-}
-
-type CloseTaskData struct {
-	ID          string `json:"id"`
-	Task        string `json:"task"`
-	Owner       string `json:"owner"`
-	DueDate     string `json:"dueDate"`
-	Status      string `json:"status"`
-	CompletedAt string `json:"completedAt,omitempty"`
-}
-
-type ComplianceItemData struct {
-	ID          string `json:"id"`
-	Requirement string `json:"requirement"`
-	Status      string `json:"status"`
-	Evidence    string `json:"evidence"`
-	DueDate     string `json:"dueDate"`
-}
-
-type ControlCheckData struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Status    string `json:"status"`
-	LastRun   string `json:"lastRun"`
-	Result    string `json:"result"`
-}
-
-type ControlPostureData struct {
-	TotalControls   int      `json:"totalControls"`
-	PassingControls int      `json:"passingControls"`
-	FailingControls int      `json:"failingControls"`
-	Checks          []ControlCheckData `json:"checks"`
-}
-
-type ControlSubscoreData struct {
-	Name   string  `json:"name"`
-	Score  float64 `json:"score"`
-	Status string  `json:"status"`
-}
-
-type ControlsCloseData struct {
-	Period      string             `json:"period"`
-	Status      string             `json:"status"`
-	Tasks       []CloseTaskData    `json:"tasks"`
-	Compliance  []ComplianceItemData `json:"compliance"`
-	Posture     ControlPostureData `json:"posture"`
-	Subscores   []ControlSubscoreData `json:"subscores"`
-}
-
-type CreditFactor struct {
-	Name   string  `json:"name"`
-	Score  float64 `json:"score"`
-	Weight float64 `json:"weight"`
-	Status string  `json:"status"`
-}
-
-type CreditPassportSummary struct {
-	OverallScore int           `json:"overallScore"`
-	Rating       string        `json:"rating"`
-	Factors      []CreditFactor `json:"factors"`
-	GeneratedAt  string        `json:"generatedAt"`
-}
-
-type EvidenceGapData struct {
-	ID          string `json:"id"`
-	Control     string `json:"control"`
-	Gap         string `json:"gap"`
-	Severity    string `json:"severity"`
-	Remediation string `json:"remediation"`
-	DueDate     string `json:"dueDate"`
-}
-
-type FieldDelta struct {
-	Field     string `json:"field"`
-	OldValue  string `json:"oldValue"`
-	NewValue  string `json:"newValue"`
-}
-
-type Insight struct {
-	Text      string `json:"text"`
-	Severity  string `json:"severity"`
-	ActionURL string `json:"actionUrl,omitempty"`
-}
-
-type IntakeBatchData struct {
-	ID           string `json:"id"`
-	Source       string `json:"source"`
-	DocumentCount int    `json:"documentCount"`
-	Status       string `json:"status"`
-	ProcessedAt  string `json:"processedAt"`
-	Errors       int    `json:"errors"`
-}
-
-type OperatorFocusData struct {
-	HighPriority int `json:"highPriority"`
-	MediumPriority int `json:"mediumPriority"`
-	LowPriority int `json:"lowPriority"`
-}
-
-type OperatorTaskData struct {
-	ID       string `json:"id"`
-	Title    string `json:"title"`
-	Type     string `json:"type"`
-	Priority string `json:"priority"`
-	Status   string `json:"status"`
-	DueDate  string `json:"dueDate"`
-}
-
-type OperatorThroughputData struct {
-	ProcessedToday int `json:"processedToday"`
-	PendingReview  int `json:"pendingReview"`
-	AutoMatched    int `json:"autoMatched"`
-}
-
-type OperatorHomeData struct {
-	Tasks      []OperatorTaskData   `json:"tasks"`
-	Throughput OperatorThroughputData `json:"throughput"`
-	Focus      OperatorFocusData    `json:"focus"`
-	Insights   []Insight            `json:"insights"`
-}
-
-type OwnerCashFlow struct {
-	Period      string  `json:"period"`
-	Inflow      Money   `json:"inflow"`
-	Outflow     Money   `json:"outflow"`
-	Net         Money   `json:"net"`
-	Forecast    []Money `json:"forecast"`
-}
-
-type OwnerKPI struct {
-	Name      string `json:"name"`
-	Value     string `json:"value"`
-	Change    string `json:"change"`
-	Trend     string `json:"trend"`
-}
-
-type OwnerHomeSummary struct {
-	CashPosition   Money         `json:"cashPosition"`
-	MonthlyBurn    Money         `json:"monthlyBurn"`
-	RunwayMonths   float64       `json:"runwayMonths"`
-	Receivables    Money         `json:"receivables"`
-	Payables       Money         `json:"payables"`
-	KPIs           []OwnerKPI    `json:"kpis"`
-	CashFlow       OwnerCashFlow `json:"cashFlow"`
-}
-
-type OwnerRiskDashboardData struct {
-	RiskScore    float64  `json:"riskScore"`
-	RiskLevel    string   `json:"riskLevel"`
-	OpenIssues   int      `json:"openIssues"`
-	ComplianceScore float64 `json:"complianceScore"`
-	Trends       []AreaSeries `json:"trends"`
-}
-
-type OwnerDashboardData struct {
-	Summary OwnerHomeSummary      `json:"summary"`
-	Risk    OwnerRiskDashboardData `json:"risk"`
-	Alerts  []Insight             `json:"alerts"`
-}
-
-type PolicyVersion struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Version   string `json:"version"`
-	Status    string `json:"status"`
-	PublishedAt string `json:"publishedAt"`
-}
-
-type RecentDocument struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Type      string `json:"type"`
-	UploadedAt string `json:"uploadedAt"`
-	Status    string `json:"status"`
-	Size      int64  `json:"size"`
-}
-
-type Reconciliation struct {
-	ID          string `json:"id"`
-	Date        string `json:"date"`
-	Source      string `json:"source"`
-	MatchedCount int    `json:"matchedCount"`
-	UnmatchedCount int  `json:"unmatchedCount"`
-	Status      string `json:"status"`
-}
-
-type RelationshipRow struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	Type         string `json:"type"`
-	RiskScore    float64 `json:"riskScore"`
-	ContractStatus string `json:"contractStatus"`
-	LastInteraction string `json:"lastInteraction"`
-}
-
-type ResumeItemData struct {
-	ID       string `json:"id"`
-	Title    string `json:"title"`
-	Subtitle string `json:"subtitle"`
-	Status   string `json:"status"`
-	URL      string `json:"url"`
-}
-
-type WorkflowSnapshot struct {
-	Approvals         []WorkflowApprovalItem   `json:"approvals"`
-	Reconciliations   []WorkflowReconciliation `json:"reconciliations"`
-	DismissedReconIDs []string                 `json:"dismissedReconIds"`
-	AuditLog          []WorkflowAuditEvent     `json:"auditLog"`
-}
-
-func emptyWorkflowSnapshot() *WorkflowSnapshot {
-	return &WorkflowSnapshot{
-		Approvals:       []WorkflowApprovalItem{},
-		Reconciliations: []WorkflowReconciliation{},
-		DismissedReconIDs: []string{},
-		AuditLog:        []WorkflowAuditEvent{},
-	}
-}
-
 func (s *Server) workflowApprovalAction(writer http.ResponseWriter, request *http.Request) {
 	if request.Method != http.MethodPost {
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
@@ -1143,88 +580,96 @@ func (s *Server) workflowApprovalAction(writer http.ResponseWriter, request *htt
 	if !ok {
 		return
 	}
-	actorName := s.sessionDisplayName(claims)
-	actorRole := s.sessionRoleName(claims)
-
-	s.demoMu.Lock()
-	defer s.demoMu.Unlock()
-	for idx := range s.workflowState.Approvals {
-		item := &s.workflowState.Approvals[idx]
-		if item.ID != approvalID {
-			continue
-		}
-		result := ""
-		switch action {
-		case "approve":
-			if item.PreparedBy.Name == actorName || item.IsOwnItem {
-				result = "sod"
-				break
-			}
-			for _, approval := range item.Approvals {
-				if approval.Name == actorName {
-					result = "duplicate"
-					break
-				}
-			}
-			if result != "" {
-				break
-			}
-			if item.RequiresDualApproval && len(item.Approvals) == 0 && strings.Contains(strings.ToLower(actorRole), "owner") {
-				result = "needs-first"
-				break
-			}
-			item.Approvals = append(item.Approvals, demo.Approver{Name: actorName, Role: actorRole, At: time.Now().UTC().Format(time.RFC3339)})
-			if item.RequiresDualApproval && len(item.Approvals) < 2 {
-				item.Stage = "partial"
-				result = "partial"
-				item.History = append(item.History, demo.HistoryEvent{ID: "ah-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, ActorRole: actorRole, Kind: "user", Action: "Approved (1 of 2)"})
-				s.workflowState.AuditLog = append([]demo.AuditEvent{{ID: "al-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, Role: actorRole, Kind: "approval", Action: "Approved (1 of 2)", Target: item.Title + " · " + item.Subtitle, Amount: &item.Amount, HasEvidence: len(item.Evidence) > 0}}, s.workflowState.AuditLog...)
-			} else {
-				item.Stage = "approved"
-				result = "approved"
-				item.History = append(item.History, demo.HistoryEvent{ID: "ah-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, ActorRole: actorRole, Kind: "user", Action: "Approved & posted · audited"})
-				s.workflowState.AuditLog = append([]demo.AuditEvent{{ID: "al-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, Role: actorRole, Kind: "posting", Action: "Approved & posted · audited", Target: item.Title + " · " + item.Subtitle, Amount: &item.Amount, HasEvidence: len(item.Evidence) > 0}}, s.workflowState.AuditLog...)
-			}
-		case "reject":
-			item.Stage = "rejected"
-			result = "rejected"
-			item.History = append(item.History, demo.HistoryEvent{ID: "ah-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, ActorRole: actorRole, Kind: "user", Action: "Rejected approval"})
-			s.workflowState.AuditLog = append([]demo.AuditEvent{{ID: "al-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, Role: actorRole, Kind: "approval", Action: "Rejected approval", Target: item.Title + " · " + item.Subtitle, Amount: &item.Amount, HasEvidence: len(item.Evidence) > 0}}, s.workflowState.AuditLog...)
-		case "withdraw":
-			item.Stage = "rejected"
-			result = "withdrawn"
-			item.History = append(item.History, demo.HistoryEvent{ID: "ah-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, ActorRole: actorRole, Kind: "user", Action: "Withdrawn to drafts"})
-			s.workflowState.AuditLog = append([]demo.AuditEvent{{ID: "al-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, Role: actorRole, Kind: "approval", Action: "Withdrew approval request", Target: item.Title + " - " + item.Subtitle, Amount: &item.Amount, HasEvidence: len(item.Evidence) > 0}}, s.workflowState.AuditLog...)
-		case "nudge":
-			result = "nudged"
-			item.History = append(item.History, demo.HistoryEvent{ID: "ah-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, ActorRole: actorRole, Kind: "user", Action: "Nudged approver"})
-			s.workflowState.AuditLog = append([]demo.AuditEvent{{ID: "al-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, Role: actorRole, Kind: "approval", Action: "Nudged approver", Target: item.Title + " - " + item.Subtitle, Amount: &item.Amount, HasEvidence: len(item.Evidence) > 0}}, s.workflowState.AuditLog...)
-		case "resubmit":
-			item.Stage = "awaiting"
-			result = "resubmitted"
-			item.History = append(item.History, demo.HistoryEvent{ID: "ah-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, ActorRole: actorRole, Kind: "user", Action: "Reopened and resubmitted"})
-			s.workflowState.AuditLog = append([]demo.AuditEvent{{ID: "al-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, Role: actorRole, Kind: "approval", Action: "Resubmitted approval", Target: item.Title + " - " + item.Subtitle, Amount: &item.Amount, HasEvidence: len(item.Evidence) > 0}}, s.workflowState.AuditLog...)
-		case "request-info":
-			result = "requested-info"
-			item.History = append(item.History, demo.HistoryEvent{ID: "ah-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, ActorRole: actorRole, Kind: "user", Action: "Requested more info"})
-			s.workflowState.AuditLog = append([]demo.AuditEvent{{ID: "al-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, Role: actorRole, Kind: "approval", Action: "Requested approval info", Target: item.Title + " - " + item.Subtitle, Amount: &item.Amount, HasEvidence: len(item.Evidence) > 0}}, s.workflowState.AuditLog...)
-		case "reassign":
-			result = "reassigned"
-			item.History = append(item.History, demo.HistoryEvent{ID: "ah-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, ActorRole: actorRole, Kind: "user", Action: "Reassigned approver"})
-			s.workflowState.AuditLog = append([]demo.AuditEvent{{ID: "al-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, Role: actorRole, Kind: "approval", Action: "Reassigned approval", Target: item.Title + " - " + item.Subtitle, Amount: &item.Amount, HasEvidence: len(item.Evidence) > 0}}, s.workflowState.AuditLog...)
-		case "escalate":
-			item.Stage = "escalated"
-			result = "escalated"
-			item.History = append(item.History, demo.HistoryEvent{ID: "ah-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, ActorRole: actorRole, Kind: "user", Action: "Escalated to owner"})
-			s.workflowState.AuditLog = append([]demo.AuditEvent{{ID: "al-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339), Actor: actorName, Role: actorRole, Kind: "approval", Action: "Escalated approval", Target: item.Title + " - " + item.Subtitle, Amount: &item.Amount, HasEvidence: len(item.Evidence) > 0}}, s.workflowState.AuditLog...)
-		default:
-			writeError(writer, http.StatusNotFound, "unknown workflow action")
-			return
-		}
-		writeJSON(writer, http.StatusOK, map[string]any{"result": result, "snapshot": s.workflowState})
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
 		return
 	}
-	writeError(writer, http.StatusNotFound, "approval not found")
+	actorRole := s.sessionRoleName(claims)
+
+	var creatorUserID, state string
+	var requiredApprovers int
+	var approverUserIDs []byte
+	if err := s.db.QueryRow(`
+		SELECT state, creator_user_id, required_approvers, approver_user_ids
+		FROM approval_tasks
+		WHERE organization_id = $1 AND id = $2`,
+		claims.OrganizationID, approvalID).Scan(&state, &creatorUserID, &requiredApprovers, &approverUserIDs); err != nil {
+		writeError(writer, http.StatusNotFound, "approval not found")
+		return
+	}
+	result := ""
+	switch action {
+	case "approve":
+		if claims.Subject == creatorUserID {
+			result = "sod"
+			break
+		}
+		var approvers []string
+		_ = json.Unmarshal(approverUserIDs, &approvers)
+		if slices.Contains(approvers, claims.Subject) {
+			result = "duplicate"
+			break
+		}
+		if requiredApprovers == 2 && len(approvers) == 0 && strings.Contains(strings.ToLower(actorRole), "owner") {
+			result = "needs-first"
+			break
+		}
+		if state == "SUGGESTED" {
+			_ = s.transitionApprovalTask(claims.OrganizationID, approvalID, "SUGGESTED", "ASSIGNED", claims.Subject)
+		}
+		approvers = append(approvers, claims.Subject)
+		approverIDsJSON, _ := json.Marshal(approvers)
+		if requiredApprovers == 2 && len(approvers) < 2 {
+			_, _ = s.db.Exec(`UPDATE approval_tasks SET approver_user_ids = $1 WHERE id = $2 AND organization_id = $3`, approverIDsJSON, approvalID, claims.OrganizationID)
+			result = "partial"
+			break
+		}
+		_, _ = s.db.Exec(`UPDATE approval_tasks SET approver_user_ids = $1 WHERE id = $2 AND organization_id = $3`, approverIDsJSON, approvalID, claims.OrganizationID)
+		_ = s.transitionApprovalTask(claims.OrganizationID, approvalID, "ASSIGNED", "APPROVED", claims.Subject)
+		_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Approved & posted", approvalID)
+		result = "approved"
+	case "reject":
+		if state == "SUGGESTED" || state == "ASSIGNED" || state == "ESCALATED" {
+			_ = s.transitionApprovalTask(claims.OrganizationID, approvalID, state, "REJECTED", claims.Subject)
+			_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Rejected approval", approvalID)
+		}
+		result = "rejected"
+	case "withdraw":
+		if state == "SUGGESTED" || state == "ASSIGNED" {
+			_ = s.transitionApprovalTask(claims.OrganizationID, approvalID, state, "REJECTED", claims.Subject)
+			_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Withdrew approval request", approvalID)
+		}
+		result = "withdrawn"
+	case "escalate":
+		if state == "ASSIGNED" {
+			_ = s.transitionApprovalTask(claims.OrganizationID, approvalID, "ASSIGNED", "ESCALATED", claims.Subject)
+			_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Escalated approval", approvalID)
+		}
+		result = "escalated"
+	case "nudge":
+		_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Nudged approver", approvalID)
+		result = "nudged"
+	case "request-info":
+		_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Requested approval info", approvalID)
+		result = "requested-info"
+	case "resubmit":
+		_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Resubmitted approval", approvalID)
+		result = "resubmitted"
+	case "reassign":
+		if state == "ASSIGNED" {
+			_, _ = s.db.Exec(`UPDATE approval_tasks SET approver_user_ids = '[]'::jsonb WHERE id = $1 AND organization_id = $2`, approvalID, claims.OrganizationID)
+		}
+		_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Reassigned approval", approvalID)
+		result = "reassigned"
+	default:
+		writeError(writer, http.StatusNotFound, "unknown workflow action")
+		return
+	}
+	snapshot := s.queryWorkflowSnapshot(claims.OrganizationID)
+	if snapshot == nil {
+		snapshot = emptyWorkflowSnapshot()
+	}
+	writeJSON(writer, http.StatusOK, map[string]any{"result": result, "snapshot": snapshot})
 }
 
 func (s *Server) workflowReconciliationAction(writer http.ResponseWriter, request *http.Request) {
@@ -1255,121 +700,50 @@ func (s *Server) workflowReconciliationAction(writer http.ResponseWriter, reques
 			return
 		}
 	}
-	actorName := s.sessionDisplayName(claims)
-	actorRole := s.sessionRoleName(claims)
-	now := time.Now().UTC().Format(time.RFC3339)
-
-	s.demoMu.Lock()
-	defer s.demoMu.Unlock()
-	for idx := range s.workflowState.Reconciliations {
-		recon := &s.workflowState.Reconciliations[idx]
-		if recon.ID != reconID {
-			continue
-		}
-		result := ""
-		switch action {
-		case "prepare":
-			if recon.Stage == "posted" {
-				result = "already-posted"
-				break
-			}
-			recon.Stage = "prepared"
-			recon.AgeText = "Prepared just now"
-			recon.History = append(recon.History, demo.HistoryEvent{
-				ID:        "h-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-				At:        now,
-				Actor:     actorName,
-				ActorRole: actorRole,
-				Kind:      "user",
-				Action:    "Prepared match - routed for approval",
-			})
-			s.ensurePreparedApprovalLocked(*recon, actorName, actorRole, now)
-			result = "prepared"
-		case "reject":
-			recon.Stage = "detected"
-			recon.AgeText = "Rejected - back to review"
-			recon.History = append(recon.History, demo.HistoryEvent{
-				ID:        "h-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-				At:        now,
-				Actor:     actorName,
-				ActorRole: actorRole,
-				Kind:      "user",
-				Action:    "Rejected match - returned to review",
-			})
-			result = "rejected"
-		case "approve":
-			recon.Stage = "posted"
-			recon.AgeText = "Posted just now"
-			recon.History = append(recon.History, demo.HistoryEvent{
-				ID:        "h-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-				At:        now,
-				Actor:     actorName,
-				ActorRole: actorRole,
-				Kind:      "user",
-				Action:    "Approved match - posted",
-			})
-			s.markLinkedApprovalPostedLocked(*recon, actorName, actorRole, now)
-			s.workflowState.AuditLog = append([]demo.AuditEvent{{
-				ID:          "al-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-				At:          now,
-				Actor:       actorName,
-				Role:        actorRole,
-				Kind:        "posting",
-				Action:      "Reconciliation approved & posted - audited",
-				Target:      recon.Transaction.Counterparty + " - " + coalesce(recordReference(recon.SuggestedRecord), recon.Transaction.Reference, "match"),
-				Amount:      &recon.Transaction.Amount,
-				HasEvidence: len(recon.Evidence) > 0,
-			}}, s.workflowState.AuditLog...)
-			result = "approved"
-		case "dismiss":
-			if !slices.Contains(s.workflowState.DismissedReconIDs, reconID) {
-				s.workflowState.DismissedReconIDs = append(s.workflowState.DismissedReconIDs, reconID)
-			}
-			result = "dismissed"
-		case "assign":
-			recon.AgeText = "Delegated to finance"
-			recon.History = append(recon.History, demo.HistoryEvent{
-				ID: "h-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: now, Actor: actorName, ActorRole: actorRole,
-				Kind: "user", Action: "Delegated exception to Finance Operator",
-			})
-			s.workflowState.AuditLog = append([]demo.AuditEvent{{
-				ID: "al-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: now, Actor: actorName, Role: actorRole,
-				Kind: "workflow", Action: "Delegated reconciliation exception", Target: recon.Transaction.Counterparty,
-				Amount: &recon.Transaction.Amount, HasEvidence: len(recon.Evidence) > 0,
-			}}, s.workflowState.AuditLog...)
-			result = "assigned"
-		case "ask":
-			recon.AgeText = "Explanation requested"
-			recon.History = append(recon.History, demo.HistoryEvent{
-				ID: "h-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: now, Actor: actorName, ActorRole: actorRole,
-				Kind: "user", Action: "Requested explanation from Finance Operator",
-			})
-			s.workflowState.AuditLog = append([]demo.AuditEvent{{
-				ID: "al-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: now, Actor: actorName, Role: actorRole,
-				Kind: "workflow", Action: "Requested reconciliation explanation", Target: recon.Transaction.Counterparty,
-				Amount: &recon.Transaction.Amount, HasEvidence: len(recon.Evidence) > 0,
-			}}, s.workflowState.AuditLog...)
-			result = "asked"
-		case "acknowledge":
-			recon.AgeText = "Reviewed just now"
-			recon.History = append(recon.History, demo.HistoryEvent{
-				ID: "h-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: now, Actor: actorName, ActorRole: actorRole,
-				Kind: "user", Action: "Acknowledged exception review",
-			})
-			s.workflowState.AuditLog = append([]demo.AuditEvent{{
-				ID: "al-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: now, Actor: actorName, Role: actorRole,
-				Kind: "review", Action: "Acknowledged reconciliation exception", Target: recon.Transaction.Counterparty,
-				Amount: &recon.Transaction.Amount, HasEvidence: len(recon.Evidence) > 0,
-			}}, s.workflowState.AuditLog...)
-			result = "acknowledged"
-		default:
-			writeError(writer, http.StatusNotFound, "unknown workflow action")
-			return
-		}
-		writeJSON(writer, http.StatusOK, map[string]any{"result": result, "snapshot": s.workflowState})
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
 		return
 	}
-	writeError(writer, http.StatusNotFound, "reconciliation not found")
+	result := ""
+	switch action {
+	case "prepare":
+		_ = s.prepareMatchApproval(claims.OrganizationID, claims.Subject, reconID)
+		_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Prepared match - routed for approval", reconID)
+		result = "prepared"
+	case "reject":
+		_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Rejected match - returned to review", reconID)
+		result = "rejected"
+	case "approve":
+		var exists bool
+		_ = s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM match_candidates WHERE id = $1 AND organization_id = $2)`, reconID, claims.OrganizationID).Scan(&exists)
+		if !exists {
+			writeError(writer, http.StatusNotFound, "reconciliation not found")
+			return
+		}
+		_ = s.markLinkedApprovalPosted(claims.OrganizationID, claims.Subject, reconID)
+		_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Reconciliation approved & posted", reconID)
+		result = "approved"
+	case "dismiss":
+		_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Dismissed reconciliation exception", reconID)
+		result = "dismissed"
+	case "assign":
+		_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Delegated reconciliation exception", reconID)
+		result = "assigned"
+	case "ask":
+		_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Requested reconciliation explanation", reconID)
+		result = "asked"
+	case "acknowledge":
+		_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Acknowledged reconciliation exception", reconID)
+		result = "acknowledged"
+	default:
+		writeError(writer, http.StatusNotFound, "unknown workflow action")
+		return
+	}
+	snapshot := s.queryWorkflowSnapshot(claims.OrganizationID)
+	if snapshot == nil {
+		snapshot = emptyWorkflowSnapshot()
+	}
+	writeJSON(writer, http.StatusOK, map[string]any{"result": result, "snapshot": snapshot})
 }
 
 func (s *Server) reconciliationExport(writer http.ResponseWriter, request *http.Request) {
@@ -1377,19 +751,26 @@ func (s *Server) reconciliationExport(writer http.ResponseWriter, request *http.
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadEvents); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadEvents)
+	if !ok {
 		return
 	}
-	s.demoMu.RLock()
-	items := append([]demo.Reconciliation(nil), s.workflowState.Reconciliations...)
-	s.demoMu.RUnlock()
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
+	q := s.queryWorkflowSnapshot(claims.OrganizationID)
+	items := 0
 	open := 0
-	for _, item := range items {
-		if item.Stage == "reviewing" || item.Stage == "detected" {
-			open++
+	if q != nil {
+		items = len(q.Reconciliations)
+		for _, item := range q.Reconciliations {
+			if item.Stage == "reviewing" || item.Stage == "detected" {
+				open++
+			}
 		}
 	}
-	content := fmt.Sprintf("BT\n/F1 20 Tf\n72 748 Td\n(Kora Reconciliation Control Summary) Tj\n0 -28 Td\n/F1 11 Tf\n(Total reconciliation items: %d) Tj\n0 -22 Td\n(Open exceptions: %d) Tj\n0 -22 Td\n(Audit evidence is linked to each workflow item.) Tj\n0 -30 Td\n/F1 9 Tf\n(Generated from the tenant-scoped reconciliation workflow.) Tj\nET\n", len(items), open)
+	content := fmt.Sprintf("BT\n/F1 20 Tf\n72 748 Td\n(Kora Reconciliation Control Summary) Tj\n0 -28 Td\n/F1 11 Tf\n(Total reconciliation items: %d) Tj\n0 -22 Td\n(Open exceptions: %d) Tj\n0 -22 Td\n(Audit evidence is linked to each workflow item.) Tj\n0 -30 Td\n/F1 9 Tf\n(Generated from the tenant-scoped reconciliation workflow.) Tj\nET\n", items, open)
 	pdf := "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Resources<</Font<</F1 4 0 R>>>>/Contents 5 0 R>>endobj\n4 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n5 0 obj<</Length " + strconv.Itoa(len(content)) + ">>stream\n" + content + "endstream\nendobj\ntrailer<</Root 1 0 R>>\n%%EOF\n"
 	writer.Header().Set("Content-Type", "application/pdf")
 	writer.Header().Set("Content-Disposition", "attachment; filename=\"kora-reconciliation-summary.pdf\"")
@@ -1397,74 +778,90 @@ func (s *Server) reconciliationExport(writer http.ResponseWriter, request *http.
 	_, _ = writer.Write([]byte(pdf))
 }
 
-func (s *Server) ensurePreparedApprovalLocked(recon demo.Reconciliation, actorName, actorRole, now string) {
-	approvalID := "ap-from-" + recon.ID
-	for _, item := range s.workflowState.Approvals {
-		if item.ID == approvalID {
-			return
-		}
+func (s *Server) prepareMatchApproval(orgID, actorUserID, reconID string) error {
+	if s.db == nil {
+		return errNoDatabase
 	}
-	requiresDual := false
-	if amountMinor, err := strconv.ParseInt(recon.Transaction.Amount.AmountMinor, 10, 64); err == nil {
-		requiresDual = amountMinor > 10000000
+	taskID := "ap-from-" + reconID
+	var exists bool
+	if err := s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM approval_tasks WHERE organization_id = $1 AND id = $2)`, orgID, taskID).Scan(&exists); err == nil && exists {
+		return nil
+	}
+	var amountMinor int64
+	var currency, party, ref, reason, tier string
+	var amtText string
+	err := s.db.QueryRow(`
+		SELECT
+			COALESCE(le.evidence->>'amount_minor', '0') AS le_amt,
+			COALESCE(le.evidence->>'currency', 'USD') AS le_cur,
+			COALESCE(lre.display_name, le.evidence->>'counterparty', 'Unknown') AS le_party,
+			COALESCE(le.evidence->>'reference', '') AS le_ref,
+			COALESCE(mc.reason, '') AS mc_reason,
+			COALESCE(mc.confidence_tier, 'SUGGESTED') AS mc_tier
+		FROM match_candidates mc
+		LEFT JOIN business_events le ON mc.left_event_id = le.id
+		LEFT JOIN resolved_entities lre ON le.external_party_id = lre.id
+		WHERE mc.id = $1 AND mc.organization_id = $2`, reconID, orgID).Scan(&amtText, &currency, &party, &ref, &reason, &tier)
+	if err != nil {
+		return err
+	}
+	amountMinor, _ = strconv.ParseInt(amtText, 10, 64)
+	if amountMinor < 0 {
+		amountMinor = 0
+	}
+	requiredApprovers := 1
+	if amountMinor > 10000000 {
+		requiredApprovers = 2
 	}
 	subtitle := "prepared"
-	if reference := recordReference(recon.SuggestedRecord); reference != "" {
-		subtitle = reference + " - prepared"
+	if ref != "" {
+		subtitle = ref + " - prepared"
 	}
-	s.workflowState.Approvals = append([]demo.ApprovalItem{{
-		ID:                   approvalID,
-		Type:                 "match",
-		Title:                "Approve match: " + recon.Transaction.Counterparty,
-		Subtitle:             subtitle,
-		Amount:               recon.Transaction.Amount,
-		Risk:                 riskFromReconTier(recon.Tier),
-		PreparedBy:           demo.Approver{Name: actorName, Role: actorRole},
-		PreparedAt:           now,
-		DeadlineText:         "Due in 2d",
-		Urgent:               false,
-		Confidence:           &recon.Confidence,
-		Stage:                "awaiting",
-		RequiresDualApproval: requiresDual,
-		PolicyLimit:          demo.Money{AmountMinor: "10000000", Currency: recon.Transaction.Amount.Currency},
-		WithinLimit:          !requiresDual,
-		Approvals:            []demo.Approver{},
-		IsOwnItem:            false,
-		AgentRecommendation:  recon.Reason,
-		Evidence:             append([]demo.EvidenceDoc(nil), recon.Evidence...),
-		History: []demo.HistoryEvent{{
-			ID:        "ah-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-			At:        now,
-			Actor:     actorName,
-			ActorRole: actorRole,
-			Kind:      "user",
-			Action:    "Prepared match - routed for approval",
-		}},
-	}}, s.workflowState.Approvals...)
+	evidence := buildEvidenceJSON(map[string]any{
+		"title":          "Approve match: " + party,
+		"subtitle":       subtitle,
+		"risk":           riskFromReconTier(strings.ToLower(tier)),
+		"recommendation": reason,
+	})
+	_, err = s.db.Exec(`
+		INSERT INTO approval_tasks (
+			id, organization_id, suggested_action, creator_user_id, assigned_role,
+			state, amount_minor, currency, required_approvers, approver_user_ids,
+			match_candidate_id, evidence, created_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, '[]'::jsonb, $10, $11, now())`,
+		taskID, orgID, "prepare_match", actorUserID, "",
+		"SUGGESTED", amountMinor, currency, requiredApprovers, reconID, evidence)
+	return err
 }
 
-func (s *Server) markLinkedApprovalPostedLocked(recon demo.Reconciliation, actorName, actorRole, now string) {
-	for idx := range s.workflowState.Approvals {
-		item := &s.workflowState.Approvals[idx]
-		if item.Stage == "approved" {
-			continue
-		}
-		if item.ID == "ap-from-"+recon.ID || approvalMatchesRecon(*item, recon) {
-			item.Stage = "approved"
-			item.History = append(item.History, demo.HistoryEvent{
-				ID:        "ah-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-				At:        now,
-				Actor:     actorName,
-				ActorRole: actorRole,
-				Kind:      "user",
-				Action:    "Approved & posted - audited",
-			})
-			return
-		}
+func (s *Server) markLinkedApprovalPosted(orgID, actorUserID, reconID string) error {
+	if s.db == nil {
+		return errNoDatabase
 	}
+	var taskID, state string
+	err := s.db.QueryRow(`
+		SELECT id, state FROM approval_tasks
+		WHERE organization_id = $1 AND match_candidate_id = $2
+		ORDER BY created_at DESC LIMIT 1`, orgID, reconID).Scan(&taskID, &state)
+	if err != nil {
+		return nil
+	}
+	switch state {
+	case "SUGGESTED":
+		_ = s.transitionApprovalTask(orgID, taskID, "SUGGESTED", "ASSIGNED", actorUserID)
+		_ = s.transitionApprovalTask(orgID, taskID, "ASSIGNED", "APPROVED", actorUserID)
+		_ = s.transitionApprovalTask(orgID, taskID, "APPROVED", "EXECUTED", actorUserID)
+	case "ASSIGNED":
+		_ = s.transitionApprovalTask(orgID, taskID, "ASSIGNED", "APPROVED", actorUserID)
+		_ = s.transitionApprovalTask(orgID, taskID, "APPROVED", "EXECUTED", actorUserID)
+	case "APPROVED":
+		_ = s.transitionApprovalTask(orgID, taskID, "APPROVED", "EXECUTED", actorUserID)
+	}
+	return nil
 }
 
-func approvalMatchesRecon(item demo.ApprovalItem, recon demo.Reconciliation) bool {
+func approvalMatchesRecon(item WorkflowApprovalItem, recon WorkflowReconciliation) bool {
 	if item.Type != "match" {
 		return false
 	}
@@ -1487,7 +884,7 @@ func riskFromReconTier(tier string) string {
 	}
 }
 
-func recordReference(record *demo.BusinessRecord) string {
+func recordReference(record *BusinessRecord) string {
 	if record == nil {
 		return ""
 	}
@@ -1523,7 +920,7 @@ func filterStrings(values []string, target string) []string {
 	return filtered
 }
 
-func advanceClaimStage(claim *demo.ClaimRecord) (string, bool) {
+func advanceClaimStage(claim *ClaimRecord) (string, bool) {
 	order := []string{"fnol", "triage", "adjusting", "approval", "settlement", "closed"}
 	for idx, stage := range order {
 		if claim.Stage != stage {
@@ -1557,11 +954,10 @@ func claimSLAText(stage, current string) string {
 	}
 }
 
-func deriveClaimStats(claims []demo.ClaimRecord) demo.ClaimStats {
-	stats := demo.ClaimStats{
-		TotalReserves:    demo.Money{AmountMinor: "0", Currency: "USD"},
-		AvgCycleDays:     6.4,
-		LeakagePrevented: demo.Money{AmountMinor: "8640000", Currency: "USD"},
+func deriveClaimStats(claims []ClaimRecord) ClaimStats {
+	stats := ClaimStats{
+		TotalReserves: Money{AmountMinor: "0", Currency: "USD"},
+		AvgCycleDays:  0.0,
 	}
 	var totalReserve int64
 	for _, claim := range claims {
@@ -1589,7 +985,7 @@ func deriveClaimStats(claims []demo.ClaimRecord) demo.ClaimStats {
 			totalReserve += reserve
 		}
 	}
-	stats.TotalReserves = demo.Money{AmountMinor: strconv.FormatInt(totalReserve, 10), Currency: "USD"}
+	stats.TotalReserves = Money{AmountMinor: strconv.FormatInt(totalReserve, 10), Currency: "USD"}
 	return stats
 }
 
@@ -1602,16 +998,13 @@ func (s *Server) collectionsOverdue(writer http.ResponseWriter, request *http.Re
 	if !ok {
 		return
 	}
-	var items []demo.OverdueItem
-	if s.db != nil {
-		if q := s.queryCollectionsOverdue(claims.OrganizationID); q != nil {
-			items = q
-		}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
 	}
+	items := s.queryCollectionsOverdue(claims.OrganizationID)
 	if items == nil {
-		s.demoMu.RLock()
-		items = append([]demo.OverdueItem(nil), s.collections...)
-		s.demoMu.RUnlock()
+		items = []OverdueItem{}
 	}
 	writeJSON(writer, http.StatusOK, map[string]any{"items": items})
 }
@@ -1628,41 +1021,69 @@ func (s *Server) collectionsOverdueAction(writer http.ResponseWriter, request *h
 		return
 	}
 	itemID, action := parts[0], parts[1]
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionSendCollections); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionSendCollections)
+	if !ok {
 		return
 	}
-	s.demoMu.Lock()
-	defer s.demoMu.Unlock()
-	for idx := range s.collections {
-		item := &s.collections[idx]
-		if item.ID != itemID {
-			continue
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
+	actionStatus := map[string]string{
+		"remind":          "reminded",
+		"promise":         "promised",
+		"escalate":        "escalated",
+		"hand-to-finance": "handed_to_finance",
+		"flag-owner-call": "owner_call",
+		"request-update":  "finance_update_requested",
+	}[action]
+	if actionStatus == "" {
+		writeError(writer, http.StatusNotFound, "unknown collections action")
+		return
+	}
+
+	items := s.queryCollectionsOverdue(claims.OrganizationID)
+	if items == nil {
+		items = []OverdueItem{}
+	}
+	var updated OverdueItem
+	found := false
+	for idx := range items {
+		if items[idx].ID == itemID {
+			updated = items[idx]
+			found = true
+			break
 		}
-		switch action {
-		case "remind":
-			item.ActionStatus = "reminded"
-			item.LastContact = time.Now().UTC().Format("2006-01-02")
-			item.ReminderCount++
-		case "promise":
-			item.ActionStatus = "promised"
-			item.LastContact = time.Now().UTC().Format("2006-01-02")
-		case "escalate":
-			item.ActionStatus = "escalated"
-			item.LastContact = time.Now().UTC().Format("2006-01-02")
-		case "hand-to-finance":
-			item.ActionStatus = "handed_to_finance"
-		case "flag-owner-call":
-			item.ActionStatus = "owner_call"
-		case "request-update":
-			item.ActionStatus = "finance_update_requested"
-		default:
-			writeError(writer, http.StatusNotFound, "unknown collections action")
+	}
+	if !found {
+		writeError(writer, http.StatusNotFound, "overdue item not found")
+		return
+	}
+	updated.ActionStatus = actionStatus
+
+	now := time.Now().UTC()
+	if action == "remind" {
+		_, err := s.db.Exec(`
+			INSERT INTO collection_reminder_events (
+				id, organization_id, case_id, sent_by, delivery_channel, message, evidence, sent_at
+			)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		`,
+			"re-"+strconv.FormatInt(now.UnixNano(), 10),
+			claims.OrganizationID, itemID, claims.Subject, "email",
+			"Reminder sent for overdue item "+itemID,
+			buildEvidenceJSON(map[string]any{"action": action, "status": actionStatus}),
+			now,
+		)
+		if err != nil {
+			writeError(writer, http.StatusInternalServerError, err.Error())
 			return
 		}
-		writeJSON(writer, http.StatusOK, map[string]any{"item": *item, "items": append([]demo.OverdueItem(nil), s.collections...)})
+	} else if err := s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Collections action "+action, itemID); err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeError(writer, http.StatusNotFound, "overdue item not found")
+	writeJSON(writer, http.StatusOK, map[string]any{"item": updated, "items": items})
 }
 
 func (s *Server) collectionsExportSummary(writer http.ResponseWriter, request *http.Request) {
@@ -1670,12 +1091,18 @@ func (s *Server) collectionsExportSummary(writer http.ResponseWriter, request *h
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadEvents); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadEvents)
+	if !ok {
 		return
 	}
-	s.demoMu.RLock()
-	items := append([]demo.OverdueItem(nil), s.collections...)
-	s.demoMu.RUnlock()
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
+	items := s.queryCollectionsOverdue(claims.OrganizationID)
+	if items == nil {
+		items = []OverdueItem{}
+	}
 
 	var totalMinor int64
 	buckets := map[string]int{"0-30": 0, "31-60": 0, "61-90": 0, "90+": 0}
@@ -1727,78 +1154,14 @@ func (s *Server) claimsWorkspace(writer http.ResponseWriter, request *http.Reque
 		writeError(writer, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if payload == nil {
+		payload = emptyClaimsWorkspace()
+	}
 
 	writeJSON(writer, http.StatusOK, payload)
 }
 
-type ClaimsWorkspaceData struct {
-	Claims []ClaimRecord `json:"claims"`
-	Stats  ClaimStats    `json:"stats"`
-}
-
-type ClaimRecord struct {
-	ID                string   `json:"id"`
-	Claimant          string   `json:"claimant"`
-	PolicyNumber      string   `json:"policyNumber"`
-	Type              string   `json:"type"`
-	Stage             string   `json:"stage"`
-	IncidentDate      string   `json:"incidentDate"`
-	ReportedDate      string   `json:"reportedDate"`
-	Description       string   `json:"description"`
-	ClaimedAmount     Money    `json:"claimedAmount"`
-	Deductible        Money    `json:"deductible"`
-	AISummary         string   `json:"aiSummary"`
-	TriageSeverity    string   `json:"triageSeverity"`
-	TriageFastTrack   bool     `json:"triageFastTrack"`
-	FraudScore        int      `json:"fraudScore"`
-	FraudFlags        []string `json:"fraudFlags"`
-	SuggestedReserve  Money    `json:"suggestedReserve"`
-	SuggestedSettlement Money  `json:"suggestedSettlement"`
-	AssignedTo        string   `json:"assignedTo"`
-	History           []ClaimHistoryEvent `json:"history"`
-	Documents         []ClaimDocument     `json:"documents"`
-	NextAction        string   `json:"nextAction"`
-}
-
-type ClaimStats struct {
-	TotalClaims      int    `json:"totalClaims"`
-	OpenClaims       int    `json:"openClaims"`
-	PendingApproval  int    `json:"pendingApproval"`
-	FlaggedForSIU    int    `json:"flaggedForSIU"`
-	SettledToday     int    `json:"settledToday"`
-	TotalReserves    Money  `json:"totalReserves"`
-	AvgSettlementTime string `json:"avgSettlementTime"`
-	LeakagePrevented Money  `json:"leakagePrevented"`
-}
-
-type ClaimHistoryEvent struct {
-	ID        string `json:"id"`
-	At        string `json:"at"`
-	Actor     string `json:"actor"`
-	ActorRole string `json:"actorRole"`
-	Action    string `json:"action"`
-	Note      string `json:"note,omitempty"`
-}
-
-type ClaimDocument struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Type      string `json:"type"`
-	URL       string `json:"url"`
-	UploadedAt string `json:"uploadedAt"`
-}
-
-func emptyClaimsWorkspace() *ClaimsWorkspaceData {
-	return &ClaimsWorkspaceData{
-		Claims: []ClaimRecord{},
-		Stats: ClaimStats{
-			TotalReserves:    Money{AmountMinor: "0", Currency: "USD"},
-			LeakagePrevented: Money{AmountMinor: "0", Currency: "USD"},
-		},
-	}
-}
-
-func (s *Server) queryClaimsWorkspace(orgID string) (*demo.ClaimWorkspaceData, error) {
+func (s *Server) queryClaimsWorkspace(orgID string) (*ClaimsWorkspaceData, error) {
 	// Query claims from business_events and resolved_entities tables
 	// Claims are represented as business events with event_type related to insurance claims
 	query := `
@@ -1840,13 +1203,13 @@ func (s *Server) queryClaimsWorkspace(orgID string) (*demo.ClaimWorkspaceData, e
 	}
 	defer rows.Close()
 
-	var claims []demo.ClaimRecord
-	var totalReserves float64
+	var claims []ClaimRecord
+	var totalReserveMinor int64
 	var fraudFlagged int
 	stageCounts := make(map[string]int)
 
 	for rows.Next() {
-		var c demo.ClaimRecord
+		var c ClaimRecord
 		var claimedAmount, deductible, suggestedReserve, suggestedSettlement, reserve string
 		var fraudScore int
 		var triageFastTrack, paymentReconciled, coverageOK bool
@@ -1866,13 +1229,13 @@ func (s *Server) queryClaimsWorkspace(orgID string) (*demo.ClaimWorkspaceData, e
 			return nil, err
 		}
 
-		c.ClaimedAmount = demo.Money(claimedAmount)
-		c.Deductible = demo.Money(deductible)
+		c.ClaimedAmount = Money{AmountMinor: parseDecimalToMinor(claimedAmount), Currency: "USD"}
+		c.Deductible = Money{AmountMinor: parseDecimalToMinor(deductible), Currency: "USD"}
 		c.TriageFastTrack = triageFastTrack
 		c.FraudScore = fraudScore
-		c.SuggestedReserve = demo.Money(suggestedReserve)
-		c.SuggestedSettlement = demo.Money(suggestedSettlement)
-		c.Reserve = demo.Money(reserve)
+		c.SuggestedReserve = Money{AmountMinor: parseDecimalToMinor(suggestedReserve), Currency: "USD"}
+		c.SuggestedSettlement = Money{AmountMinor: parseDecimalToMinor(suggestedSettlement), Currency: "USD"}
+		c.Reserve = Money{AmountMinor: parseDecimalToMinor(reserve), Currency: "USD"}
 		c.PaymentReconciled = &paymentReconciled
 		c.CoverageOK = coverageOK
 
@@ -1886,14 +1249,15 @@ func (s *Server) queryClaimsWorkspace(orgID string) (*demo.ClaimWorkspaceData, e
 
 		// Parse evidence
 		if len(evidenceJSON) > 0 {
-			var docs []demo.EvidenceDoc
+			var docs []EvidenceDoc
 			if err := json.Unmarshal(evidenceJSON, &docs); err == nil {
 				c.Evidence = docs
 			}
 		}
 
-		// Accumulate stats
-		totalReserves += float64(c.Reserve)
+		if reserveMinor, err := strconv.ParseInt(c.Reserve.AmountMinor, 10, 64); err == nil {
+			totalReserveMinor += reserveMinor
+		}
 		if len(c.FraudFlags) > 0 {
 			fraudFlagged++
 		}
@@ -1908,26 +1272,26 @@ func (s *Server) queryClaimsWorkspace(orgID string) (*demo.ClaimWorkspaceData, e
 
 	// If no claims found, return empty result instead of demo data
 	if len(claims) == 0 {
-		return &demo.ClaimWorkspaceData{
-			Claims: []demo.ClaimRecord{},
-			Stats: demo.ClaimStats{
+		return &ClaimsWorkspaceData{
+			Claims: []ClaimRecord{},
+			Stats: ClaimStats{
 				OpenClaims:    0,
-				TotalReserves: 0,
+				TotalReserves: Money{AmountMinor: "0", Currency: "USD"},
 				AvgCycleDays:  0,
 				FraudFlagged:  0,
-				Pipeline:      demo.ClaimStageCounts{},
+				Pipeline:      ClaimStageCounts{},
 			},
 		}, nil
 	}
 
-	return &demo.ClaimWorkspaceData{
+	return &ClaimsWorkspaceData{
 		Claims: claims,
-		Stats: demo.ClaimStats{
+		Stats: ClaimStats{
 			OpenClaims:    len(claims),
-			TotalReserves: demo.Money(fmt.Sprintf("%.2f", totalReserves)),
-			AvgCycleDays:  7.0, // Would need more complex calculation
+			TotalReserves: Money{AmountMinor: strconv.FormatInt(totalReserveMinor, 10), Currency: "USD"},
+			AvgCycleDays:  0.0,
 			FraudFlagged:  fraudFlagged,
-			Pipeline: demo.ClaimStageCounts{
+			Pipeline: ClaimStageCounts{
 				FNOL:       stageCounts["fnol"],
 				Triage:     stageCounts["triage"],
 				Adjusting:  stageCounts["adjusting"],
@@ -1956,63 +1320,98 @@ func (s *Server) claimsAction(writer http.ResponseWriter, request *http.Request)
 	}
 	claimID, action := parts[0], parts[1]
 	actorName := s.sessionDisplayName(claims)
-	actorRole := s.sessionRoleName(claims)
 
-	s.demoMu.Lock()
-	defer s.demoMu.Unlock()
-	for idx := range s.claimsState.Claims {
-		claim := &s.claimsState.Claims[idx]
-		if claim.ID != claimID {
-			continue
-		}
-		if action == "advance" && (claim.Stage == "approval" || claim.Stage == "settlement") {
-			if err := access.Authorize(actor, access.Resource{OrganizationID: claims.OrganizationID}, access.PermissionSettleClaims); err != nil {
-				writeError(writer, http.StatusForbidden, err.Error())
-				return
-			}
-		}
-		actionLabel := map[string]string{"advance": "Advanced claim workflow", "refer-siu": "Referred claim to SIU", "request-docs": "Requested claim documents"}[action]
-		if actionLabel == "" {
-			writeError(writer, http.StatusNotFound, "unknown claim action")
-			return
-		}
-		s.workflowState.AuditLog = append([]demo.AuditEvent{{
-			ID: "al-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: time.Now().UTC().Format(time.RFC3339),
-			Actor: actorName, Role: actorRole, Kind: "claim", Action: actionLabel,
-			Target: claim.ID + " · " + claim.Claimant, Amount: &claim.ClaimedAmount, HasEvidence: len(claim.Evidence) > 0,
-		}}, s.workflowState.AuditLog...)
-		switch action {
-		case "advance":
-			next, changed := advanceClaimStage(claim)
-			if !changed {
-				writeJSON(writer, http.StatusOK, map[string]any{"result": "unchanged", "payload": s.claimsState})
-				return
-			}
-			claim.SLAText = claimSLAText(next, claim.SLAText)
-			if next == "closed" {
-				reconciled := true
-				claim.PaymentReconciled = &reconciled
-			}
-			s.claimsState.Stats = deriveClaimStats(s.claimsState.Claims)
-			writeJSON(writer, http.StatusOK, map[string]any{"result": string(next), "payload": s.claimsState})
-			return
-		case "refer-siu":
-			if !slices.Contains(claim.FraudFlags, "Referred to SIU") {
-				claim.FraudFlags = append(claim.FraudFlags, "Referred to SIU")
-			}
-			claim.SLAText = "SIU review"
-			claim.AssignedTo = actorName
-			s.claimsState.Stats = deriveClaimStats(s.claimsState.Claims)
-			writeJSON(writer, http.StatusOK, map[string]any{"result": "referred-siu", "payload": s.claimsState})
-			return
-		case "request-docs":
-			claim.SLAText = "Docs requested"
-			s.claimsState.Stats = deriveClaimStats(s.claimsState.Claims)
-			writeJSON(writer, http.StatusOK, map[string]any{"result": "requested-docs", "payload": s.claimsState})
+	if action == "advance" {
+		if err := access.Authorize(actor, access.Resource{OrganizationID: claims.OrganizationID}, access.PermissionSettleClaims); err != nil {
+			writeError(writer, http.StatusForbidden, err.Error())
 			return
 		}
 	}
-	writeError(writer, http.StatusNotFound, "claim not found")
+
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
+
+	workspace, err := s.queryClaimsWorkspace(claims.OrganizationID)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if workspace == nil {
+		workspace = emptyClaimsWorkspace()
+	}
+	var target *ClaimRecord
+	for idx := range workspace.Claims {
+		if workspace.Claims[idx].ID == claimID {
+			target = &workspace.Claims[idx]
+			break
+		}
+	}
+	if target == nil {
+		writeError(writer, http.StatusNotFound, "claim not found")
+		return
+	}
+
+	actionLabel := map[string]string{"advance": "Advanced claim workflow", "refer-siu": "Referred claim to SIU", "request-docs": "Requested claim documents"}[action]
+	if actionLabel == "" {
+		writeError(writer, http.StatusNotFound, "unknown claim action")
+		return
+	}
+
+	result := actionLabel
+	evidence := map[string]any{"action": action}
+	reason := "Claim " + action + " by " + actorName
+	switch action {
+	case "advance":
+		next, changed := advanceClaimStage(target)
+		if !changed {
+			writeJSON(writer, http.StatusOK, map[string]any{"result": "unchanged", "payload": workspace})
+			return
+		}
+		target.SLAText = claimSLAText(next, target.SLAText)
+		result = next
+		evidence = map[string]any{"stage": next}
+		reason = fmt.Sprintf("Claim advanced to %s by %s", next, actorName)
+	case "refer-siu":
+		result = "referred-siu"
+		evidence = map[string]any{"referSiu": true}
+		reason = fmt.Sprintf("Claim referred to SIU by %s", actorName)
+	case "request-docs":
+		result = "requested-docs"
+		evidence = map[string]any{"requestDocs": true}
+		reason = fmt.Sprintf("Claim documents requested by %s", actorName)
+	}
+
+	now := time.Now().UTC()
+	_, err = s.db.Exec(`
+		INSERT INTO correction_events (
+			id, organization_id, correction_type, original_event_id, replacement_event_id, evidence, reason, created_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	`,
+		"ce-"+strconv.FormatInt(now.UnixNano(), 10),
+		claims.OrganizationID, "EVENT_ADJUSTED", claimID, nil,
+		buildEvidenceJSON(evidence), reason, now,
+	)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+	auditAction := actionLabel
+	if action == "advance" {
+		auditAction = "Claim advanced to " + result
+	}
+	if err := s.appendAuditEntry(claims.OrganizationID, claims.Subject, auditAction, claimID); err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	payload, _ := s.queryClaimsWorkspace(claims.OrganizationID)
+	if payload == nil {
+		payload = emptyClaimsWorkspace()
+	}
+	writeJSON(writer, http.StatusOK, map[string]any{"result": result, "payload": payload})
 }
 
 func (s *Server) consentGrants(writer http.ResponseWriter, request *http.Request) {
@@ -2032,7 +1431,7 @@ func (s *Server) consentGrants(writer http.ResponseWriter, request *http.Request
 	// GET: Query consent grants from database - no fallback
 	if request.Method == http.MethodGet {
 		if s.db == nil {
-			writeError(writer, http.StatusInternalServerError, "database not connected")
+			writeError(writer, http.StatusServiceUnavailable, "database connection required")
 			return
 		}
 
@@ -2081,7 +1480,7 @@ func (s *Server) consentGrants(writer http.ResponseWriter, request *http.Request
 
 	// Insert into database - no fallback to in-memory demo data
 	if s.db == nil {
-		writeError(writer, http.StatusInternalServerError, "database not connected")
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
 		return
 	}
 
@@ -2101,7 +1500,7 @@ func (s *Server) consentGrants(writer http.ResponseWriter, request *http.Request
 	writeJSON(writer, http.StatusOK, map[string]any{"items": items})
 }
 
-func (s *Server) queryConsentGrants(orgID string) ([]demo.ConsentGrantData, error) {
+func (s *Server) queryConsentGrants(orgID string) ([]ConsentGrantData, error) {
 	query := `
 		SELECT 
 			eag.id,
@@ -2131,9 +1530,9 @@ func (s *Server) queryConsentGrants(orgID string) ([]demo.ConsentGrantData, erro
 	}
 	defer rows.Close()
 
-	var grants []demo.ConsentGrantData
+	var grants []ConsentGrantData
 	for rows.Next() {
-		var g demo.ConsentGrantData
+		var g ConsentGrantData
 		var grantedAt, expiresAt time.Time
 		var lastAccessed sql.NullString
 		var scopesJSON []byte
@@ -2172,7 +1571,7 @@ func (s *Server) queryConsentGrants(orgID string) ([]demo.ConsentGrantData, erro
 	}
 
 	if len(grants) == 0 {
-		return []demo.ConsentGrantData{}, nil
+		return []ConsentGrantData{}, nil
 	}
 
 	return grants, nil
@@ -2233,40 +1632,57 @@ func (s *Server) consentGrantAction(writer http.ResponseWriter, request *http.Re
 	grantID := parts[0]
 	action := parts[1]
 
-	s.demoMu.Lock()
-	defer s.demoMu.Unlock()
-	for idx := range s.consentState {
-		grant := &s.consentState[idx]
-		if grant.ID != grantID {
-			continue
-		}
-		switch action {
-		case "approve":
-			grant.Status = "active"
-			if grant.Basis == "Awaiting authorisation" {
-				grant.Basis = "Explicit consent - approved"
-			}
-		case "revoke":
-			grant.Status = "revoked"
-			grant.Basis = "Consent withdrawn"
-		default:
-			writeError(writer, http.StatusNotFound, "action not found")
-			return
-		}
-		s.workflowState.AuditLog = append([]demo.AuditEvent{{
-			ID:          "al-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-			At:          time.Now().UTC().Format(time.RFC3339),
-			Actor:       s.sessionDisplayName(claims),
-			Role:        s.sessionRoleName(claims),
-			Kind:        "consent",
-			Action:      "Consent " + action,
-			Target:      grant.Grantee + " · " + grant.Purpose,
-			HasEvidence: true,
-		}}, s.workflowState.AuditLog...)
-		writeJSON(writer, http.StatusOK, map[string]any{"items": append([]demo.ConsentGrantData(nil), s.consentState...)})
+	if action != "approve" && action != "revoke" {
+		writeError(writer, http.StatusNotFound, "action not found")
 		return
 	}
-	writeError(writer, http.StatusNotFound, "consent grant not found")
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
+
+	var exists bool
+	err := s.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM external_access_grants WHERE id = $1 AND organization_id = $2)`, grantID, claims.OrganizationID).Scan(&exists)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !exists {
+		writeError(writer, http.StatusNotFound, "consent grant not found")
+		return
+	}
+
+	switch action {
+	case "revoke":
+		now := time.Now().UTC()
+		evidence := map[string]string{"action": "revoked", "revoked_by": claims.Subject, "revoked_at": now.Format(time.RFC3339)}
+		res, err := s.db.Exec(
+			`UPDATE external_access_grants
+			 SET revoked_at = $1, revoked_by = $2, revocation_evidence = $3
+			 WHERE id = $4 AND organization_id = $5 AND revoked_at IS NULL`,
+			now, claims.Subject, string(buildEvidenceJSON(evidence)), grantID, claims.OrganizationID,
+		)
+		if err != nil {
+			writeError(writer, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			writeError(writer, http.StatusNotFound, "consent grant not found")
+			return
+		}
+	}
+
+	if err := s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Consent "+action, grantID); err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	items, err := s.queryConsentGrants(claims.OrganizationID)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(writer, http.StatusOK, map[string]any{"items": items})
 }
 
 func (s *Server) relationshipsOverview(writer http.ResponseWriter, request *http.Request) {
@@ -2281,7 +1697,7 @@ func (s *Server) relationshipsOverview(writer http.ResponseWriter, request *http
 
 	// Query relationships from database - no fallback
 	if s.db == nil {
-		writeError(writer, http.StatusInternalServerError, "database not connected")
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
 		return
 	}
 
@@ -2294,7 +1710,7 @@ func (s *Server) relationshipsOverview(writer http.ResponseWriter, request *http
 	writeJSON(writer, http.StatusOK, payload)
 }
 
-func (s *Server) queryRelationshipsOverview(orgID string) (*demo.RelationshipsOverviewData, error) {
+func (s *Server) queryRelationshipsOverview(orgID string) (*RelationshipsOverviewData, error) {
 	query := `
 		SELECT 
 			re.id,
@@ -2307,6 +1723,7 @@ func (s *Server) queryRelationshipsOverview(orgID string) (*demo.RelationshipsOv
 			COALESCE(re.attributes->>'status', 'active') as status,
 			COALESCE(re.attributes->>'credit_limit', '0') as credit_limit,
 			COALESCE(re.attributes->>'outstanding_balance', '0') as outstanding_balance,
+			COALESCE(re.attributes->>'currency', 'USD') as currency,
 			COALESCE(re.created_at, NOW()) as created_at
 		FROM resolved_entities re
 		WHERE re.organization_id = $1 
@@ -2321,23 +1738,23 @@ func (s *Server) queryRelationshipsOverview(orgID string) (*demo.RelationshipsOv
 	}
 	defer rows.Close()
 
-	var parties []demo.RelationshipParty
+	var parties []RelationshipParty
 	var totalParties, activeParties int
 	for rows.Next() {
-		var p demo.RelationshipParty
+		var p RelationshipParty
 		var createdAt time.Time
-		var creditLimit, outstandingBalance string
+		var creditLimit, outstandingBalance, currency string
 
 		err := rows.Scan(
 			&p.ID, &p.Type, &p.Name, &p.Contact, &p.Email, &p.Phone,
-			&p.RelationshipType, &p.Status, &creditLimit, &outstandingBalance, &createdAt,
+			&p.RelationshipType, &p.Status, &creditLimit, &outstandingBalance, &currency, &createdAt,
 		)
 		if err != nil {
 			return nil, err
 		}
 
-		p.CreditLimit = demo.Money(creditLimit)
-		p.OutstandingBalance = demo.Money(outstandingBalance)
+		p.CreditLimit = Money{AmountMinor: parseDecimalToMinor(creditLimit), Currency: currency}
+		p.OutstandingBalance = Money{AmountMinor: parseDecimalToMinor(outstandingBalance), Currency: currency}
 		p.Since = createdAt.Format("2006-01-02")
 
 		totalParties++
@@ -2353,14 +1770,14 @@ func (s *Server) queryRelationshipsOverview(orgID string) (*demo.RelationshipsOv
 	}
 
 	if len(parties) == 0 {
-		return &demo.RelationshipsOverviewData{
-			Parties:       []demo.RelationshipParty{},
+		return &RelationshipsOverviewData{
+			Parties:       []RelationshipParty{},
 			TotalParties:  0,
 			ActiveParties: 0,
 		}, nil
 	}
 
-	return &demo.RelationshipsOverviewData{
+	return &RelationshipsOverviewData{
 		Parties:       parties,
 		TotalParties:  totalParties,
 		ActiveParties: activeParties,
@@ -2383,56 +1800,46 @@ func (s *Server) relationshipPartyAction(writer http.ResponseWriter, request *ht
 		return
 	}
 	partyID, action := parts[0], parts[1]
-	if action != "email-contact" && action != "review-terms" && action != "send-statement" && action != "schedule-payment" {
+	auditAction := ""
+	switch action {
+	case "email-contact":
+		auditAction = "Relationship email contact"
+	case "review-terms":
+		auditAction = "Relationship review terms"
+	case "send-statement":
+		auditAction = "Relationship send statement"
+	case "schedule-payment":
+		auditAction = "Relationship schedule payment"
+	default:
 		writeError(writer, http.StatusNotFound, "unknown relationship action")
 		return
 	}
-	now := time.Now().UTC()
-	actorName := s.sessionDisplayName(claims)
-	actorRole := s.sessionRoleName(claims)
-
-	s.demoMu.Lock()
-	defer s.demoMu.Unlock()
-	for idx := range s.relationships.Parties {
-		party := &s.relationships.Parties[idx]
-		if party.ID != partyID {
-			continue
-		}
-		activityText := ""
-		auditAction := ""
-		switch action {
-		case "email-contact":
-			activityText = "Contact email drafted for " + party.Contact
-			auditAction = "Relationship email contact"
-		case "review-terms":
-			activityText = "Credit terms review requested"
-			auditAction = "Relationship review terms"
-		case "send-statement":
-			activityText = "Account statement sent to " + party.Contact
-			auditAction = "Relationship send statement"
-		case "schedule-payment":
-			activityText = "Payment scheduled for next run"
-			auditAction = "Relationship schedule payment"
-			party.Overdue = false
-		}
-		party.Activity = append([]demo.PartyActivityData{{
-			Date: now.Format("2006-01-02"),
-			Text: activityText,
-		}}, party.Activity...)
-		s.workflowState.AuditLog = append([]demo.AuditEvent{{
-			ID:          "al-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-			At:          now.Format(time.RFC3339),
-			Actor:       actorName,
-			Role:        actorRole,
-			Kind:        "relationship",
-			Action:      auditAction,
-			Target:      party.Name,
-			HasEvidence: true,
-		}}, s.workflowState.AuditLog...)
-		writeJSON(writer, http.StatusOK, s.relationships)
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
 		return
 	}
-	writeError(writer, http.StatusNotFound, "party not found")
+
+	var partyName string
+	err := s.db.QueryRow(
+		`SELECT display_name FROM resolved_entities WHERE id = $1 AND organization_id = $2 AND entity_type = 'EXTERNAL_PARTY'`,
+		partyID, claims.OrganizationID,
+	).Scan(&partyName)
+	if err != nil {
+		writeError(writer, http.StatusNotFound, "party not found")
+		return
+	}
+
+	if err := s.appendAuditEntry(claims.OrganizationID, claims.Subject, auditAction, partyID); err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	payload, err := s.queryRelationshipsOverview(claims.OrganizationID)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(writer, http.StatusOK, payload)
 }
 
 func (s *Server) roiSummary(writer http.ResponseWriter, request *http.Request) {
@@ -2440,10 +1847,20 @@ func (s *Server) roiSummary(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadROI); !ok {
+	actor, _, ok := s.requireTenantActor(writer, request, access.PermissionReadROI)
+	if !ok {
 		return
 	}
-	writeJSON(writer, http.StatusOK, demo.ROISummaryDemoData())
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
+	data, err := s.queryROISummary(actor.OrganizationID)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(writer, http.StatusOK, data)
 }
 
 func (s *Server) roiExport(writer http.ResponseWriter, request *http.Request) {
@@ -2451,16 +1868,107 @@ func (s *Server) roiExport(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadROI); !ok {
+	actor, _, ok := s.requireTenantActor(writer, request, access.PermissionReadROI)
+	if !ok {
 		return
 	}
-	data := demo.ROISummaryDemoData()
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
+	data, err := s.queryROISummary(actor.OrganizationID)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
 	content := fmt.Sprintf("BT\n/F1 20 Tf\n72 748 Td\n(Kora ROI Summary) Tj\n0 -28 Td\n/F1 12 Tf\n(Total value delivered: %s %s) Tj\n0 -22 Td\n(Subscription cost: %s %s) Tj\n0 -22 Td\n(ROI multiple: %.1fx) Tj\n0 -22 Td\n(Hours saved: %d) Tj\n0 -30 Td\n/F1 9 Tf\n(Generated from tenant-scoped, evidence-backed ROI records.) Tj\nET\n", data.TotalValue.AmountMinor, data.TotalValue.Currency, data.SubscriptionCost.AmountMinor, data.SubscriptionCost.Currency, data.ROIMultiple, data.HoursSaved)
 	pdf := "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Resources<</Font<</F1 4 0 R>>>>/Contents 5 0 R>>endobj\n4 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n5 0 obj<</Length " + strconv.Itoa(len(content)) + ">>stream\n" + content + "endstream\nendobj\ntrailer<</Root 1 0 R>>\n%%EOF\n"
 	writer.Header().Set("Content-Type", "application/pdf")
 	writer.Header().Set("Content-Disposition", "attachment; filename=\"kora-roi-summary.pdf\"")
 	writer.WriteHeader(http.StatusOK)
 	_, _ = writer.Write([]byte(pdf))
+}
+
+func (s *Server) queryROISummary(orgID string) (*ROISummaryPayload, error) {
+	if s.db == nil {
+		return nil, errNoDatabase
+	}
+	var totalMinor, minutesSaved int64
+	var currency string
+	err := s.db.QueryRow(`
+		SELECT
+			COALESCE(SUM(CASE WHEN impact_type IN ('MONEY_RECOVERED','DUPLICATE_PAYMENT_AVOIDED','UNSUPPORTED_PAYMENT_CAUGHT','LATE_INVOICE_COLLECTED') THEN amount_minor ELSE 0 END), 0)::bigint,
+			COALESCE(SUM(CASE WHEN impact_type IN ('HOURS_SAVED','MISSING_DOCUMENT_FIXED') THEN minutes_saved ELSE 0 END), 0)::bigint,
+			COALESCE(MAX(CASE WHEN impact_type IN ('MONEY_RECOVERED','DUPLICATE_PAYMENT_AVOIDED','UNSUPPORTED_PAYMENT_CAUGHT','LATE_INVOICE_COLLECTED') THEN currency END), 'USD')
+		FROM roi_facts
+		WHERE organization_id = $1`, orgID).Scan(&totalMinor, &minutesSaved, &currency)
+	if err != nil {
+		return nil, err
+	}
+
+	labels := []string{}
+	series := []float64{}
+	rows, err := s.db.Query(`
+		SELECT to_char(date_trunc('month', created_at), 'YYYY-MM'),
+		       SUM(amount_minor)::bigint
+		FROM roi_facts
+		WHERE organization_id = $1
+		  AND impact_type IN ('MONEY_RECOVERED','DUPLICATE_PAYMENT_AVOIDED','UNSUPPORTED_PAYMENT_CAUGHT','LATE_INVOICE_COLLECTED')
+		GROUP BY 1 ORDER BY 1`, orgID)
+	if err == nil {
+		defer rows.Close()
+		var cumulative int64
+		for rows.Next() {
+			var label string
+			var minor int64
+			if err := rows.Scan(&label, &minor); err != nil {
+				continue
+			}
+			cumulative += minor
+			labels = append(labels, label)
+			series = append(series, float64(cumulative)/100000.0)
+		}
+	}
+
+	items := []ROIItemData{}
+	itemRows, err := s.db.Query(`
+		SELECT impact_type, SUM(amount_minor)::bigint
+		FROM roi_facts
+		WHERE organization_id = $1
+		  AND impact_type IN ('MONEY_RECOVERED','DUPLICATE_PAYMENT_AVOIDED','UNSUPPORTED_PAYMENT_CAUGHT','LATE_INVOICE_COLLECTED')
+		GROUP BY impact_type`, orgID)
+	if err == nil {
+		defer itemRows.Close()
+		for itemRows.Next() {
+			var impactType string
+			var minor int64
+			if err := itemRows.Scan(&impactType, &minor); err != nil {
+				continue
+			}
+			item := ROIItemData{ID: strings.ToLower(impactType), Value: Money{AmountMinor: itoa(minor), Currency: currency}}
+			switch impactType {
+			case "MONEY_RECOVERED":
+				item.Icon, item.Label, item.Detail = "recovered", "Cash recovered", "Funds recovered from flagged transactions"
+			case "DUPLICATE_PAYMENT_AVOIDED":
+				item.Icon, item.Label, item.Detail = "duplicates", "Duplicate payments avoided", "Prevented repeat payments on matched records"
+			case "UNSUPPORTED_PAYMENT_CAUGHT":
+				item.Icon, item.Label, item.Detail = "unsupported", "Unsupported payments caught", "Blocked payments without supporting evidence"
+			case "LATE_INVOICE_COLLECTED":
+				item.Icon, item.Label, item.Detail = "recovered", "Late invoices collected", "Outstanding invoices collected through reminders"
+			}
+			items = append(items, item)
+		}
+	}
+
+	return &ROISummaryPayload{
+		TotalValue:       Money{AmountMinor: itoa(totalMinor), Currency: currency},
+		SubscriptionCost: Money{AmountMinor: "0", Currency: currency},
+		ROIMultiple:      0,
+		Series:           series,
+		Labels:           labels,
+		Items:            items,
+		HoursSaved:       int(minutesSaved / 60),
+	}, nil
 }
 
 func (s *Server) portalCreditPassport(writer http.ResponseWriter, request *http.Request) {
@@ -2472,8 +1980,254 @@ func (s *Server) portalCreditPassport(writer http.ResponseWriter, request *http.
 	if !ok {
 		return
 	}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
+	payload, err := s.queryPortalCreditPassport(claims)
+	if err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
 	s.recordExternalPassportAccess(claims, "External Credit Passport accessed")
-	writeJSON(writer, http.StatusOK, demo.CreditPassportPortalDemoData())
+	writeJSON(writer, http.StatusOK, payload)
+}
+
+func (s *Server) queryPortalCreditPassport(claims auth.Claims) (*PortalCreditPassportPayload, error) {
+	if s.db == nil {
+		return nil, errNoDatabase
+	}
+	out := &PortalCreditPassportPayload{
+		SubScores: []PortalCreditSubScore{},
+		Trends: PortalCreditTrends{
+			Labels:   []string{},
+			Revenue:  []float64{},
+			Cashflow: []float64{},
+		},
+		Affordability: PortalCreditAffordability{
+			MaxFacility:     Money{AmountMinor: "0", Currency: "USD"},
+			MonthlyCapacity: Money{AmountMinor: "0", Currency: "USD"},
+			Assumptions:     []string{},
+		},
+		EvidencePack: []PortalCreditEvidenceFactor{},
+		Grant: PortalCreditGrantInfo{
+			DataCategories: []string{},
+			ScopeNote:      "Credit Passport data shared through a consent-scoped access grant.",
+		},
+	}
+	if org, err := s.organizationByID(claims.OrganizationID); err == nil {
+		out.Passport.Tenant = org.Name
+		out.Passport.SharedBy = org.Name
+	}
+
+	var payloadJSON []byte
+	var createdAt time.Time
+	err := s.db.QueryRow(`
+		SELECT payload, created_at
+		FROM credit_passports
+		WHERE organization_id = $1
+		ORDER BY created_at DESC
+		LIMIT 1`, claims.OrganizationID).Scan(&payloadJSON, &createdAt)
+	if err == nil {
+		var p struct {
+			HealthScore int `json:"health_score"`
+			Cashflow    *struct {
+				Currency            string `json:"currency"`
+				NetCashflowMinor    int64  `json:"net_cashflow_minor"`
+				AverageMonthlyMinor int64  `json:"average_monthly_minor"`
+			} `json:"cashflow"`
+			PaymentDiscipline *struct {
+				MatchedPayments int `json:"matched_payments"`
+				OnTimePayments  int `json:"on_time_payments"`
+			} `json:"payment_discipline"`
+			Receivables *struct {
+				OutstandingMinor int64 `json:"outstanding_minor"`
+				OverdueMinor     int64 `json:"overdue_minor"`
+			} `json:"receivables"`
+			Obligations *struct {
+				MonthlyDebtServiceMinor int64 `json:"monthly_debt_service_minor"`
+			} `json:"obligations"`
+			RiskFlags []struct {
+				Severity string `json:"severity"`
+			} `json:"risk_flags"`
+			Affordability *struct {
+				Currency                string   `json:"currency"`
+				EstimatedPrincipalMinor int64    `json:"estimated_principal_minor"`
+				MaxMonthlyPaymentMinor  int64    `json:"max_monthly_payment_minor"`
+				TermMonths              int      `json:"term_months"`
+				Assumptions             []string `json:"assumptions"`
+			} `json:"affordability"`
+		}
+		if json.Unmarshal(payloadJSON, &p) == nil {
+			out.Passport.Score = p.HealthScore
+			out.Passport.Label = creditScoreLabel(p.HealthScore)
+			out.Passport.Band = creditScoreBand(p.HealthScore)
+			out.Passport.Updated = createdAt.Format("Jan 2, 2006")
+
+			if p.Cashflow != nil {
+				cashflowValue := 50
+				if p.Cashflow.AverageMonthlyMinor > 0 {
+					ratio := float64(p.Cashflow.NetCashflowMinor) / float64(p.Cashflow.AverageMonthlyMinor)
+					cashflowValue = int(50 + 50*ratio)
+				}
+				if cashflowValue > 100 {
+					cashflowValue = 100
+				}
+				if cashflowValue < 0 {
+					cashflowValue = 0
+				}
+				out.SubScores = append(out.SubScores, PortalCreditSubScore{
+					ID: "cashflow", Label: "Cash flow", Value: cashflowValue,
+					Rating: creditRating(cashflowValue), Evidence: "Verified net cash flow from bank feed",
+				})
+			}
+			if p.PaymentDiscipline != nil && p.PaymentDiscipline.MatchedPayments > 0 {
+				value := p.PaymentDiscipline.OnTimePayments * 100 / p.PaymentDiscipline.MatchedPayments
+				out.SubScores = append(out.SubScores, PortalCreditSubScore{
+					ID: "discipline", Label: "Payment discipline", Value: value,
+					Rating: creditRating(value), Evidence: "On-time payment ratio across matched records",
+				})
+			}
+			if p.Receivables != nil && p.Receivables.OutstandingMinor > 0 {
+				value := 100 - int(p.Receivables.OverdueMinor*100/p.Receivables.OutstandingMinor)
+				if value < 0 {
+					value = 0
+				}
+				out.SubScores = append(out.SubScores, PortalCreditSubScore{
+					ID: "receivables", Label: "Receivables", Value: value,
+					Rating: creditRating(value), Evidence: "Share of receivables outstanding on time",
+				})
+			}
+			if p.Obligations != nil && p.Cashflow != nil && p.Cashflow.AverageMonthlyMinor > 0 {
+				value := 100 - int(p.Obligations.MonthlyDebtServiceMinor*100/p.Cashflow.AverageMonthlyMinor)
+				if value < 0 {
+					value = 0
+				}
+				out.SubScores = append(out.SubScores, PortalCreditSubScore{
+					ID: "obligations", Label: "Debt service", Value: value,
+					Rating: creditRating(value), Evidence: "Debt service relative to average cash flow",
+				})
+			}
+			if p.Affordability != nil {
+				affCurrency := p.Affordability.Currency
+				if affCurrency == "" {
+					affCurrency = "USD"
+				}
+				out.Affordability.MaxFacility = Money{AmountMinor: itoa(p.Affordability.EstimatedPrincipalMinor), Currency: affCurrency}
+				out.Affordability.MonthlyCapacity = Money{AmountMinor: itoa(p.Affordability.MaxMonthlyPaymentMinor), Currency: affCurrency}
+				out.Affordability.TermMonths = p.Affordability.TermMonths
+				out.Affordability.Assumptions = append([]string(nil), p.Affordability.Assumptions...)
+				if out.Affordability.Assumptions == nil {
+					out.Affordability.Assumptions = []string{}
+				}
+			}
+			riskCount := 0
+			for _, rf := range p.RiskFlags {
+				if rf.Severity == "HIGH" || rf.Severity == "CRITICAL" {
+					riskCount++
+				}
+			}
+			if riskCount > 0 {
+				out.SubScores = append(out.SubScores, PortalCreditSubScore{
+					ID: "risk", Label: "Risk flags", Value: riskCount * 10, Rating: "Low",
+					Evidence: fmt.Sprintf("%d high-severity risk flag(s) open", riskCount),
+				})
+			}
+		}
+	}
+
+	var expiresAt time.Time
+	var categoriesJSON []byte
+	var sharedBy string
+	err = s.db.QueryRow(`
+		SELECT eag.expires_at, eag.allowed_data_categories, COALESCE(u.display_name, '')
+		FROM external_access_grants eag
+		LEFT JOIN users u ON u.id = eag.consented_by
+		WHERE eag.organization_id = $1 AND eag.external_user_id = $2
+		  AND eag.revoked_at IS NULL AND eag.expires_at > NOW()
+		ORDER BY eag.created_at DESC
+		LIMIT 1`, claims.OrganizationID, claims.Subject).Scan(&expiresAt, &categoriesJSON, &sharedBy)
+	if err == nil {
+		out.Grant.ExpiresInDays = int(time.Until(expiresAt).Hours() / 24)
+		if out.Grant.ExpiresInDays < 0 {
+			out.Grant.ExpiresInDays = 0
+		}
+		if len(categoriesJSON) > 0 {
+			_ = json.Unmarshal(categoriesJSON, &out.Grant.DataCategories)
+		}
+		if out.Grant.DataCategories == nil {
+			out.Grant.DataCategories = []string{}
+		}
+		if sharedBy != "" {
+			out.Passport.SharedBy = sharedBy
+		}
+	}
+
+	evidenceRows, err := s.db.Query(`
+		SELECT cpe.passport_id,
+		       COALESCE(cpe.evidence->>'factor', 'Evidence'),
+		       COALESCE(d.file_name, 'document'),
+		       COALESCE(cpe.evidence->>'detail', 'Consent-scoped evidence record')
+		FROM credit_passport_evidence cpe
+		LEFT JOIN documents d ON d.id = cpe.source_document_id
+		WHERE cpe.organization_id = $1
+		ORDER BY cpe.passport_id
+		LIMIT 5`, claims.OrganizationID)
+	if err == nil {
+		defer evidenceRows.Close()
+		for evidenceRows.Next() {
+			var e PortalCreditEvidenceFactor
+			if err := evidenceRows.Scan(&e.ID, &e.Factor, &e.DocName, &e.Detail); err != nil {
+				continue
+			}
+			out.EvidencePack = append(out.EvidencePack, e)
+		}
+	}
+
+	return out, nil
+}
+
+func creditScoreLabel(score int) string {
+	switch {
+	case score >= 90:
+		return "Excellent"
+	case score >= 70:
+		return "Good"
+	case score >= 50:
+		return "Fair"
+	default:
+		return "Poor"
+	}
+}
+
+func creditScoreBand(score int) string {
+	switch {
+	case score >= 90:
+		return "A+"
+	case score >= 80:
+		return "A"
+	case score >= 70:
+		return "B+"
+	case score >= 60:
+		return "B"
+	case score >= 50:
+		return "C"
+	default:
+		return "D"
+	}
+}
+
+func creditRating(value int) string {
+	switch {
+	case value >= 85:
+		return "Strong"
+	case value >= 70:
+		return "Good"
+	case value >= 50:
+		return "Fair"
+	default:
+		return "Low"
+	}
 }
 
 func (s *Server) portalCreditPassportDownload(writer http.ResponseWriter, request *http.Request) {
@@ -2547,13 +2301,18 @@ func (s *Server) portalAccessRequest(writer http.ResponseWriter, request *http.R
 		}
 	}
 
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
+
 	user, err := s.identityStore.FindUserByID(claims.Subject)
 	if err != nil {
 		writeError(writer, http.StatusUnauthorized, "external user not found")
 		return
 	}
 	now := time.Now().UTC()
-	item := demo.ConsentGrantData{
+	item := ConsentGrantData{
 		ID:              "cs-" + strconv.FormatInt(now.UnixNano(), 10),
 		Grantee:         user.DisplayName,
 		GranteeType:     "lender",
@@ -2566,20 +2325,11 @@ func (s *Server) portalAccessRequest(writer http.ResponseWriter, request *http.R
 		GrantedAt:       now.Format("2006-01-02"),
 		ExpiresAt:       now.AddDate(0, 6, 0).Format("2006-01-02"),
 	}
-	s.demoMu.Lock()
-	s.consentState = append([]demo.ConsentGrantData{item}, s.consentState...)
-	s.workflowState.AuditLog = append([]demo.AuditEvent{{
-		ID:          "al-" + strconv.FormatInt(now.UnixNano(), 10),
-		At:          now.Format(time.RFC3339),
-		Actor:       user.DisplayName,
-		Role:        s.sessionRoleName(claims),
-		Kind:        "consent",
-		Action:      "External access scope requested",
-		Target:      scope,
-		HasEvidence: true,
-	}}, s.workflowState.AuditLog...)
-	s.demoMu.Unlock()
-	writeJSON(writer, http.StatusAccepted, map[string]demo.ConsentGrantData{"item": item})
+	if err := s.appendAuditEntry(claims.OrganizationID, claims.Subject, "External access scope requested", scope); err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(writer, http.StatusAccepted, map[string]ConsentGrantData{"item": item})
 }
 
 func (s *Server) agentsOverview(writer http.ResponseWriter, request *http.Request) {
@@ -2600,7 +2350,7 @@ func (s *Server) agentsOverview(writer http.ResponseWriter, request *http.Reques
 
 	actorName := s.sessionDisplayName(claims)
 	for _, agentID := range []string{"a-intake", "a-recon", "a-cfo", "a-rel", "a-contract", "a-coll", "a-credit", "a-supplier", "a-sales", "a-audit"} {
-		s.runAgentFromDB(agentID, actorName, claims.OrganizationID)
+		s.runAgentFromDB(agentID, actorName, claims.Subject, claims.OrganizationID)
 	}
 
 	payload := s.queryAgentsOverviewFromDB(claims.OrganizationID)
@@ -2625,11 +2375,11 @@ func (s *Server) agentRun(writer http.ResponseWriter, request *http.Request) {
 		writeError(writer, http.StatusNotFound, "agent not found")
 		return
 	}
-	
+
 	// Run agent logic using database
 	actorName := s.sessionDisplayName(claims)
-	s.runAgentFromDB(agentID, actorName, claims.OrganizationID)
-	
+	s.runAgentFromDB(agentID, actorName, claims.Subject, claims.OrganizationID)
+
 	payload := s.queryAgentsOverviewFromDB(claims.OrganizationID)
 	writeJSON(writer, http.StatusOK, payload)
 }
@@ -2648,12 +2398,12 @@ func (s *Server) agentRunAll(writer http.ResponseWriter, request *http.Request) 
 		return
 	}
 	actorName := s.sessionDisplayName(claims)
-	
+
 	// Run all agents using database
 	for _, agentID := range []string{"a-intake", "a-recon", "a-cfo", "a-rel", "a-contract", "a-coll", "a-credit", "a-supplier", "a-sales", "a-audit"} {
-		s.runAgentFromDB(agentID, actorName, claims.OrganizationID)
+		s.runAgentFromDB(agentID, actorName, claims.Subject, claims.OrganizationID)
 	}
-	
+
 	payload := s.queryAgentsOverviewFromDB(claims.OrganizationID)
 	writeJSON(writer, http.StatusOK, payload)
 }
@@ -2688,15 +2438,14 @@ func (s *Server) agentFeedback(writer http.ResponseWriter, request *http.Request
 
 	agentID := parts[0]
 	now := time.Now().UTC()
-	actorName := s.sessionDisplayName(claims)
-	
+
 	// Insert feedback into database
-	err := s.insertAgentFeedback(agentID, rating, actorName, claims.OrganizationID, now)
+	err := s.insertAgentFeedback(agentID, rating, claims.Subject, claims.OrganizationID, now)
 	if err != nil {
 		writeError(writer, http.StatusInternalServerError, "failed to save feedback")
 		return
 	}
-	
+
 	payload := s.queryAgentsOverviewFromDB(claims.OrganizationID)
 	writeJSON(writer, http.StatusOK, payload)
 }
@@ -2706,13 +2455,15 @@ func (s *Server) collectionsManagement(writer http.ResponseWriter, request *http
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionSendCollections); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionSendCollections)
+	if !ok {
 		return
 	}
-	s.demoMu.RLock()
-	payload := s.collectionsMgmt
-	s.demoMu.RUnlock()
-	writeJSON(writer, http.StatusOK, payload)
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
+	writeJSON(writer, http.StatusOK, s.queryCollectionsManagement(claims.OrganizationID))
 }
 
 func (s *Server) collectionsManagementAction(writer http.ResponseWriter, request *http.Request) {
@@ -2724,22 +2475,15 @@ func (s *Server) collectionsManagementAction(writer http.ResponseWriter, request
 	if !ok {
 		return
 	}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
 	path := strings.Trim(strings.TrimPrefix(request.URL.Path, "/api/collections/management/"), "/")
 	parts := strings.Split(path, "/")
 	if len(parts) == 2 && parts[0] == "policy" && parts[1] == "update" {
-		s.demoMu.Lock()
-		defer s.demoMu.Unlock()
-		s.workflowState.AuditLog = append([]demo.AuditEvent{{
-			ID:          "al-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-			At:          time.Now().UTC().Format(time.RFC3339),
-			Actor:       s.sessionDisplayName(claims),
-			Role:        s.sessionRoleName(claims),
-			Kind:        "config",
-			Action:      "Updated collections policy",
-			Target:      s.collectionsMgmt.Policy.ReminderCadence + " · auto-escalate " + s.collectionsMgmt.Policy.AutoEscalateAt,
-			HasEvidence: true,
-		}}, s.workflowState.AuditLog...)
-		writeJSON(writer, http.StatusOK, s.collectionsMgmt)
+		_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Updated collections policy", "collections")
+		writeJSON(writer, http.StatusOK, s.queryCollectionsManagement(claims.OrganizationID))
 		return
 	}
 	if len(parts) != 3 || parts[0] != "escalations" || parts[2] != "decision" {
@@ -2759,33 +2503,24 @@ func (s *Server) collectionsManagementAction(writer http.ResponseWriter, request
 		return
 	}
 	escalationID := parts[1]
-	s.demoMu.Lock()
-	defer s.demoMu.Unlock()
-	for idx := range s.collectionsMgmt.Escalations {
-		item := s.collectionsMgmt.Escalations[idx]
-		if item.ID != escalationID {
-			continue
-		}
-		s.collectionsMgmt.Escalations = append(s.collectionsMgmt.Escalations[:idx], s.collectionsMgmt.Escalations[idx+1:]...)
-		action := map[string]string{
-			"approved": "Approved collections escalation",
-			"declined": "Declined collections escalation",
-		}[decision]
-		s.workflowState.AuditLog = append([]demo.AuditEvent{{
-			ID:          "al-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-			At:          time.Now().UTC().Format(time.RFC3339),
-			Actor:       s.sessionDisplayName(claims),
-			Role:        s.sessionRoleName(claims),
-			Kind:        "approval",
-			Action:      action,
-			Target:      item.Customer + " · " + item.Invoice,
-			Amount:      &item.Amount,
-			HasEvidence: true,
-		}}, s.workflowState.AuditLog...)
-		writeJSON(writer, http.StatusOK, s.collectionsMgmt)
+	var customer, invoice string
+	err := s.db.QueryRow(`
+		SELECT COALESCE(re.display_name, ''), COALESCE(be.id, escalationID)
+		FROM collection_cases cc
+		LEFT JOIN resolved_entities re ON cc.external_party_id = re.id
+		LEFT JOIN business_events be ON cc.invoice_event_id = be.id
+		WHERE cc.organization_id = $1 AND cc.id = $2 AND cc.state = 'ESCALATED'`,
+		claims.OrganizationID, escalationID).Scan(&customer, &invoice)
+	if err != nil {
+		writeError(writer, http.StatusNotFound, "escalation not found")
 		return
 	}
-	writeError(writer, http.StatusNotFound, "escalation not found")
+	action := map[string]string{
+		"approved": "Approved collections escalation",
+		"declined": "Declined collections escalation",
+	}[decision]
+	_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, action, customer+" · "+invoice)
+	writeJSON(writer, http.StatusOK, s.queryCollectionsManagement(claims.OrganizationID))
 }
 
 func (s *Server) ownerSummary(writer http.ResponseWriter, request *http.Request) {
@@ -2797,13 +2532,15 @@ func (s *Server) ownerSummary(writer http.ResponseWriter, request *http.Request)
 	if !ok {
 		return
 	}
-	if s.db != nil {
-		if q := s.queryOwnerSummary(claims.OrganizationID); q != nil {
-			writeJSON(writer, http.StatusOK, q)
-			return
-		}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
 	}
-	writeJSON(writer, http.StatusOK, demo.OwnerHomeSummaryData())
+	if q := s.queryOwnerSummary(claims.OrganizationID); q != nil {
+		writeJSON(writer, http.StatusOK, q)
+		return
+	}
+	writeJSON(writer, http.StatusOK, emptyOwnerHomeSummary())
 }
 
 func (s *Server) ownerDashboard(writer http.ResponseWriter, request *http.Request) {
@@ -2815,13 +2552,15 @@ func (s *Server) ownerDashboard(writer http.ResponseWriter, request *http.Reques
 	if !ok {
 		return
 	}
-	if s.db != nil {
-		if q := s.queryOwnerDashboard(claims.OrganizationID); q != nil {
-			writeJSON(writer, http.StatusOK, q)
-			return
-		}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
 	}
-	writeJSON(writer, http.StatusOK, demo.OwnerDashboardCardsData())
+	if q := s.queryOwnerDashboard(claims.OrganizationID); q != nil {
+		writeJSON(writer, http.StatusOK, q)
+		return
+	}
+	writeJSON(writer, http.StatusOK, emptyOwnerDashboard())
 }
 
 func (s *Server) adminDashboard(writer http.ResponseWriter, request *http.Request) {
@@ -2833,16 +2572,15 @@ func (s *Server) adminDashboard(writer http.ResponseWriter, request *http.Reques
 	if !ok {
 		return
 	}
-	if s.db != nil {
-		if q := s.queryAdminDashboard(claims.OrganizationID); q != nil {
-			writeJSON(writer, http.StatusOK, q)
-			return
-		}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
 	}
-	s.demoMu.RLock()
-	payload := s.adminDashboardState
-	s.demoMu.RUnlock()
-	writeJSON(writer, http.StatusOK, payload)
+	if q := s.queryAdminDashboard(claims.OrganizationID); q != nil {
+		writeJSON(writer, http.StatusOK, q)
+		return
+	}
+	writeJSON(writer, http.StatusOK, emptyAdminDashboard())
 }
 
 func (s *Server) adminAccessRequestAction(writer http.ResponseWriter, request *http.Request) {
@@ -2852,6 +2590,10 @@ func (s *Server) adminAccessRequestAction(writer http.ResponseWriter, request *h
 	}
 	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionManageUsers)
 	if !ok {
+		return
+	}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
 		return
 	}
 	path := strings.TrimPrefix(request.URL.Path, "/api/home/admin-dashboard/access-requests/")
@@ -2865,39 +2607,27 @@ func (s *Server) adminAccessRequestAction(writer http.ResponseWriter, request *h
 		writeError(writer, http.StatusNotFound, "unknown access request action")
 		return
 	}
-	s.demoMu.Lock()
-	defer s.demoMu.Unlock()
-	index := -1
-	var item demo.AccessRequest
-	for idx := range s.adminDashboardState.AccessRequests {
-		if s.adminDashboardState.AccessRequests[idx].ID == requestID {
-			index = idx
-			item = s.adminDashboardState.AccessRequests[idx]
-			break
-		}
-	}
-	if index == -1 {
+	var requester, resource string
+	err := s.db.QueryRow(`
+		SELECT COALESCE(u.display_name, ''), COALESCE(sag.resource, '')
+		FROM platform_support_access_grants sag
+		LEFT JOIN platform_users pu ON sag.requested_by = pu.id
+		LEFT JOIN users u ON u.id = pu.user_id
+		WHERE sag.id = $1`, requestID).Scan(&requester, &resource)
+	if err != nil {
 		writeError(writer, http.StatusNotFound, "access request not found")
 		return
 	}
-	s.adminDashboardState.AccessRequests = append(s.adminDashboardState.AccessRequests[:index], s.adminDashboardState.AccessRequests[index+1:]...)
-	s.adminDashboardState.Stats.PendingRequests = len(s.adminDashboardState.AccessRequests)
-	now := time.Now().UTC().Format(time.RFC3339)
 	actionLabel := "Access request denied"
 	if action == "grant" {
 		actionLabel = "Access request granted"
 	}
-	s.workflowState.AuditLog = append([]demo.AuditEvent{{
-		ID:          "al-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-		At:          now,
-		Actor:       s.sessionDisplayName(claims),
-		Role:        s.sessionRoleName(claims),
-		Kind:        "access",
-		Action:      actionLabel,
-		Target:      item.Name + " · " + item.RequestedRole,
-		HasEvidence: true,
-	}}, s.workflowState.AuditLog...)
-	writeJSON(writer, http.StatusOK, s.adminDashboardState)
+	_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, actionLabel, requester+" · "+resource)
+	if q := s.queryAdminDashboard(claims.OrganizationID); q != nil {
+		writeJSON(writer, http.StatusOK, q)
+		return
+	}
+	writeJSON(writer, http.StatusOK, emptyAdminDashboard())
 }
 
 func (s *Server) operatorDashboard(writer http.ResponseWriter, request *http.Request) {
@@ -2909,13 +2639,15 @@ func (s *Server) operatorDashboard(writer http.ResponseWriter, request *http.Req
 	if !ok {
 		return
 	}
-	if s.db != nil {
-		if q := s.queryOperatorDashboard(claims.OrganizationID); q != nil {
-			writeJSON(writer, http.StatusOK, q)
-			return
-		}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
 	}
-	writeJSON(writer, http.StatusOK, demo.OperatorHomeDemoData())
+	if q := s.queryOperatorDashboard(claims.OrganizationID); q != nil {
+		writeJSON(writer, http.StatusOK, q)
+		return
+	}
+	writeJSON(writer, http.StatusOK, emptyOperatorHome())
 }
 
 func (s *Server) auditorDashboard(writer http.ResponseWriter, request *http.Request) {
@@ -2927,34 +2659,30 @@ func (s *Server) auditorDashboard(writer http.ResponseWriter, request *http.Requ
 	if !ok {
 		return
 	}
-	if s.db != nil {
-		if q := s.queryAuditInvestigations(claims.OrganizationID); q != nil {
-			aud := demo.AuditorHomeData{
-				ControlHealth: demo.ControlHealthData{
-					Score:    q.ControlHealth.Score,
-					TrendPts: q.ControlHealth.TrendPts,
-					Subscores: func() []demo.ControlSubscoreData {
-						out := make([]demo.ControlSubscoreData, len(q.ControlHealth.Subscores))
-						for i, s := range q.ControlHealth.Subscores {
-							out[i] = demo.ControlSubscoreData{Label: s.Label, Value: s.Value}
-						}
-						return out
-					}(),
-				},
-				RiskStats: demo.RiskStatsData{
-					RiskFlags:     q.RiskStats.RiskFlags,
-					SODViolations: q.RiskStats.SodViolations,
-					Suspicious:    q.RiskStats.Suspicious,
-					MissingDocs:   q.RiskStats.MissingDocs,
-				},
-				SODViolations: []demo.SODViolationData{},
-				MissingDocs:   []demo.MissingDocData{},
-			}
-			writeJSON(writer, http.StatusOK, aud)
-			return
-		}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
 	}
-	writeJSON(writer, http.StatusOK, demo.AuditorHomeDemoData())
+	if q := s.queryAuditInvestigations(claims.OrganizationID); q != nil {
+		aud := AuditorHomeData{
+			ControlHealth: ControlHealthData{
+				Score:     q.ControlHealth.Score,
+				TrendPts:  []int{q.ControlHealth.TrendPts},
+				Subscores: q.ControlHealth.Subscores,
+			},
+			RiskStats: RiskStatsData{
+				RiskFlags:     q.RiskStats.RiskFlags,
+				SODViolations: q.RiskStats.SodViolations,
+				Suspicious:    q.RiskStats.Suspicious,
+				MissingDocs:   q.RiskStats.MissingDocs,
+			},
+			SODViolations: []SODViolationData{},
+			MissingDocs:   []MissingDocData{},
+		}
+		writeJSON(writer, http.StatusOK, aud)
+		return
+	}
+	writeJSON(writer, http.StatusOK, emptyAuditorHome())
 }
 
 func (s *Server) platformDashboard(writer http.ResponseWriter, request *http.Request) {
@@ -2965,7 +2693,11 @@ func (s *Server) platformDashboard(writer http.ResponseWriter, request *http.Req
 	if _, ok := s.requirePlatformAdmin(writer, request); !ok {
 		return
 	}
-	writeJSON(writer, http.StatusOK, demo.PlatformHomeDemoData())
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
+	writeJSON(writer, http.StatusOK, s.queryPlatformHome())
 }
 
 func (s *Server) intakeDocsAPI(writer http.ResponseWriter, request *http.Request) {
@@ -2984,24 +2716,28 @@ func (s *Server) intakeDocsAPI(writer http.ResponseWriter, request *http.Request
 			defer ingestResp.Body.Close()
 			if ingestResp.StatusCode == http.StatusOK {
 				body, _ := io.ReadAll(ingestResp.Body)
-				writer.Header().Set("Content-Type", "application/json")
 				var response struct {
-					Items []demo.IntakeDoc `json:"items"`
+					Items []IntakeDoc `json:"items"`
 				}
 				var docsResponse struct {
 					Items []ingestion.Document `json:"items"`
 				}
 				if err := json.Unmarshal(body, &docsResponse); err == nil {
-					response.Items = make([]demo.IntakeDoc, 0, len(docsResponse.Items))
+					response.Items = make([]IntakeDoc, 0, len(docsResponse.Items))
 					for _, d := range docsResponse.Items {
-						response.Items = append(response.Items, demo.IntakeDoc{
+						docType := "document"
+						if strings.Contains(strings.ToLower(d.ContentType), "invoice") {
+							docType = "invoice"
+						}
+						response.Items = append(response.Items, IntakeDoc{
 							ID:         d.ID,
 							Name:       d.FileName,
-							Kind:       "invoice",
+							Type:       docType,
 							Source:     "upload",
 							ReceivedAt: d.CreatedAt.Format(time.RFC3339),
 							Stage:      "extracting",
 							SizeText:   fmt.Sprintf("%d KB", d.SizeBytes/1024),
+							Fields:     []ExtractedField{},
 						})
 					}
 					writeJSON(writer, http.StatusOK, response)
@@ -3010,11 +2746,11 @@ func (s *Server) intakeDocsAPI(writer http.ResponseWriter, request *http.Request
 			}
 		}
 	}
-
-	s.demoMu.RLock()
-	items := append([]demo.IntakeDoc(nil), s.intakeDocs...)
-	s.demoMu.RUnlock()
-	writeJSON(writer, http.StatusOK, map[string]any{"items": items})
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
+	writeJSON(writer, http.StatusOK, map[string]any{"items": s.queryIntakeDocs(claims.OrganizationID)})
 }
 
 func (s *Server) intakeSourcesAPI(writer http.ResponseWriter, request *http.Request) {
@@ -3022,15 +2758,25 @@ func (s *Server) intakeSourcesAPI(writer http.ResponseWriter, request *http.Requ
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionManageIntegrations); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionManageIntegrations)
+	if !ok {
 		return
 	}
-	s.demoMu.RLock()
-	sources := map[string]bool{}
-	for key, connected := range s.intakeSources {
-		sources[key] = connected
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
 	}
-	s.demoMu.RUnlock()
+	sources := map[string]bool{}
+	rows, err := s.db.Query(`SELECT resource FROM audit_entries WHERE organization_id = $1 AND action = 'intake.source' ORDER BY occurred_at ASC`, claims.OrganizationID)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var source string
+			if rows.Scan(&source) == nil {
+				sources[source] = true
+			}
+		}
+	}
 	writeJSON(writer, http.StatusOK, map[string]any{"sources": sources})
 }
 
@@ -3049,18 +2795,15 @@ func (s *Server) intakeSourceAction(writer http.ResponseWriter, request *http.Re
 		writeError(writer, http.StatusNotFound, "unknown intake source action")
 		return
 	}
-	s.demoMu.Lock()
-	if s.intakeSources == nil {
-		s.intakeSources = map[string]bool{}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
 	}
-	s.intakeSources[parts[0]] = true
-	now := time.Now().UTC().Format(time.RFC3339)
-	s.workflowState.AuditLog = append([]demo.AuditEvent{{
-		ID: "al-" + strconv.FormatInt(time.Now().UnixNano(), 10), At: now,
-		Actor: s.sessionDisplayName(claims), Role: s.sessionRoleName(claims), Kind: "integration",
-		Action: "Connected intake source", Target: parts[0], HasEvidence: true,
-	}}, s.workflowState.AuditLog...)
-	s.demoMu.Unlock()
+	if err := s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Connected intake source", parts[0]); err != nil {
+		writeError(writer, http.StatusInternalServerError, err.Error())
+		return
+	}
+	_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "intake.source", parts[0])
 	writeJSON(writer, http.StatusOK, map[string]any{"source": parts[0], "connected": true})
 }
 
@@ -3092,19 +2835,30 @@ func (s *Server) intakeUpload(writer http.ResponseWriter, request *http.Request)
 		writeError(writer, http.StatusBadRequest, "document name is required")
 		return
 	}
-	doc := demo.IntakeDoc{
-		ID:         "doc-upload-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-		Name:       name,
-		Kind:       "invoice",
-		Source:     "upload",
-		ReceivedAt: time.Now().UTC().Format(time.RFC3339),
-		Stage:      "extracting",
-		SizeText:   "- KB",
-		Fields:     []demo.ExtractedField{{Label: "Status", Value: "Extracting...", Confidence: 0}},
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
 	}
-	s.demoMu.Lock()
-	s.intakeDocs = append([]demo.IntakeDoc{doc}, s.intakeDocs...)
-	s.demoMu.Unlock()
+	now := time.Now().UTC()
+	batchID := "batch-" + strconv.FormatInt(now.UnixNano(), 10)
+	docID := "doc-upload-" + strconv.FormatInt(now.UnixNano(), 10)
+	_, _ = s.db.Exec(`INSERT INTO ingestion_batches (id, organization_id, status, created_at) VALUES ($1, $2, 'EXTRACTING', $3)`, batchID, claims.OrganizationID, now)
+	_, _ = s.db.Exec(`
+		INSERT INTO documents (id, organization_id, batch_id, file_name, content_type, object_key, fingerprint, size_bytes, created_at)
+		VALUES ($1, $2, $3, $4, 'application/json', '', $5, 0, $6)`,
+		docID, claims.OrganizationID, batchID, name, "fingerprint-"+docID, now)
+	doc := IntakeDoc{
+		ID:         docID,
+		Name:       name,
+		Type:       "document",
+		Source:     "upload",
+		ReceivedAt: now.Format(time.RFC3339),
+		Stage:      "extracting",
+		Status:     "processing",
+		SizeText:   "- KB",
+		Fields:     []ExtractedField{},
+	}
+	_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Uploaded document", name)
 	writeJSON(writer, http.StatusOK, doc)
 }
 
@@ -3128,13 +2882,13 @@ func (s *Server) intakeUploadFile(writer http.ResponseWriter, request *http.Requ
 	contentBase64 := base64.StdEncoding.EncodeToString(content)
 
 	extractionInput := map[string]any{
-		"organization_id":     claims.OrganizationID,
-		"source_document_id":  "upload-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-		"ingestion_batch_id":  "batch-" + strconv.FormatInt(time.Now().UnixNano(), 10),
+		"organization_id":       claims.OrganizationID,
+		"source_document_id":    "upload-" + strconv.FormatInt(time.Now().UnixNano(), 10),
+		"ingestion_batch_id":    "batch-" + strconv.FormatInt(time.Now().UnixNano(), 10),
 		"extraction_version_id": "xver-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-		"file_name":           header.Filename,
-		"content_type":        header.Header.Get("Content-Type"),
-		"content_base64":      contentBase64,
+		"file_name":             header.Filename,
+		"content_type":          header.Header.Get("Content-Type"),
+		"content_base64":        contentBase64,
 	}
 	body, _ := json.Marshal(extractionInput)
 	extractResp, err := s.httpClient.Post(s.documentAIURL+"/v1/documents/extract", "application/json", bytes.NewReader(body))
@@ -3151,18 +2905,18 @@ func (s *Server) intakeUploadFile(writer http.ResponseWriter, request *http.Requ
 	}
 
 	var extractionResult struct {
-		OrganizationID     string `json:"organization_id"`
-		SourceDocumentID   string `json:"source_document_id"`
-		IngestionBatchID   string `json:"ingestion_batch_id"`
-		ExtractionVersionID string `json:"extraction_version_id"`
-		FileName           string `json:"file_name"`
-		ContentType        string `json:"content_type"`
-		Parser             string `json:"parser"`
-		SchemaVersion      string `json:"schema_version"`
-		Warnings           []string `json:"warnings"`
-		QualityFlags       []string `json:"quality_flags"`
-		Metadata           map[string]string `json:"metadata"`
-		Records            []ingestion.ExtractedRecordInput `json:"records"`
+		OrganizationID      string                           `json:"organization_id"`
+		SourceDocumentID    string                           `json:"source_document_id"`
+		IngestionBatchID    string                           `json:"ingestion_batch_id"`
+		ExtractionVersionID string                           `json:"extraction_version_id"`
+		FileName            string                           `json:"file_name"`
+		ContentType         string                           `json:"content_type"`
+		Parser              string                           `json:"parser"`
+		SchemaVersion       string                           `json:"schema_version"`
+		Warnings            []string                         `json:"warnings"`
+		QualityFlags        []string                         `json:"quality_flags"`
+		Metadata            map[string]string                `json:"metadata"`
+		Records             []ingestion.ExtractedRecordInput `json:"records"`
 	}
 	if err := json.Unmarshal(extractBody, &extractionResult); err != nil {
 		writeError(writer, http.StatusBadGateway, "invalid extraction response")
@@ -3191,16 +2945,18 @@ func (s *Server) intakeUploadFile(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 
-	resultDoc := demo.IntakeDoc{
+	resultDoc := IntakeDoc{
 		ID:         extractionResult.SourceDocumentID,
 		Name:       header.Filename,
-		Kind:       "invoice",
+		Type:       "document",
 		Source:     "upload",
 		ReceivedAt: time.Now().UTC().Format(time.RFC3339),
 		Stage:      "extracting",
+		Status:     "processing",
 		SizeText:   fmt.Sprintf("%d KB", len(content)/1024),
-		Fields:     []demo.ExtractedField{{Label: "Status", Value: "Uploaded - processing complete", Confidence: 1}},
+		Fields:     []ExtractedField{{Label: "Status", Value: "Uploaded - processing complete", Confidence: 1}},
 	}
+	_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Uploaded document for extraction", header.Filename)
 	writeJSON(writer, http.StatusOK, resultDoc)
 }
 
@@ -3220,26 +2976,36 @@ func (s *Server) intakeDocAction(writer http.ResponseWriter, request *http.Reque
 	if action == "post" {
 		permission = access.PermissionPostLedger
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, permission); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, permission)
+	if !ok {
 		return
 	}
-	s.demoMu.Lock()
-	defer s.demoMu.Unlock()
-	for idx := range s.intakeDocs {
-		if s.intakeDocs[idx].ID != docID {
-			continue
-		}
-		switch action {
-		case "match":
-			s.intakeDocs[idx].Stage = "matched"
-		case "post":
-			s.intakeDocs[idx].Stage = "posted"
-		default:
-			writeError(writer, http.StatusNotFound, "unknown intake action")
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
+	var fileName string
+	err := s.db.QueryRow(`SELECT file_name FROM documents WHERE id = $1 AND organization_id = $2`, docID, claims.OrganizationID).Scan(&fileName)
+	if err != nil {
+		writeError(writer, http.StatusNotFound, "document not found")
+		return
+	}
+	actionLabel := "Matched document"
+	if action == "post" {
+		actionLabel = "Posted document to ledger"
+	}
+	_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, actionLabel, fileName)
+	for _, item := range s.queryIntakeDocs(claims.OrganizationID) {
+		if item.ID == docID {
+			item.Stage = "matched"
+			item.Status = "matched"
+			if action == "post" {
+				item.Stage = "posted"
+				item.Status = "posted"
+			}
+			writeJSON(writer, http.StatusOK, item)
 			return
 		}
-		writeJSON(writer, http.StatusOK, s.intakeDocs[idx])
-		return
 	}
 	writeError(writer, http.StatusNotFound, "document not found")
 }
@@ -3249,13 +3015,15 @@ func (s *Server) reportsCatalog(writer http.ResponseWriter, request *http.Reques
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadReports); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadReports)
+	if !ok {
 		return
 	}
-	s.demoMu.RLock()
-	items := append([]demo.ReportDef(nil), s.reports...)
-	s.demoMu.RUnlock()
-	writeJSON(writer, http.StatusOK, map[string]any{"items": items})
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
+	writeJSON(writer, http.StatusOK, map[string]any{"items": s.queryReports(claims.OrganizationID)})
 }
 
 func (s *Server) reportDetail(writer http.ResponseWriter, request *http.Request) {
@@ -3267,39 +3035,61 @@ func (s *Server) reportDetail(writer http.ResponseWriter, request *http.Request)
 	}
 	reportID := parts[0]
 	if request.Method == http.MethodGet && len(parts) == 1 {
-		if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadReports); !ok {
+		claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadReports)
+		if !ok {
 			return
 		}
-		report, ok := s.findReport(reportID)
+		if s.db == nil {
+			writeError(writer, http.StatusServiceUnavailable, "database connection required")
+			return
+		}
+		report, ok := s.queryReportByID(claims.OrganizationID, reportID)
 		if !ok {
 			writeError(writer, http.StatusNotFound, "report not found")
 			return
 		}
 		writeJSON(writer, http.StatusOK, map[string]any{
 			"report":   report,
-			"content":  demo.BuildReportContent(report.Kind),
-			"periods":  []string{"May 2025", "April 2025", "Q2 2025", "YTD 2025"},
+			"content":  s.buildReportContent(claims.OrganizationID, report),
+			"periods":  []string{"Current", "Previous", "YTD"},
 			"evidence": "evidence-backed",
 		})
 		return
 	}
 	if request.Method == http.MethodPost && len(parts) == 2 && parts[1] == "generate" {
-		if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadReports); !ok {
+		claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadReports)
+		if !ok {
 			return
 		}
-		report, ok := s.touchReport(reportID)
+		if s.db == nil {
+			writeError(writer, http.StatusServiceUnavailable, "database connection required")
+			return
+		}
+		report, ok := s.queryReportByID(claims.OrganizationID, reportID)
 		if !ok {
 			writeError(writer, http.StatusNotFound, "report not found")
 			return
 		}
+		now := time.Now().UTC()
+		_, _ = s.db.Exec(`
+			INSERT INTO report_snapshots (id, organization_id, generated_by, input_fingerprint, include_roi, payload)
+			VALUES ($1, $2, $3, $4, $5, $6)`,
+			"snap-"+strconv.FormatInt(now.UnixNano(), 10), claims.OrganizationID, claims.Subject, "regen-"+report.ID, false, `{}`)
+		_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Generated report", report.Name)
+		report.LastGenerated = now.Format(time.RFC3339)
 		writeJSON(writer, http.StatusOK, report)
 		return
 	}
 	if request.Method == http.MethodPost && len(parts) == 2 && parts[1] == "export" {
-		if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadReports); !ok {
+		claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadReports)
+		if !ok {
 			return
 		}
-		report, ok := s.findReport(reportID)
+		if s.db == nil {
+			writeError(writer, http.StatusServiceUnavailable, "database connection required")
+			return
+		}
+		report, ok := s.queryReportByID(claims.OrganizationID, reportID)
 		if !ok {
 			writeError(writer, http.StatusNotFound, "report not found")
 			return
@@ -3315,7 +3105,7 @@ func (s *Server) reportDetail(writer http.ResponseWriter, request *http.Request)
 		if period == "" {
 			period = "Current period"
 		}
-		contentData := demo.BuildReportContent(report.Kind)
+		contentData := s.buildReportContent(claims.OrganizationID, report)
 		content := fmt.Sprintf("BT\n/F1 20 Tf\n72 748 Td\n(%s) Tj\n0 -28 Td\n/F1 11 Tf\n(Period: %s) Tj\n0 -22 Td\n(Report type: %s) Tj\n0 -22 Td\n(Key metrics: %d) Tj\n0 -22 Td\n(Evidence rows: %d) Tj\n0 -30 Td\n/F1 9 Tf\n(Evidence-backed and generated from tenant-scoped reporting data.) Tj\nET\n", pdfLiteral(report.Name), pdfLiteral(period), pdfLiteral(report.Kind), len(contentData.KPIs), len(contentData.Rows))
 		pdf := simplePDF(content)
 		fileName := strings.ReplaceAll(strings.ToLower(report.Name), " ", "-") + ".pdf"
@@ -3326,7 +3116,12 @@ func (s *Server) reportDetail(writer http.ResponseWriter, request *http.Request)
 		return
 	}
 	if request.Method == http.MethodPost && len(parts) == 2 && parts[1] == "schedule" {
-		if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadReports); !ok {
+		claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadReports)
+		if !ok {
+			return
+		}
+		if s.db == nil {
+			writeError(writer, http.StatusServiceUnavailable, "database connection required")
 			return
 		}
 		var body struct {
@@ -3336,10 +3131,14 @@ func (s *Server) reportDetail(writer http.ResponseWriter, request *http.Request)
 			writeError(writer, http.StatusBadRequest, err.Error())
 			return
 		}
-		report, ok := s.updateReportSchedule(reportID, body.Schedule)
+		report, ok := s.queryReportByID(claims.OrganizationID, reportID)
 		if !ok {
 			writeError(writer, http.StatusNotFound, "report not found")
 			return
+		}
+		if strings.TrimSpace(body.Schedule) != "" {
+			report.Schedule = strings.TrimSpace(body.Schedule)
+			_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Updated report schedule", report.Name+" -> "+report.Schedule)
 		}
 		writeJSON(writer, http.StatusOK, report)
 		return
@@ -3352,13 +3151,16 @@ func (s *Server) reportsBoardPack(writer http.ResponseWriter, request *http.Requ
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadReports); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadReports)
+	if !ok {
 		return
 	}
-	s.demoMu.RLock()
-	reports := append([]demo.ReportDef(nil), s.reports...)
-	s.demoMu.RUnlock()
-	content := fmt.Sprintf("BT\n/F1 20 Tf\n72 748 Td\n(Kora Board Pack) Tj\n0 -28 Td\n/F1 11 Tf\n(Period: May 2025) Tj\n0 -22 Td\n(Reports included: %d) Tj\n0 -22 Td\n(Generated: %s) Tj\n0 -30 Td\n/F1 9 Tf\n(Compiled from tenant-scoped, evidence-backed reports.) Tj\nET\n", len(reports), time.Now().UTC().Format("2006-01-02 15:04 UTC"))
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
+	reports := s.queryReports(claims.OrganizationID)
+	content := fmt.Sprintf("BT\n/F1 20 Tf\n72 748 Td\n(Kora Board Pack) Tj\n0 -28 Td\n/F1 11 Tf\n(Period: Current) Tj\n0 -22 Td\n(Reports included: %d) Tj\n0 -22 Td\n(Generated: %s) Tj\n0 -30 Td\n/F1 9 Tf\n(Compiled from tenant-scoped, evidence-backed reports.) Tj\nET\n", len(reports), time.Now().UTC().Format("2006-01-02 15:04 UTC"))
 	writer.Header().Set("Content-Type", "application/pdf")
 	writer.Header().Set("Content-Disposition", "attachment; filename=\"kora-board-pack.pdf\"")
 	writer.WriteHeader(http.StatusOK)
@@ -3378,19 +3180,23 @@ func (s *Server) financialStatementsExport(writer http.ResponseWriter, request *
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadReports); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadReports)
+	if !ok {
 		return
 	}
-	s.demoMu.RLock()
-	journals := append([]demo.FinanceJournalEntry(nil), s.financeSnapshot.Journals...)
-	s.demoMu.RUnlock()
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
 	posted := 0
-	for _, journal := range journals {
-		if journal.Status == "posted" {
-			posted++
+	if snapshot := s.queryFinanceOperations(claims.OrganizationID); snapshot != nil {
+		for _, journal := range snapshot.Journals {
+			if journal.Status == "posted" {
+				posted++
+			}
 		}
 	}
-	content := fmt.Sprintf("BT\n/F1 20 Tf\n72 748 Td\n(Kora Financial Statement Pack) Tj\n0 -28 Td\n/F1 11 Tf\n(Period: May 2025) Tj\n0 -22 Td\n(Posted journals included: %d) Tj\n0 -22 Td\n(Statements: Income statement, balance sheet, cash flow) Tj\n0 -22 Td\n(Source: tenant-scoped general ledger) Tj\n0 -30 Td\n/F1 9 Tf\n(Generated from ledger records and permission-checked report access.) Tj\nET\n", posted)
+	content := fmt.Sprintf("BT\n/F1 20 Tf\n72 748 Td\n(Kora Financial Statement Pack) Tj\n0 -28 Td\n/F1 11 Tf\n(Period: Current) Tj\n0 -22 Td\n(Posted journals included: %d) Tj\n0 -22 Td\n(Statements: Income statement, balance sheet, cash flow) Tj\n0 -22 Td\n(Source: tenant-scoped general ledger) Tj\n0 -30 Td\n/F1 9 Tf\n(Generated from ledger records and permission-checked report access.) Tj\nET\n", posted)
 	pdf := "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Resources<</Font<</F1 4 0 R>>>>/Contents 5 0 R>>endobj\n4 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n5 0 obj<</Length " + strconv.Itoa(len(content)) + ">>stream\n" + content + "endstream\nendobj\ntrailer<</Root 1 0 R>>\n%%EOF\n"
 	writer.Header().Set("Content-Type", "application/pdf")
 	writer.Header().Set("Content-Disposition", "attachment; filename=\"kora-financial-statements.pdf\"")
@@ -3407,18 +3213,15 @@ func (s *Server) financeOperations(writer http.ResponseWriter, request *http.Req
 	if !ok {
 		return
 	}
-	var snapshot demo.FinanceOperationsSnapshot
-	if s.db != nil {
-		if q := s.queryFinanceOperations(claims.OrganizationID); q != nil {
-			snapshot = *q
-			writeJSON(writer, http.StatusOK, snapshot)
-			return
-		}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
 	}
-	s.demoMu.RLock()
-	snapshot = s.financeSnapshot
-	s.demoMu.RUnlock()
-	writeJSON(writer, http.StatusOK, snapshot)
+	if q := s.queryFinanceOperations(claims.OrganizationID); q != nil {
+		writeJSON(writer, http.StatusOK, q)
+		return
+	}
+	writeJSON(writer, http.StatusOK, &FinanceOperationsSnapshot{})
 }
 
 func (s *Server) financeCashflowView(writer http.ResponseWriter, request *http.Request) {
@@ -3430,20 +3233,18 @@ func (s *Server) financeCashflowView(writer http.ResponseWriter, request *http.R
 	if !ok {
 		return
 	}
-	if s.db != nil {
-		if q := s.queryFinanceCashflowView(claims.OrganizationID); q != nil {
-			s.demoMu.RLock()
-			q.Movements = append([]demo.FinanceTransaction(nil), s.financeSnapshot.Transactions...)
-			s.demoMu.RUnlock()
-			writeJSON(writer, http.StatusOK, q)
-			return
-		}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
 	}
-	s.demoMu.RLock()
-	view := demo.LedgerCashflowStaticData()
-	view.Movements = append([]demo.FinanceTransaction(nil), s.financeSnapshot.Transactions...)
-	s.demoMu.RUnlock()
-	writeJSON(writer, http.StatusOK, view)
+	if q := s.queryFinanceCashflowView(claims.OrganizationID); q != nil {
+		if snapshot := s.queryFinanceOperations(claims.OrganizationID); snapshot != nil {
+			q.Movements = snapshot.Transactions
+		}
+		writeJSON(writer, http.StatusOK, q)
+		return
+	}
+	writeJSON(writer, http.StatusOK, &LedgerCashflowView{})
 }
 
 func (s *Server) financeCashflowExport(writer http.ResponseWriter, request *http.Request) {
@@ -3451,14 +3252,23 @@ func (s *Server) financeCashflowExport(writer http.ResponseWriter, request *http
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant)
+	if !ok {
 		return
 	}
-	s.demoMu.RLock()
-	view := demo.LedgerCashflowStaticData()
-	view.Movements = append([]demo.FinanceTransaction(nil), s.financeSnapshot.Transactions...)
-	s.demoMu.RUnlock()
-	content := fmt.Sprintf("BT\n/F1 20 Tf\n72 748 Td\n(Kora Cash Flow Summary) Tj\n0 -28 Td\n/F1 11 Tf\n(Opening balance: %s %s) Tj\n0 -22 Td\n(Current cash: %s %s) Tj\n0 -22 Td\n(Projected cash: %s %s) Tj\n0 -22 Td\n(Movements included: %d) Tj\n0 -30 Td\n/F1 9 Tf\n(Generated from the tenant-scoped ledger cashflow view.) Tj\nET\n", view.OpeningBalance.AmountMinor, view.OpeningBalance.Currency, view.Forecast.Current.AmountMinor, view.Forecast.Current.Currency, view.Forecast.Projected.AmountMinor, view.Forecast.Projected.Currency, len(view.Movements))
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
+	var view LedgerCashflowView
+	if q := s.queryFinanceCashflowView(claims.OrganizationID); q != nil {
+		view = *q
+	}
+	movements := 0
+	if snapshot := s.queryFinanceOperations(claims.OrganizationID); snapshot != nil {
+		movements = len(snapshot.Transactions)
+	}
+	content := fmt.Sprintf("BT\n/F1 20 Tf\n72 748 Td\n(Kora Cash Flow Summary) Tj\n0 -28 Td\n/F1 11 Tf\n(Net position: %s %s) Tj\n0 -22 Td\n(Revenue KPI: %s %s) Tj\n0 -22 Td\n(Expense KPI: %s %s) Tj\n0 -22 Td\n(Movements included: %d) Tj\n0 -30 Td\n/F1 9 Tf\n(Generated from the tenant-scoped ledger cashflow view.) Tj\nET\n", view.OpeningBalance.AmountMinor, view.OpeningBalance.Currency, view.KPIs[1].Money.AmountMinor, view.KPIs[1].Money.Currency, view.KPIs[2].Money.AmountMinor, view.KPIs[2].Money.Currency, movements)
 	pdf := "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Resources<</Font<</F1 4 0 R>>>>/Contents 5 0 R>>endobj\n4 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\n5 0 obj<</Length " + strconv.Itoa(len(content)) + ">>stream\n" + content + "endstream\nendobj\ntrailer<</Root 1 0 R>>\n%%EOF\n"
 	writer.Header().Set("Content-Type", "application/pdf")
 	writer.Header().Set("Content-Disposition", "attachment; filename=\"kora-cashflow-summary.pdf\"")
@@ -3471,7 +3281,12 @@ func (s *Server) financeCreateJournal(writer http.ResponseWriter, request *http.
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionPostLedger); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionPostLedger)
+	if !ok {
+		return
+	}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
 		return
 	}
 	var body struct {
@@ -3495,17 +3310,15 @@ func (s *Server) financeCreateJournal(writer http.ResponseWriter, request *http.
 		writeError(writer, http.StatusBadRequest, "memo and lines are required")
 		return
 	}
-	entry := demo.FinanceJournalEntry{
-		ID:     "je-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-		Date:   body.Date,
-		Ref:    body.Ref,
-		Memo:   body.Memo,
-		Source: body.Source,
-		Status: "posted",
-		Entity: body.Entity,
-	}
 	var totalDebit int64
 	var totalCredit int64
+	type parsedLine struct {
+		account     string
+		debitMinor  int64
+		creditMinor int64
+		costCenter  string
+	}
+	var parsed []parsedLine
 	for _, line := range body.Lines {
 		debit, err := strconv.ParseInt(strings.TrimSpace(line.Debit), 10, 64)
 		if err != nil {
@@ -3519,22 +3332,38 @@ func (s *Server) financeCreateJournal(writer http.ResponseWriter, request *http.
 		}
 		totalDebit += debit
 		totalCredit += credit
-		entry.Lines = append(entry.Lines, demo.FinanceJournalLine{
-			Account:    line.Account,
-			Debit:      demo.Money{AmountMinor: strconv.FormatInt(debit, 10), Currency: "USD"},
-			Credit:     demo.Money{AmountMinor: strconv.FormatInt(credit, 10), Currency: "USD"},
-			CostCenter: line.CostCenter,
-		})
+		parsed = append(parsed, parsedLine{account: line.Account, debitMinor: debit, creditMinor: credit, costCenter: line.CostCenter})
 	}
 	if totalDebit == 0 || totalDebit != totalCredit {
 		writeError(writer, http.StatusBadRequest, "journal must balance")
 		return
 	}
-	s.demoMu.Lock()
-	s.financeSnapshot.Journals = append([]demo.FinanceJournalEntry{entry}, s.financeSnapshot.Journals...)
-	snapshot := s.financeSnapshot
-	s.demoMu.Unlock()
-	writeJSON(writer, http.StatusOK, snapshot)
+	now := time.Now().UTC()
+	approvalID := "at-" + strconv.FormatInt(now.UnixNano(), 10)
+	postingID := "pg-" + strconv.FormatInt(now.UnixNano(), 10)
+	evidence, _ := json.Marshal(map[string]any{"memo": body.Memo, "ref": body.Ref, "source": body.Source, "entity": body.Entity})
+	_, _ = s.db.Exec(`
+		INSERT INTO approval_tasks (id, organization_id, suggested_action, creator_user_id, assigned_role, state, amount_minor, currency, required_approvers, approver_user_ids, deadline, evidence, created_at)
+		VALUES ($1, $2, 'JOURNAL_POST', $3, 'finance', 'EXECUTED', $4, 'USD', 1, $5, $6, $7, $6)`,
+		approvalID, claims.OrganizationID, claims.Subject, totalDebit, []byte(`["`+claims.Subject+`"]`), now, evidence)
+	_, _ = s.db.Exec(`
+		INSERT INTO posting_groups (id, organization_id, approval_task_id, created_by, created_at)
+		VALUES ($1, $2, $3, $4, $5)`,
+		postingID, claims.OrganizationID, approvalID, claims.Subject, now)
+	for i, line := range parsed {
+		entryID := postingID + "-e" + strconv.Itoa(i)
+		lineEvidence, _ := json.Marshal(map[string]any{"description": body.Memo, "costCenter": line.costCenter})
+		_, _ = s.db.Exec(`
+			INSERT INTO ledger_entries (id, organization_id, account_id, debit_minor, credit_minor, currency, posting_group_id, approval_task_id, evidence, created_at)
+			VALUES ($1, $2, (SELECT id FROM ledger_accounts WHERE organization_id = $2 AND code = $3 LIMIT 1), $4, $5, 'USD', $6, $7, $8, $9)`,
+			entryID, claims.OrganizationID, line.account, line.debitMinor, line.creditMinor, postingID, approvalID, lineEvidence, now)
+	}
+	_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Posted journal entry", body.Memo)
+	if q := s.queryFinanceOperations(claims.OrganizationID); q != nil {
+		writeJSON(writer, http.StatusOK, q)
+		return
+	}
+	writeJSON(writer, http.StatusOK, &FinanceOperationsSnapshot{})
 }
 
 func (s *Server) financeBillAction(writer http.ResponseWriter, request *http.Request) {
@@ -3553,67 +3382,76 @@ func (s *Server) financeBillAction(writer http.ResponseWriter, request *http.Req
 	if action == "pay" {
 		permission = access.PermissionPostLedger
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, permission); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, permission)
+	if !ok {
 		return
 	}
-	s.demoMu.Lock()
-	defer s.demoMu.Unlock()
-	for idx := range s.financeSnapshot.Bills {
-		bill := &s.financeSnapshot.Bills[idx]
-		if bill.ID != billID {
-			continue
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
+	var bill FinanceBill
+	found := false
+	if snapshot := s.queryFinanceOperations(claims.OrganizationID); snapshot != nil {
+		for _, b := range snapshot.Bills {
+			if b.ID == billID {
+				bill = b
+				found = true
+				break
+			}
 		}
-		switch action {
-		case "approve":
-			if bill.Status != "draft" {
-				writeError(writer, http.StatusBadRequest, "bill cannot be approved")
-				return
-			}
-			bill.Status = "approved"
-			amountMinor := int64(bill.Amount * 100)
-			entry := demo.FinanceJournalEntry{
-				ID:     "je-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-				Date:   time.Now().UTC().Format("2006-01-02"),
-				Ref:    bill.Ref,
-				Memo:   "Bill - " + bill.Vendor,
-				Source: "AP",
-				Status: "posted",
-				Entity: bill.Entity,
-				Lines: []demo.FinanceJournalLine{
-					{Account: bill.Account, Debit: demo.Money{AmountMinor: strconv.FormatInt(amountMinor, 10), Currency: "USD"}, Credit: demo.Money{AmountMinor: "0", Currency: "USD"}, CostCenter: bill.CostCenter},
-					{Account: "2000", Debit: demo.Money{AmountMinor: "0", Currency: "USD"}, Credit: demo.Money{AmountMinor: strconv.FormatInt(amountMinor, 10), Currency: "USD"}},
-				},
-			}
-			s.financeSnapshot.Journals = append([]demo.FinanceJournalEntry{entry}, s.financeSnapshot.Journals...)
-		case "pay":
-			if bill.Status != "approved" {
-				writeError(writer, http.StatusBadRequest, "bill cannot be paid")
-				return
-			}
-			bill.Status = "paid"
-			amountMinor := int64(bill.Amount * 100)
-			entry := demo.FinanceJournalEntry{
-				ID:     "je-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-				Date:   time.Now().UTC().Format("2006-01-02"),
-				Ref:    "PAY-" + bill.Ref,
-				Memo:   "Payment - " + bill.Vendor,
-				Source: "AP",
-				Status: "posted",
-				Entity: bill.Entity,
-				Lines: []demo.FinanceJournalLine{
-					{Account: "2000", Debit: demo.Money{AmountMinor: strconv.FormatInt(amountMinor, 10), Currency: "USD"}, Credit: demo.Money{AmountMinor: "0", Currency: "USD"}},
-					{Account: "1010", Debit: demo.Money{AmountMinor: "0", Currency: "USD"}, Credit: demo.Money{AmountMinor: strconv.FormatInt(amountMinor, 10), Currency: "USD"}},
-				},
-			}
-			s.financeSnapshot.Journals = append([]demo.FinanceJournalEntry{entry}, s.financeSnapshot.Journals...)
-		default:
-			writeError(writer, http.StatusNotFound, "unknown bill action")
+	}
+	if !found {
+		writeError(writer, http.StatusNotFound, "bill not found")
+		return
+	}
+	var toState string
+	var actionLabel string
+	switch action {
+	case "approve":
+		if bill.Status != "SUGGESTED" && bill.Status != "ASSIGNED" {
+			writeError(writer, http.StatusBadRequest, "bill cannot be approved")
 			return
 		}
-		writeJSON(writer, http.StatusOK, s.financeSnapshot)
+		toState = "APPROVED"
+		actionLabel = "Approved bill"
+	case "pay":
+		if bill.Status != "APPROVED" {
+			writeError(writer, http.StatusBadRequest, "bill cannot be paid")
+			return
+		}
+		toState = "EXECUTED"
+		actionLabel = "Paid bill"
+	default:
+		writeError(writer, http.StatusNotFound, "unknown bill action")
 		return
 	}
-	writeError(writer, http.StatusNotFound, "bill not found")
+	amountMinor, _ := strconv.ParseInt(bill.Amount.AmountMinor, 10, 64)
+	if amountMinor <= 0 {
+		writeError(writer, http.StatusBadRequest, "bill amount invalid")
+		return
+	}
+	now := time.Now().UTC()
+	_, _ = s.db.Exec(`UPDATE approval_tasks SET state = $3, evidence = evidence || jsonb_build_object('resolved_at', $4) WHERE id = $1 AND organization_id = $2 AND state <> $3`, billID, claims.OrganizationID, toState, now.Format(time.RFC3339))
+	if action == "pay" {
+		postingID := "pg-pay-" + strconv.FormatInt(now.UnixNano(), 10)
+		_, _ = s.db.Exec(`
+			INSERT INTO posting_groups (id, organization_id, approval_task_id, created_by, created_at)
+			VALUES ($1, $2, $3, $4, $5)`,
+			postingID, claims.OrganizationID, billID, claims.Subject, now)
+		entryEvidence, _ := json.Marshal(map[string]any{"description": "Payment - " + bill.Vendor, "bill_id": bill.ID})
+		_, _ = s.db.Exec(`
+			INSERT INTO ledger_entries (id, organization_id, account_id, debit_minor, credit_minor, currency, posting_group_id, approval_task_id, evidence, created_at)
+			VALUES ($1, $2, (SELECT id FROM ledger_accounts WHERE organization_id = $2 AND account_type = 'LIABILITY' LIMIT 1), $3, 0, $4, $5, $6, $7, $8),
+			       ($1 || '-b', $2, (SELECT id FROM ledger_accounts WHERE organization_id = $2 AND account_type = 'ASSET' LIMIT 1), 0, $3, $4, $5, $6, $7, $8)`,
+			postingID+"-e0", claims.OrganizationID, amountMinor, bill.Amount.Currency, postingID, billID, entryEvidence, now)
+	}
+	_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, actionLabel, bill.Vendor)
+	if snapshot := s.queryFinanceOperations(claims.OrganizationID); snapshot != nil {
+		writeJSON(writer, http.StatusOK, snapshot)
+		return
+	}
+	writeJSON(writer, http.StatusOK, &FinanceOperationsSnapshot{})
 }
 
 func (s *Server) financeTransactionAction(writer http.ResponseWriter, request *http.Request) {
@@ -3634,7 +3472,12 @@ func (s *Server) financeTransactionAction(writer http.ResponseWriter, request *h
 	} else if action == "post" {
 		permission = access.PermissionPostLedger
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, permission); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, permission)
+	if !ok {
+		return
+	}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
 		return
 	}
 	var body struct {
@@ -3647,52 +3490,47 @@ func (s *Server) financeTransactionAction(writer http.ResponseWriter, request *h
 			return
 		}
 	}
-	s.demoMu.Lock()
-	defer s.demoMu.Unlock()
-	for idx := range s.financeSnapshot.Transactions {
-		tx := &s.financeSnapshot.Transactions[idx]
-		if tx.ID != transactionID {
-			continue
+	var tx FinanceTransaction
+	found := false
+	if snapshot := s.queryFinanceOperations(claims.OrganizationID); snapshot != nil {
+		for _, t := range snapshot.Transactions {
+			if t.ID == transactionID {
+				tx = t
+				found = true
+				break
+			}
 		}
-		switch action {
-		case "classify":
-			if strings.TrimSpace(body.Category) == "" {
-				writeError(writer, http.StatusBadRequest, "category is required")
-				return
-			}
-			tx.Category = body.Category
-			if tx.Review == "needs-review" {
-				tx.Review = "reviewed"
-			}
-		case "prepare":
-			tx.Review = "prepared"
-		case "reconcile":
-			tx.Reconciled = true
-			if tx.Review == "needs-review" {
-				tx.Review = "reviewed"
-			}
-		case "hold":
-			tx.Reconciled = false
-			tx.Review = "needs-review"
-			if strings.TrimSpace(body.Note) != "" {
-				tx.Note = body.Note
-			}
-		case "post":
-			tx.Review = "posted"
-			tx.Reconciled = true
-		case "flag":
-			tx.Review = "flagged"
-			if strings.TrimSpace(body.Note) != "" {
-				tx.Note = body.Note
-			}
-		default:
-			writeError(writer, http.StatusNotFound, "unknown transaction action")
-			return
-		}
-		writeJSON(writer, http.StatusOK, s.financeSnapshot)
+	}
+	if !found {
+		writeError(writer, http.StatusNotFound, "transaction not found")
 		return
 	}
-	writeError(writer, http.StatusNotFound, "transaction not found")
+	switch action {
+	case "classify":
+		if strings.TrimSpace(body.Category) == "" {
+			writeError(writer, http.StatusBadRequest, "category is required")
+			return
+		}
+		_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Classified transaction", tx.Description+" -> "+body.Category)
+	case "prepare":
+		_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Prepared transaction", tx.Description)
+	case "reconcile":
+		_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Reconciled transaction", tx.Description)
+	case "hold":
+		_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Held transaction for review", tx.Description)
+	case "post":
+		_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Posted transaction", tx.Description)
+	case "flag":
+		_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Flagged transaction", tx.Description)
+	default:
+		writeError(writer, http.StatusNotFound, "unknown transaction action")
+		return
+	}
+	if snapshot := s.queryFinanceOperations(claims.OrganizationID); snapshot != nil {
+		writeJSON(writer, http.StatusOK, snapshot)
+		return
+	}
+	writeJSON(writer, http.StatusOK, &FinanceOperationsSnapshot{})
 }
 
 func (s *Server) auditInvestigations(writer http.ResponseWriter, request *http.Request) {
@@ -3704,20 +3542,15 @@ func (s *Server) auditInvestigations(writer http.ResponseWriter, request *http.R
 	if !ok {
 		return
 	}
-	if s.db != nil {
-		if q := s.queryAuditInvestigations(claims.OrganizationID); q != nil {
-			s.demoMu.RLock()
-			q.AuditLog = append([]demo.AuditEvent(nil), s.workflowState.AuditLog...)
-			s.demoMu.RUnlock()
-			writeJSON(writer, http.StatusOK, q)
-			return
-		}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
 	}
-	s.demoMu.RLock()
-	view := s.auditViews
-	view.AuditLog = append([]demo.AuditEvent(nil), s.workflowState.AuditLog...)
-	s.demoMu.RUnlock()
-	writeJSON(writer, http.StatusOK, view)
+	if q := s.queryAuditInvestigations(claims.OrganizationID); q != nil {
+		writeJSON(writer, http.StatusOK, q)
+		return
+	}
+	writeJSON(writer, http.StatusOK, &AuditInvestigationsView{})
 }
 
 func (s *Server) auditEvidencePack(writer http.ResponseWriter, request *http.Request) {
@@ -3725,14 +3558,19 @@ func (s *Server) auditEvidencePack(writer http.ResponseWriter, request *http.Req
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadAudit); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadAudit)
+	if !ok {
 		return
 	}
-	s.demoMu.RLock()
-	view := s.auditViews
-	auditEvents := append([]demo.AuditEvent(nil), s.workflowState.AuditLog...)
-	s.demoMu.RUnlock()
-	content := fmt.Sprintf("BT\n/F1 20 Tf\n72 748 Td\n(Kora Audit Evidence Pack) Tj\n0 -28 Td\n/F1 11 Tf\n(Generated: %s) Tj\n0 -22 Td\n(Audit events: %d) Tj\n0 -22 Td\n(Control checks: %d) Tj\n0 -22 Td\n(Segregation-of-duty findings: %d) Tj\n0 -22 Td\n(Missing evidence records: %d) Tj\n0 -30 Td\n/F1 9 Tf\n(Generated from immutable tenant-scoped audit and workflow records.) Tj\nET\n", time.Now().UTC().Format("2006-01-02 15:04 UTC"), len(auditEvents), len(view.ControlHealth.Subscores), len(view.SodViolations), len(view.MissingDocs))
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
+	view := &AuditInvestigationsView{}
+	if q := s.queryAuditInvestigations(claims.OrganizationID); q != nil {
+		view = q
+	}
+	content := fmt.Sprintf("BT\n/F1 20 Tf\n72 748 Td\n(Kora Audit Evidence Pack) Tj\n0 -28 Td\n/F1 11 Tf\n(Generated: %s) Tj\n0 -22 Td\n(Audit events: %d) Tj\n0 -22 Td\n(Control checks: %d) Tj\n0 -22 Td\n(Segregation-of-duty findings: %d) Tj\n0 -22 Td\n(Missing evidence records: %d) Tj\n0 -30 Td\n/F1 9 Tf\n(Generated from immutable tenant-scoped audit and workflow records.) Tj\nET\n", time.Now().UTC().Format("2006-01-02 15:04 UTC"), len(view.AuditLog), len(view.ControlHealth.Subscores), view.RiskStats.SodViolations, view.RiskStats.MissingDocs)
 	writer.Header().Set("Content-Type", "application/pdf")
 	writer.Header().Set("Content-Disposition", "attachment; filename=\"kora-audit-evidence-pack.pdf\"")
 	writer.WriteHeader(http.StatusOK)
@@ -3748,6 +3586,10 @@ func (s *Server) auditFindingCreate(writer http.ResponseWriter, request *http.Re
 	if !ok {
 		return
 	}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
 	var body struct {
 		EventID string `json:"eventId"`
 	}
@@ -3759,34 +3601,18 @@ func (s *Server) auditFindingCreate(writer http.ResponseWriter, request *http.Re
 		writeError(writer, http.StatusBadRequest, "eventId is required")
 		return
 	}
-
-	s.demoMu.Lock()
-	defer s.demoMu.Unlock()
-	var target *demo.AuditEvent
-	for idx := range s.workflowState.AuditLog {
-		if s.workflowState.AuditLog[idx].ID == body.EventID {
-			target = &s.workflowState.AuditLog[idx]
-			break
-		}
-	}
-	if target == nil {
+	var action, resource string
+	err := s.db.QueryRow(`SELECT action, resource FROM audit_entries WHERE id = $1 AND organization_id = $2`, body.EventID, claims.OrganizationID).Scan(&action, &resource)
+	if err != nil {
 		writeError(writer, http.StatusNotFound, "audit event not found")
 		return
 	}
-	now := time.Now().UTC()
-	s.workflowState.AuditLog = append([]demo.AuditEvent{{
-		ID:          "al-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-		At:          now.Format(time.RFC3339),
-		Actor:       s.sessionDisplayName(claims),
-		Role:        s.sessionRoleName(claims),
-		Kind:        "audit",
-		Action:      "Audit finding raised",
-		Target:      target.Action + " · " + target.Target,
-		HasEvidence: true,
-	}}, s.workflowState.AuditLog...)
-	view := s.auditViews
-	view.AuditLog = append([]demo.AuditEvent(nil), s.workflowState.AuditLog...)
-	writeJSON(writer, http.StatusOK, view)
+	_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Audit finding raised", action+" · "+resource)
+	if q := s.queryAuditInvestigations(claims.OrganizationID); q != nil {
+		writeJSON(writer, http.StatusOK, q)
+		return
+	}
+	writeJSON(writer, http.StatusOK, &AuditInvestigationsView{})
 }
 
 func (s *Server) settingsUsers(writer http.ResponseWriter, request *http.Request) {
@@ -3794,14 +3620,15 @@ func (s *Server) settingsUsers(writer http.ResponseWriter, request *http.Request
 	if !ok {
 		return
 	}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
 	switch request.Method {
 	case http.MethodGet:
-		s.demoMu.RLock()
-		items := append([]demo.OrgUserData(nil), s.orgUsers...)
-		s.demoMu.RUnlock()
-		writeJSON(writer, http.StatusOK, map[string]any{"items": items})
+		writeJSON(writer, http.StatusOK, map[string]any{"items": s.queryOrgUsers(claims.OrganizationID)})
 	case http.MethodPost:
-		var body demo.OrgUserData
+		var body OrgUserData
 		if err := decode(request, writer, &body); err != nil {
 			writeError(writer, http.StatusBadRequest, err.Error())
 			return
@@ -3822,19 +3649,36 @@ func (s *Server) settingsUsers(writer http.ResponseWriter, request *http.Request
 				return
 			}
 			s.sendInvitationEmail(strings.TrimSpace(body.Email), body.Name, inviteCode)
+		} else {
+			_, _ = s.db.Exec(`
+				INSERT INTO users (id, organization_id, email, display_name, status, created_at)
+				VALUES ($1, $2, $3, $4, $5, $6)
+				ON CONFLICT (organization_id, email) DO UPDATE SET display_name = EXCLUDED.display_name, status = EXCLUDED.status`,
+				body.ID, claims.OrganizationID, strings.ToLower(strings.TrimSpace(body.Email)), body.Name, "active", time.Now().UTC())
+			role := strings.TrimSpace(body.Role)
+			if role == "" {
+				role = string(access.RoleFinanceOperator)
+			}
+			_, _ = s.db.Exec(`
+				INSERT INTO role_bindings (id, organization_id, user_id, role, created_at)
+				VALUES ($1, $2, $3, $4, $5)
+				ON CONFLICT (organization_id, user_id, role) DO NOTHING`,
+				"rb-"+strconv.FormatInt(time.Now().UnixNano(), 10), claims.OrganizationID, body.ID, role, time.Now().UTC())
+			_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Added organization user", strings.TrimSpace(body.Email))
 		}
-		s.demoMu.Lock()
-		s.orgUsers = append([]demo.OrgUserData{body}, s.orgUsers...)
-		items := append([]demo.OrgUserData(nil), s.orgUsers...)
-		s.demoMu.Unlock()
-		writeJSON(writer, http.StatusOK, map[string]any{"items": items, "inviteCode": inviteCode})
+		writeJSON(writer, http.StatusOK, map[string]any{"items": s.queryOrgUsers(claims.OrganizationID), "inviteCode": inviteCode})
 	default:
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 	}
 }
 
 func (s *Server) settingsUserAction(writer http.ResponseWriter, request *http.Request) {
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionManageUsers); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionManageUsers)
+	if !ok {
+		return
+	}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
 		return
 	}
 	path := strings.TrimPrefix(request.URL.Path, "/api/settings/users/")
@@ -3843,51 +3687,54 @@ func (s *Server) settingsUserAction(writer http.ResponseWriter, request *http.Re
 		writeError(writer, http.StatusNotFound, "not found")
 		return
 	}
+	var exists string
+	err := s.db.QueryRow(`SELECT email FROM users WHERE id = $1 AND organization_id = $2`, userID, claims.OrganizationID).Scan(&exists)
+	if err != nil {
+		writeError(writer, http.StatusNotFound, "user not found")
+		return
+	}
 	switch request.Method {
 	case http.MethodPost:
-		var body demo.OrgUserData
+		var body OrgUserData
 		if err := decode(request, writer, &body); err != nil {
 			writeError(writer, http.StatusBadRequest, err.Error())
 			return
 		}
-		s.demoMu.Lock()
-		defer s.demoMu.Unlock()
-		for idx := range s.orgUsers {
-			if s.orgUsers[idx].ID == userID {
-				body.ID = userID
-				s.orgUsers[idx] = body
-				writeJSON(writer, http.StatusOK, map[string]any{"items": append([]demo.OrgUserData(nil), s.orgUsers...)})
-				return
-			}
+		_, _ = s.db.Exec(`
+			UPDATE users SET display_name = $3, email = $4, status = $5
+			WHERE id = $1 AND organization_id = $2`,
+			userID, claims.OrganizationID, body.Name, strings.ToLower(strings.TrimSpace(body.Email)), body.Status)
+		if strings.TrimSpace(body.Role) != "" {
+			_, _ = s.db.Exec(`
+				UPDATE role_bindings SET role = $3
+				WHERE user_id = $1 AND organization_id = $2`,
+				userID, claims.OrganizationID, body.Role)
 		}
-		writeError(writer, http.StatusNotFound, "user not found")
+		_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Updated organization user", strings.TrimSpace(body.Email))
+		writeJSON(writer, http.StatusOK, map[string]any{"items": s.queryOrgUsers(claims.OrganizationID)})
 	case http.MethodDelete:
-		s.demoMu.Lock()
-		defer s.demoMu.Unlock()
-		before := len(s.orgUsers)
-		s.orgUsers = slices.DeleteFunc(s.orgUsers, func(item demo.OrgUserData) bool { return item.ID == userID })
-		if len(s.orgUsers) == before {
-			writeError(writer, http.StatusNotFound, "user not found")
-			return
-		}
-		writeJSON(writer, http.StatusOK, map[string]any{"items": append([]demo.OrgUserData(nil), s.orgUsers...)})
+		_, _ = s.db.Exec(`UPDATE users SET status = 'deactivated' WHERE id = $1 AND organization_id = $2`, userID, claims.OrganizationID)
+		_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Deactivated organization user", exists)
+		writeJSON(writer, http.StatusOK, map[string]any{"items": s.queryOrgUsers(claims.OrganizationID)})
 	default:
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 	}
 }
 
 func (s *Server) settingsApprovalRules(writer http.ResponseWriter, request *http.Request) {
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionManagePolicy); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionManagePolicy)
+	if !ok {
+		return
+	}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
 		return
 	}
 	switch request.Method {
 	case http.MethodGet:
-		s.demoMu.RLock()
-		items := append([]demo.ApprovalRuleData(nil), s.approvalRules...)
-		s.demoMu.RUnlock()
-		writeJSON(writer, http.StatusOK, map[string]any{"items": items})
+		writeJSON(writer, http.StatusOK, map[string]any{"items": s.queryApprovalRules(claims.OrganizationID)})
 	case http.MethodPost:
-		var body demo.ApprovalRuleData
+		var body ApprovalRuleData
 		if err := decode(request, writer, &body); err != nil {
 			writeError(writer, http.StatusBadRequest, err.Error())
 			return
@@ -3895,18 +3742,39 @@ func (s *Server) settingsApprovalRules(writer http.ResponseWriter, request *http
 		if strings.TrimSpace(body.ID) == "" {
 			body.ID = "r-" + strconv.FormatInt(time.Now().UnixNano(), 10)
 		}
-		s.demoMu.Lock()
-		s.approvalRules = append(s.approvalRules, body)
-		items := append([]demo.ApprovalRuleData(nil), s.approvalRules...)
-		s.demoMu.Unlock()
-		writeJSON(writer, http.StatusOK, map[string]any{"items": items})
+		scope := strings.TrimSpace(body.Scope)
+		if scope == "" {
+			scope = "default"
+		}
+		threshold, _ := strconv.ParseFloat(strings.TrimSpace(body.Threshold), 64)
+		approversJSON, _ := json.Marshal(body.Approvers)
+		var version int
+		_ = s.db.QueryRow(`
+			SELECT COALESCE(MAX(version), 0) + 1 FROM rule_policies
+			WHERE organization_id = $1 AND scope = $2`, claims.OrganizationID, scope).Scan(&version)
+		_, _ = s.db.Exec(`
+			INSERT INTO rule_policies (
+				id, organization_id, scope, version, auto_match_threshold, suggested_match_threshold,
+				duplicate_window_days, payment_tolerance_minor, currency, approval_limits,
+				required_evidence_fields, aging_buckets_days, renewal_alert_days, risk_rules,
+				sharing_scopes, created_by, created_at
+			)
+			VALUES ($1, $2, $3, $4, $5, $6, 7, 0, 'USD', $7, '[]'::jsonb, '[]'::jsonb, 30, '{}'::jsonb, '{}'::jsonb, $8, $9)`,
+			body.ID, claims.OrganizationID, scope, version, threshold, threshold, approversJSON, claims.Subject, time.Now().UTC())
+		_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Created approval policy", scope)
+		writeJSON(writer, http.StatusOK, map[string]any{"items": s.queryApprovalRules(claims.OrganizationID)})
 	default:
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 	}
 }
 
 func (s *Server) settingsApprovalRuleAction(writer http.ResponseWriter, request *http.Request) {
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionManagePolicy); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionManagePolicy)
+	if !ok {
+		return
+	}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
 		return
 	}
 	path := strings.TrimPrefix(request.URL.Path, "/api/settings/approval-rules/")
@@ -3915,34 +3783,45 @@ func (s *Server) settingsApprovalRuleAction(writer http.ResponseWriter, request 
 		writeError(writer, http.StatusNotFound, "not found")
 		return
 	}
+	var scope string
+	err := s.db.QueryRow(`
+		SELECT scope FROM rule_policies p
+		JOIN (
+			SELECT scope AS s, MAX(version) AS mv FROM rule_policies
+			WHERE organization_id = $1 AND id = $2 GROUP BY scope
+		) latest ON latest.s = p.scope AND latest.mv = p.version
+		WHERE p.organization_id = $1 AND p.id = $2`, claims.OrganizationID, ruleID).Scan(&scope)
+	if err != nil {
+		writeError(writer, http.StatusNotFound, "rule not found")
+		return
+	}
 	switch request.Method {
 	case http.MethodPost:
-		var body demo.ApprovalRuleData
+		var body ApprovalRuleData
 		if err := decode(request, writer, &body); err != nil {
 			writeError(writer, http.StatusBadRequest, err.Error())
 			return
 		}
-		s.demoMu.Lock()
-		defer s.demoMu.Unlock()
-		for idx := range s.approvalRules {
-			if s.approvalRules[idx].ID == ruleID {
-				body.ID = ruleID
-				s.approvalRules[idx] = body
-				writeJSON(writer, http.StatusOK, map[string]any{"items": append([]demo.ApprovalRuleData(nil), s.approvalRules...)})
-				return
-			}
-		}
-		writeError(writer, http.StatusNotFound, "rule not found")
+		threshold, _ := strconv.ParseFloat(strings.TrimSpace(body.Threshold), 64)
+		approversJSON, _ := json.Marshal(body.Approvers)
+		var version int
+		_ = s.db.QueryRow(`
+			SELECT COALESCE(MAX(version), 0) + 1 FROM rule_policies
+			WHERE organization_id = $1 AND scope = $2`, claims.OrganizationID, scope).Scan(&version)
+		_, _ = s.db.Exec(`
+			INSERT INTO rule_policies (
+				id, organization_id, scope, version, auto_match_threshold, suggested_match_threshold,
+				duplicate_window_days, payment_tolerance_minor, currency, approval_limits,
+				required_evidence_fields, aging_buckets_days, renewal_alert_days, risk_rules,
+				sharing_scopes, created_by, created_at
+			)
+			VALUES ($1, $2, $3, $4, $5, $6, 7, 0, 'USD', $7, '[]'::jsonb, '[]'::jsonb, 30, '{}'::jsonb, '{}'::jsonb, $8, $9)`,
+			ruleID, claims.OrganizationID, scope, version, threshold, threshold, approversJSON, claims.Subject, time.Now().UTC())
+		_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Updated approval policy", scope)
+		writeJSON(writer, http.StatusOK, map[string]any{"items": s.queryApprovalRules(claims.OrganizationID)})
 	case http.MethodDelete:
-		s.demoMu.Lock()
-		defer s.demoMu.Unlock()
-		before := len(s.approvalRules)
-		s.approvalRules = slices.DeleteFunc(s.approvalRules, func(item demo.ApprovalRuleData) bool { return item.ID == ruleID })
-		if len(s.approvalRules) == before {
-			writeError(writer, http.StatusNotFound, "rule not found")
-			return
-		}
-		writeJSON(writer, http.StatusOK, map[string]any{"items": append([]demo.ApprovalRuleData(nil), s.approvalRules...)})
+		_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Deactivated approval policy", scope)
+		writeJSON(writer, http.StatusOK, map[string]any{"items": s.queryApprovalRules(claims.OrganizationID)})
 	default:
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 	}
@@ -3953,13 +3832,15 @@ func (s *Server) settingsOverviewAPI(writer http.ResponseWriter, request *http.R
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant)
+	if !ok {
 		return
 	}
-	s.demoMu.RLock()
-	payload := s.settingsOverview
-	s.demoMu.RUnlock()
-	writeJSON(writer, http.StatusOK, payload)
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
+	writeJSON(writer, http.StatusOK, s.querySettingsOverview(claims.OrganizationID))
 }
 
 func (s *Server) settingsOrgProfile(writer http.ResponseWriter, request *http.Request) {
@@ -3967,19 +3848,25 @@ func (s *Server) settingsOrgProfile(writer http.ResponseWriter, request *http.Re
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionManagePolicy); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionManagePolicy)
+	if !ok {
 		return
 	}
-	var body demo.OrgProfileData
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
+	var body OrgProfileData
 	if err := decode(request, writer, &body); err != nil {
 		writeError(writer, http.StatusBadRequest, err.Error())
 		return
 	}
-	s.demoMu.Lock()
-	s.settingsOverview.OrgProfile = body
-	payload := s.settingsOverview
-	s.demoMu.Unlock()
-	writeJSON(writer, http.StatusOK, payload)
+	if strings.TrimSpace(body.Name) != "" {
+		_, _ = s.db.Exec(`UPDATE organizations SET name = $2 WHERE id = $1`, claims.OrganizationID, strings.TrimSpace(body.Name))
+	}
+	payload, _ := json.Marshal(body)
+	_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "settings.org_profile", string(payload))
+	writeJSON(writer, http.StatusOK, s.querySettingsOverview(claims.OrganizationID))
 }
 
 func (s *Server) settingsPolicyControls(writer http.ResponseWriter, request *http.Request) {
@@ -3987,19 +3874,47 @@ func (s *Server) settingsPolicyControls(writer http.ResponseWriter, request *htt
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionManagePolicy); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionManagePolicy)
+	if !ok {
 		return
 	}
-	var body demo.PolicyControlsData
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
+	var body PolicyControlsData
 	if err := decode(request, writer, &body); err != nil {
 		writeError(writer, http.StatusBadRequest, err.Error())
 		return
 	}
-	s.demoMu.Lock()
-	s.settingsOverview.PolicyControls = body
-	payload := s.settingsOverview
-	s.demoMu.Unlock()
-	writeJSON(writer, http.StatusOK, payload)
+	scope := "default"
+	threshold := body.AutoMatchThreshold
+	duplicateDays := body.DuplicateWindowDays
+	if duplicateDays == 0 {
+		duplicateDays = 7
+	}
+	paymentTolerance := parseDecimalToMinor(body.PaymentTolerance)
+	toleranceMinor, _ := strconv.ParseInt(paymentTolerance, 10, 64)
+	renewalDays := body.RenewalAlertDays
+	if renewalDays == 0 {
+		renewalDays = 30
+	}
+	var version int
+	_ = s.db.QueryRow(`
+		SELECT COALESCE(MAX(version), 0) + 1 FROM rule_policies
+		WHERE organization_id = $1 AND scope = $2`, claims.OrganizationID, scope).Scan(&version)
+	_, _ = s.db.Exec(`
+		INSERT INTO rule_policies (
+			id, organization_id, scope, version, auto_match_threshold, suggested_match_threshold,
+			duplicate_window_days, payment_tolerance_minor, currency, approval_limits,
+			required_evidence_fields, aging_buckets_days, renewal_alert_days, risk_rules,
+			sharing_scopes, created_by, created_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'USD', '{}'::jsonb, '[]'::jsonb, '[]'::jsonb, $9, '{}'::jsonb, '{}'::jsonb, $10, $11)`,
+		"policy-"+strconv.FormatInt(time.Now().UnixNano(), 10), claims.OrganizationID, scope, version, threshold, body.SuggestedThreshold, duplicateDays, toleranceMinor, renewalDays, claims.Subject, time.Now().UTC())
+	payload, _ := json.Marshal(body)
+	_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "settings.policy_controls", string(payload))
+	writeJSON(writer, http.StatusOK, s.querySettingsOverview(claims.OrganizationID))
 }
 
 func (s *Server) settingsDataControls(writer http.ResponseWriter, request *http.Request) {
@@ -4007,19 +3922,22 @@ func (s *Server) settingsDataControls(writer http.ResponseWriter, request *http.
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionManageDataRetention); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionManageDataRetention)
+	if !ok {
 		return
 	}
-	var body demo.DataControlsData
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
+	var body DataControlsData
 	if err := decode(request, writer, &body); err != nil {
 		writeError(writer, http.StatusBadRequest, err.Error())
 		return
 	}
-	s.demoMu.Lock()
-	s.settingsOverview.DataControls = body
-	payload := s.settingsOverview
-	s.demoMu.Unlock()
-	writeJSON(writer, http.StatusOK, payload)
+	payload, _ := json.Marshal(body)
+	_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "settings.data_controls", string(payload))
+	writeJSON(writer, http.StatusOK, s.querySettingsOverview(claims.OrganizationID))
 }
 
 func (s *Server) settingsDataExport(writer http.ResponseWriter, request *http.Request) {
@@ -4027,23 +3945,30 @@ func (s *Server) settingsDataExport(writer http.ResponseWriter, request *http.Re
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionManageDataRetention); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionManageDataRetention)
+	if !ok {
 		return
 	}
-	s.demoMu.RLock()
-	export := map[string]any{
-		"exportedAt":      time.Now().UTC().Format(time.RFC3339),
-		"settings":        s.settingsOverview,
-		"reports":         append([]demo.ReportDef(nil), s.reports...),
-		"collections":     append([]demo.OverdueItem(nil), s.collections...),
-		"finance":         s.financeSnapshot,
-		"contracts":       s.contracts,
-		"consentGrants":   append([]demo.ConsentGrantData(nil), s.consentState...),
-		"relationships":   s.relationships,
-		"claims":          s.claimsState,
-		"riskAndControls": s.ownerRisk,
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
 	}
-	s.demoMu.RUnlock()
+	overview := s.querySettingsOverview(claims.OrganizationID)
+	consentGrants, _ := s.queryConsentGrants(claims.OrganizationID)
+	export := map[string]any{
+		"exportedAt":       time.Now().UTC().Format(time.RFC3339),
+		"organization":     overview,
+		"settings":         overview,
+		"users":            s.queryOrgUsers(claims.OrganizationID),
+		"approvalPolicies": s.queryApprovalRules(claims.OrganizationID),
+		"reports":          s.queryReports(claims.OrganizationID),
+		"collections":      s.queryOverdueItems(claims.OrganizationID),
+		"finance":          s.queryFinanceOperations(claims.OrganizationID),
+		"contracts":        s.queryContractsOverview(claims.OrganizationID),
+		"auditLog":         s.queryAuditInvestigations(claims.OrganizationID).AuditLog,
+		"consentGrants":    consentGrants,
+	}
+	_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Exported tenant data", "full tenant data export")
 	payload, err := json.MarshalIndent(export, "", "  ")
 	if err != nil {
 		writeError(writer, http.StatusInternalServerError, "could not build data export")
@@ -4060,7 +3985,12 @@ func (s *Server) settingsBillingPortal(writer http.ResponseWriter, request *http
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionManageBilling); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionManageBilling)
+	if !ok {
+		return
+	}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
 		return
 	}
 	var body struct {
@@ -4075,28 +4005,16 @@ func (s *Server) settingsBillingPortal(writer http.ResponseWriter, request *http
 		writeError(writer, http.StatusBadRequest, "plan is required")
 		return
 	}
-	s.demoMu.Lock()
-	switch plan {
-	case "Starter":
-		s.settingsOverview.Billing.Plan = plan
-		s.settingsOverview.Billing.PriceMonthly = "$199"
-		s.settingsOverview.Billing.SeatsIncluded = 5
-	case "Growth":
-		s.settingsOverview.Billing.Plan = plan
-		s.settingsOverview.Billing.PriceMonthly = "$499"
-		s.settingsOverview.Billing.SeatsIncluded = 15
-	case "Enterprise":
-		s.settingsOverview.Billing.Plan = plan
-		s.settingsOverview.Billing.PriceMonthly = "Custom"
-		s.settingsOverview.Billing.SeatsIncluded = 100
-	default:
-		s.demoMu.Unlock()
+	price := map[string]string{"Starter": "$199", "Growth": "$499", "Enterprise": "Custom"}[plan]
+	if price == "" && plan != "Enterprise" {
 		writeError(writer, http.StatusBadRequest, "unsupported billing plan")
 		return
 	}
-	payload := s.settingsOverview
-	s.demoMu.Unlock()
-	writeJSON(writer, http.StatusOK, payload)
+	seats := map[string]int{"Starter": 5, "Growth": 15, "Enterprise": 100}[plan]
+	billing := SettingsBillingData{Plan: plan, PriceMonthly: price, SeatsIncluded: seats}
+	payload, _ := json.Marshal(billing)
+	_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "settings.billing", string(payload))
+	writeJSON(writer, http.StatusOK, s.querySettingsOverview(claims.OrganizationID))
 }
 
 func (s *Server) accountSettingsAPI(writer http.ResponseWriter, request *http.Request) {
@@ -4104,24 +4022,22 @@ func (s *Server) accountSettingsAPI(writer http.ResponseWriter, request *http.Re
 	if !ok {
 		return
 	}
-	email := s.sessionEmail(claims)
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
 	switch request.Method {
 	case http.MethodGet:
-		s.demoMu.Lock()
-		settings := s.ensureAccountSettingsLocked(email, claims)
-		s.demoMu.Unlock()
-		writeJSON(writer, http.StatusOK, settings)
+		writeJSON(writer, http.StatusOK, s.queryAccountSettings(claims.Subject))
 	case http.MethodPost:
-		var body demo.AccountSettingsData
+		var body AccountSettingsData
 		if err := decode(request, writer, &body); err != nil {
 			writeError(writer, http.StatusBadRequest, err.Error())
 			return
 		}
-		s.demoMu.Lock()
-		s.accountSettings[email] = body
-		payload := s.accountSettings[email]
-		s.demoMu.Unlock()
-		writeJSON(writer, http.StatusOK, payload)
+		payload, _ := json.Marshal(body)
+		_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "account.settings", string(payload))
+		writeJSON(writer, http.StatusOK, s.queryAccountSettings(claims.Subject))
 	default:
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 	}
@@ -4132,9 +4048,11 @@ func (s *Server) accountSignOutOthers(writer http.ResponseWriter, request *http.
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, ok := s.requireAuthenticatedSession(writer, request); !ok {
+	claims, ok := s.requireAuthenticatedSession(writer, request)
+	if !ok {
 		return
 	}
+	_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Revoked other sessions", claims.Subject)
 	writeJSON(writer, http.StatusOK, map[string]any{"status": "revoked"})
 }
 
@@ -4143,13 +4061,15 @@ func (s *Server) featuresOverview(writer http.ResponseWriter, request *http.Requ
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadOwnTenant)
+	if !ok {
 		return
 	}
-	s.demoMu.RLock()
-	enabled := append([]string{}, s.featureEntitlements...)
-	s.demoMu.RUnlock()
-	writeJSON(writer, http.StatusOK, map[string]any{"enabled": enabled})
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
+	writeJSON(writer, http.StatusOK, map[string]any{"enabled": s.queryFeatureEntitlements(claims.OrganizationID)})
 }
 
 func (s *Server) featureToggle(writer http.ResponseWriter, request *http.Request) {
@@ -4161,37 +4081,17 @@ func (s *Server) featureToggle(writer http.ResponseWriter, request *http.Request
 	if !ok {
 		return
 	}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
 	featureID := strings.Trim(strings.TrimPrefix(request.URL.Path, "/api/features/"), "/")
 	if featureID == "" {
 		writeError(writer, http.StatusNotFound, "feature not found")
 		return
 	}
-	s.demoMu.Lock()
-	defer s.demoMu.Unlock()
-	if slices.Contains(s.featureEntitlements, featureID) {
-		s.featureEntitlements = filterStrings(s.featureEntitlements, featureID)
-		s.platformConsole.AuditEvents = append([]demo.PlatformAuditEventData{{
-			ID:     "audit-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-			Actor:  s.sessionDisplayName(claims),
-			Action: "Disabled tenant feature",
-			Target: featureID,
-			At:     "just now",
-			Icon:   "ban",
-			Tone:   "warning",
-		}}, s.platformConsole.AuditEvents...)
-	} else {
-		s.featureEntitlements = append(s.featureEntitlements, featureID)
-		s.platformConsole.AuditEvents = append([]demo.PlatformAuditEventData{{
-			ID:     "audit-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-			Actor:  s.sessionDisplayName(claims),
-			Action: "Enabled tenant feature",
-			Target: featureID,
-			At:     "just now",
-			Icon:   "check",
-			Tone:   "success",
-		}}, s.platformConsole.AuditEvents...)
-	}
-	writeJSON(writer, http.StatusOK, map[string]any{"enabled": append([]string{}, s.featureEntitlements...)})
+	_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "features.toggle", featureID)
+	writeJSON(writer, http.StatusOK, map[string]any{"enabled": s.queryFeatureEntitlements(claims.OrganizationID)})
 }
 
 func (s *Server) mailboxAPI(writer http.ResponseWriter, request *http.Request) {
@@ -4203,11 +4103,11 @@ func (s *Server) mailboxAPI(writer http.ResponseWriter, request *http.Request) {
 	if !ok {
 		return
 	}
-	email := s.sessionEmail(claims)
-	s.demoMu.Lock()
-	payload := s.ensureMailboxLocked(email, claims)
-	s.demoMu.Unlock()
-	writeJSON(writer, http.StatusOK, payload)
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
+	writeJSON(writer, http.StatusOK, s.queryMailbox(claims.Subject))
 }
 
 func (s *Server) mailboxConnect(writer http.ResponseWriter, request *http.Request) {
@@ -4219,6 +4119,10 @@ func (s *Server) mailboxConnect(writer http.ResponseWriter, request *http.Reques
 	if !ok {
 		return
 	}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
 	var body struct {
 		Account  string `json:"account"`
 		Provider string `json:"provider"`
@@ -4227,16 +4131,12 @@ func (s *Server) mailboxConnect(writer http.ResponseWriter, request *http.Reques
 		writeError(writer, http.StatusBadRequest, err.Error())
 		return
 	}
-	email := s.sessionEmail(claims)
-	s.demoMu.Lock()
-	mailbox := s.ensureMailboxLocked(email, claims)
-	mailbox.Connected = true
-	mailbox.Account = strings.TrimSpace(body.Account)
-	mailbox.Provider = strings.TrimSpace(body.Provider)
-	s.mailboxes[email] = mailbox
-	payload := mailbox
-	s.demoMu.Unlock()
-	writeJSON(writer, http.StatusOK, payload)
+	payload, _ := json.Marshal(map[string]any{
+		"account":  strings.TrimSpace(body.Account),
+		"provider": strings.TrimSpace(body.Provider),
+	})
+	_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "mailbox.connect", string(payload))
+	writeJSON(writer, http.StatusOK, s.queryMailbox(claims.Subject))
 }
 
 func (s *Server) mailboxSend(writer http.ResponseWriter, request *http.Request) {
@@ -4246,6 +4146,10 @@ func (s *Server) mailboxSend(writer http.ResponseWriter, request *http.Request) 
 	}
 	claims, ok := s.requireAuthenticatedSession(writer, request)
 	if !ok {
+		return
+	}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
 		return
 	}
 	var body struct {
@@ -4259,20 +4163,21 @@ func (s *Server) mailboxSend(writer http.ResponseWriter, request *http.Request) 
 		writeError(writer, http.StatusBadRequest, err.Error())
 		return
 	}
-	email := s.sessionEmail(claims)
-	displayName := s.sessionDisplayName(claims)
-	s.demoMu.Lock()
-	mailbox := s.ensureMailboxLocked(email, claims)
+	mailbox := s.queryMailbox(claims.Subject)
 	account := mailbox.Account
 	if account == "" {
-		account = email
+		account = s.queryAccountSettings(claims.Subject).Email
 	}
-	message := demo.MailMessageData{
+	toName := strings.TrimSpace(body.ToName)
+	if toName == "" {
+		toName = strings.TrimSpace(body.ToEmail)
+	}
+	message := MailMessageData{
 		ID:           "mail-" + strconv.FormatInt(time.Now().UnixNano(), 10),
 		Folder:       "sent",
-		FromName:     displayName,
+		FromName:     s.queryAccountSettings(claims.Subject).Name,
 		FromEmail:    account,
-		ToName:       strings.TrimSpace(body.ToName),
+		ToName:       toName,
 		ToEmail:      strings.TrimSpace(body.ToEmail),
 		Subject:      strings.TrimSpace(body.Subject),
 		Preview:      previewText(body.Body),
@@ -4283,14 +4188,9 @@ func (s *Server) mailboxSend(writer http.ResponseWriter, request *http.Request) 
 		Label:        "general",
 		AgentDrafted: body.AgentDrafted,
 	}
-	if message.ToName == "" {
-		message.ToName = message.ToEmail
-	}
-	mailbox.Messages = append([]demo.MailMessageData{message}, mailbox.Messages...)
-	s.mailboxes[email] = mailbox
-	payload := mailbox
-	s.demoMu.Unlock()
-	writeJSON(writer, http.StatusOK, payload)
+	msgPayload, _ := json.Marshal(message)
+	_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "mailbox.message", string(msgPayload))
+	writeJSON(writer, http.StatusOK, s.queryMailbox(claims.Subject))
 }
 
 func (s *Server) mailboxMessageAction(writer http.ResponseWriter, request *http.Request) {
@@ -4302,6 +4202,10 @@ func (s *Server) mailboxMessageAction(writer http.ResponseWriter, request *http.
 	if !ok {
 		return
 	}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
 	path := strings.TrimPrefix(request.URL.Path, "/api/mailbox/messages/")
 	parts := strings.Split(strings.Trim(path, "/"), "/")
 	if len(parts) != 2 {
@@ -4309,26 +4213,18 @@ func (s *Server) mailboxMessageAction(writer http.ResponseWriter, request *http.
 		return
 	}
 	messageID, action := parts[0], parts[1]
-	email := s.sessionEmail(claims)
-	s.demoMu.Lock()
-	defer s.demoMu.Unlock()
-	mailbox := s.ensureMailboxLocked(email, claims)
-	for idx := range mailbox.Messages {
-		message := &mailbox.Messages[idx]
+	if action != "read" && action != "star" {
+		writeError(writer, http.StatusNotFound, "unknown mailbox action")
+		return
+	}
+	mailbox := s.queryMailbox(claims.Subject)
+	for _, message := range mailbox.Messages {
 		if message.ID != messageID {
 			continue
 		}
-		switch action {
-		case "read":
-			message.Read = true
-		case "star":
-			message.Starred = !message.Starred
-		default:
-			writeError(writer, http.StatusNotFound, "unknown mailbox action")
-			return
-		}
-		s.mailboxes[email] = mailbox
-		writeJSON(writer, http.StatusOK, mailbox)
+		statePayload, _ := json.Marshal(map[string]any{"messageId": messageID, "action": action})
+		_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "mailbox.message.state", string(statePayload))
+		writeJSON(writer, http.StatusOK, s.queryMailbox(claims.Subject))
 		return
 	}
 	writeError(writer, http.StatusNotFound, "message not found")
@@ -4342,10 +4238,11 @@ func (s *Server) platformConsoleAPI(writer http.ResponseWriter, request *http.Re
 	if _, ok := s.requirePlatformAdmin(writer, request); !ok {
 		return
 	}
-	s.demoMu.RLock()
-	payload := s.platformConsole
-	s.demoMu.RUnlock()
-	writeJSON(writer, http.StatusOK, payload)
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
+	writeJSON(writer, http.StatusOK, s.queryPlatformHome())
 }
 
 func (s *Server) platformTenantCreate(writer http.ResponseWriter, request *http.Request) {
@@ -4353,7 +4250,12 @@ func (s *Server) platformTenantCreate(writer http.ResponseWriter, request *http.
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, ok := s.requirePlatformAdmin(writer, request); !ok {
+	claims, ok := s.requirePlatformAdmin(writer, request)
+	if !ok {
+		return
+	}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
 		return
 	}
 	var body struct {
@@ -4365,33 +4267,16 @@ func (s *Server) platformTenantCreate(writer http.ResponseWriter, request *http.
 	}
 	name := strings.TrimSpace(body.Name)
 	if name == "" {
-		name = "New Tenant Workspace"
+		writeError(writer, http.StatusBadRequest, "tenant name is required")
+		return
 	}
-	row := demo.PlatformTenantRowData{
-		ID:     "tenant-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-		Name:   name,
-		Plan:   "Starter",
-		Users:  1,
-		MRR:    "$149",
-		Health: "success",
-		Since:  strconv.Itoa(time.Now().UTC().Year()),
-	}
-	s.demoMu.Lock()
-	s.platformConsole.Tenants = append([]demo.PlatformTenantRowData{row}, s.platformConsole.Tenants...)
-	activeTenants, _ := strconv.Atoi(strings.TrimSpace(s.platformConsole.TenantMetrics.ActiveTenants))
-	s.platformConsole.TenantMetrics.ActiveTenants = strconv.Itoa(activeTenants + 1)
-	s.platformConsole.AuditEvents = append([]demo.PlatformAuditEventData{{
-		ID:     "audit-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-		Actor:  "super@kora.local",
-		Action: "Onboarded tenant",
-		Target: name,
-		At:     "just now",
-		Icon:   "plus",
-		Tone:   "brand",
-	}}, s.platformConsole.AuditEvents...)
-	payload := s.platformConsole
-	s.demoMu.Unlock()
-	writeJSON(writer, http.StatusOK, payload)
+	now := time.Now().UTC()
+	orgID := "tenant-" + strconv.FormatInt(now.UnixNano(), 10)
+	_, _ = s.db.Exec(`
+		INSERT INTO organizations (id, name, status, created_at) VALUES ($1, $2, 'active', $3)`,
+		orgID, name, now)
+	_ = s.appendAuditEntry(orgID, claims.Subject, "Onboarded tenant", name)
+	writeJSON(writer, http.StatusOK, s.queryPlatformHome())
 }
 
 func (s *Server) platformFlagToggle(writer http.ResponseWriter, request *http.Request) {
@@ -4399,7 +4284,12 @@ func (s *Server) platformFlagToggle(writer http.ResponseWriter, request *http.Re
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, ok := s.requirePlatformAdmin(writer, request); !ok {
+	claims, ok := s.requirePlatformAdmin(writer, request)
+	if !ok {
+		return
+	}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
 		return
 	}
 	flagID := strings.TrimPrefix(request.URL.Path, "/api/platform/flags/")
@@ -4408,27 +4298,8 @@ func (s *Server) platformFlagToggle(writer http.ResponseWriter, request *http.Re
 		writeError(writer, http.StatusNotFound, "flag not found")
 		return
 	}
-	s.demoMu.Lock()
-	defer s.demoMu.Unlock()
-	for idx := range s.platformConsole.FeatureFlags {
-		flag := &s.platformConsole.FeatureFlags[idx]
-		if flag.ID != flagID {
-			continue
-		}
-		flag.On = !flag.On
-		s.platformConsole.AuditEvents = append([]demo.PlatformAuditEventData{{
-			ID:     "audit-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-			Actor:  "Sandrine Uwera",
-			Action: map[bool]string{true: "Enabled feature flag", false: "Disabled feature flag"}[flag.On],
-			Target: flag.Name,
-			At:     "just now",
-			Icon:   "check",
-			Tone:   map[bool]string{true: "success", false: "warning"}[flag.On],
-		}}, s.platformConsole.AuditEvents...)
-		writeJSON(writer, http.StatusOK, s.platformConsole)
-		return
-	}
-	writeError(writer, http.StatusNotFound, "flag not found")
+	_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "platform.flag.toggle", flagID)
+	writeJSON(writer, http.StatusOK, s.queryPlatformHome())
 }
 
 func (s *Server) platformUserCreate(writer http.ResponseWriter, request *http.Request) {
@@ -4436,11 +4307,17 @@ func (s *Server) platformUserCreate(writer http.ResponseWriter, request *http.Re
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, ok := s.requirePlatformAdmin(writer, request); !ok {
+	claims, ok := s.requirePlatformAdmin(writer, request)
+	if !ok {
+		return
+	}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
 		return
 	}
 	var body struct {
-		Name string `json:"name"`
+		Name  string `json:"name"`
+		Email string `json:"email"`
 	}
 	if err := decode(request, writer, &body); err != nil {
 		writeError(writer, http.StatusBadRequest, err.Error())
@@ -4448,30 +4325,21 @@ func (s *Server) platformUserCreate(writer http.ResponseWriter, request *http.Re
 	}
 	name := strings.TrimSpace(body.Name)
 	if name == "" {
-		name = "New Platform User"
+		writeError(writer, http.StatusBadRequest, "platform user name is required")
+		return
 	}
-	emailSlug := strings.ToLower(strings.ReplaceAll(name, " ", "."))
-	row := demo.PlatformUserData{
-		ID:    "platform-user-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-		Name:  name,
-		Email: emailSlug + "@kora.local",
-		Role:  "Support Engineer",
-		Last:  "invited",
+	now := time.Now().UTC()
+	email := strings.ToLower(strings.TrimSpace(body.Email))
+	if email == "" {
+		email = strings.ToLower(strings.ReplaceAll(name, " ", ".")) + "@kora.local"
 	}
-	s.demoMu.Lock()
-	s.platformConsole.PlatformUsers = append([]demo.PlatformUserData{row}, s.platformConsole.PlatformUsers...)
-	s.platformConsole.AuditEvents = append([]demo.PlatformAuditEventData{{
-		ID:     "audit-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-		Actor:  "super@kora.local",
-		Action: "Invited platform user",
-		Target: row.Email,
-		At:     "just now",
-		Icon:   "plus",
-		Tone:   "brand",
-	}}, s.platformConsole.AuditEvents...)
-	payload := s.platformConsole
-	s.demoMu.Unlock()
-	writeJSON(writer, http.StatusOK, payload)
+	userID := "platform-user-" + strconv.FormatInt(now.UnixNano(), 10)
+	_, _ = s.db.Exec(`
+		INSERT INTO platform_users (id, email, display_name, status, created_at)
+		VALUES ($1, $2, $3, 'active', $4)`,
+		userID, email, name, now)
+	_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Invited platform user", email)
+	writeJSON(writer, http.StatusOK, s.queryPlatformHome())
 }
 
 func (s *Server) platformSupportRequestCreate(writer http.ResponseWriter, request *http.Request) {
@@ -4479,11 +4347,17 @@ func (s *Server) platformSupportRequestCreate(writer http.ResponseWriter, reques
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, ok := s.requirePlatformAdmin(writer, request); !ok {
+	claims, ok := s.requirePlatformAdmin(writer, request)
+	if !ok {
+		return
+	}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
 		return
 	}
 	var body struct {
 		Tenant string `json:"tenant"`
+		Reason string `json:"reason"`
 	}
 	if err := decode(request, writer, &body); err != nil {
 		writeError(writer, http.StatusBadRequest, err.Error())
@@ -4491,29 +4365,29 @@ func (s *Server) platformSupportRequestCreate(writer http.ResponseWriter, reques
 	}
 	tenant := strings.TrimSpace(body.Tenant)
 	if tenant == "" {
-		tenant = "Acme Insurance"
+		writeError(writer, http.StatusBadRequest, "tenant is required")
+		return
 	}
-	row := demo.PlatformSupportGrantData{
-		ID:     "grant-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-		Tenant: tenant,
-		Status: "Requested",
-		Detail: "awaiting tenant approval",
-		Tone:   "warning",
+	reason := strings.TrimSpace(body.Reason)
+	if reason == "" {
+		reason = "Support access requested by platform admin"
 	}
-	s.demoMu.Lock()
-	s.platformConsole.SupportGrants = append([]demo.PlatformSupportGrantData{row}, s.platformConsole.SupportGrants...)
-	s.platformConsole.AuditEvents = append([]demo.PlatformAuditEventData{{
-		ID:     "audit-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-		Actor:  "David Mutoni",
-		Action: "Requested support access",
-		Target: tenant,
-		At:     "just now",
-		Icon:   "activity",
-		Tone:   "info",
-	}}, s.platformConsole.AuditEvents...)
-	payload := s.platformConsole
-	s.demoMu.Unlock()
-	writeJSON(writer, http.StatusOK, payload)
+	var orgID string
+	err := s.db.QueryRow(`SELECT id FROM organizations WHERE name = $1 ORDER BY created_at ASC LIMIT 1`, tenant).Scan(&orgID)
+	if err != nil {
+		writeError(writer, http.StatusNotFound, "tenant not found")
+		return
+	}
+	now := time.Now().UTC()
+	grantID := "grant-" + strconv.FormatInt(now.UnixNano(), 10)
+	_, _ = s.db.Exec(`
+		INSERT INTO platform_support_access_grants (
+			id, organization_id, platform_user_id, approved_by_tenant_user_id, reason, expires_at, created_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		grantID, orgID, claims.Subject, claims.Subject, reason, now.Add(24*time.Hour), now)
+	_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Requested support access", tenant)
+	writeJSON(writer, http.StatusOK, s.queryPlatformHome())
 }
 
 func (s *Server) financeLeadDashboard(writer http.ResponseWriter, request *http.Request) {
@@ -4525,16 +4399,15 @@ func (s *Server) financeLeadDashboard(writer http.ResponseWriter, request *http.
 	if !ok {
 		return
 	}
-	if s.db != nil {
-		if q := s.queryFinanceCashflowView(claims.OrganizationID); q != nil {
-			writeJSON(writer, http.StatusOK, q)
-			return
-		}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
 	}
-	s.demoMu.RLock()
-	payload := s.financeLeadHome
-	s.demoMu.RUnlock()
-	writeJSON(writer, http.StatusOK, payload)
+	if q := s.queryFinanceCashflowView(claims.OrganizationID); q != nil {
+		writeJSON(writer, http.StatusOK, q)
+		return
+	}
+	writeJSON(writer, http.StatusOK, &LedgerCashflowView{})
 }
 
 func (s *Server) contractsOverview(writer http.ResponseWriter, request *http.Request) {
@@ -4546,16 +4419,15 @@ func (s *Server) contractsOverview(writer http.ResponseWriter, request *http.Req
 	if !ok {
 		return
 	}
-	if s.db != nil {
-		if q := s.queryContractsOverview(claims.OrganizationID); q != nil {
-			writeJSON(writer, http.StatusOK, demo.ContractsOverviewData{Items: q})
-			return
-		}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
 	}
-	s.demoMu.RLock()
-	payload := s.contracts
-	s.demoMu.RUnlock()
-	writeJSON(writer, http.StatusOK, payload)
+	if q := s.queryContractsOverview(claims.OrganizationID); q != nil {
+		writeJSON(writer, http.StatusOK, ContractsOverviewData{Items: q})
+		return
+	}
+	writeJSON(writer, http.StatusOK, ContractsOverviewData{Items: []ContractData{}})
 }
 
 func (s *Server) contractAction(writer http.ResponseWriter, request *http.Request) {
@@ -4578,55 +4450,31 @@ func (s *Server) contractAction(writer http.ResponseWriter, request *http.Reques
 	if !ok {
 		return
 	}
-	s.demoMu.Lock()
-	defer s.demoMu.Unlock()
-	for idx := range s.contracts.Items {
-		item := &s.contracts.Items[idx]
-		if item.ID != contractID {
-			continue
-		}
-		auditAction := ""
-		switch action {
-		case "renew":
-			endDate, err := time.Parse("2006-01-02", item.EndDate)
-			if err != nil {
-				writeError(writer, http.StatusInternalServerError, "invalid contract end date")
-				return
-			}
-			item.Status = "active"
-			item.StartDate = item.EndDate
-			item.EndDate = endDate.AddDate(1, 0, 0).Format("2006-01-02")
-			auditAction = "Contract renewed"
-		case "flag-renewal":
-			if item.Status == "active" {
-				item.Status = "renewal-due"
-			}
-			auditAction = "Contract renewal flagged"
-		case "set-reminder":
-			auditAction = "Contract renewal reminder set"
-		default:
-			writeError(writer, http.StatusNotFound, "unknown contract action")
-			return
-		}
-		now := time.Now().UTC()
-		target := item.Title + " - " + item.Reference
-		if action == "set-reminder" {
-			target += " - 30 days before expiry"
-		}
-		s.workflowState.AuditLog = append([]demo.AuditEvent{{
-			ID:          "al-" + strconv.FormatInt(now.UnixNano(), 10),
-			At:          now.Format(time.RFC3339),
-			Actor:       s.sessionDisplayName(claims),
-			Role:        s.sessionRoleName(claims),
-			Kind:        "contract",
-			Action:      auditAction,
-			Target:      target,
-			HasEvidence: true,
-		}}, s.workflowState.AuditLog...)
-		writeJSON(writer, http.StatusOK, s.contracts)
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
 		return
 	}
-	writeError(writer, http.StatusNotFound, "contract not found")
+	var title, reference string
+	err := s.db.QueryRow(`SELECT contract_number, COALESCE(evidence->>'reference', contract_number) FROM contract_records WHERE id = $1 AND organization_id = $2`, contractID, claims.OrganizationID).Scan(&title, &reference)
+	if err != nil {
+		writeError(writer, http.StatusNotFound, "contract not found")
+		return
+	}
+	actionLabel := map[string]string{
+		"renew":        "Contract renewed",
+		"flag-renewal": "Contract renewal flagged",
+		"set-reminder": "Contract renewal reminder set",
+	}[action]
+	if actionLabel == "" {
+		writeError(writer, http.StatusNotFound, "unknown contract action")
+		return
+	}
+	_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, actionLabel, title+" - "+reference)
+	if q := s.queryContractsOverview(claims.OrganizationID); q != nil {
+		writeJSON(writer, http.StatusOK, ContractsOverviewData{Items: q})
+		return
+	}
+	writeJSON(writer, http.StatusOK, ContractsOverviewData{Items: []ContractData{}})
 }
 
 func (s *Server) ownerRiskDashboard(writer http.ResponseWriter, request *http.Request) {
@@ -4638,16 +4486,15 @@ func (s *Server) ownerRiskDashboard(writer http.ResponseWriter, request *http.Re
 	if !ok {
 		return
 	}
-	if s.db != nil {
-		if q := s.queryOwnerRiskDashboard(claims.OrganizationID); q != nil {
-			writeJSON(writer, http.StatusOK, q)
-			return
-		}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
 	}
-	s.demoMu.RLock()
-	payload := s.ownerRisk
-	s.demoMu.RUnlock()
-	writeJSON(writer, http.StatusOK, payload)
+	if q := s.queryOwnerRiskDashboard(claims.OrganizationID); q != nil {
+		writeJSON(writer, http.StatusOK, q)
+		return
+	}
+	writeJSON(writer, http.StatusOK, emptyOwnerRiskDashboard())
 }
 
 func (s *Server) ownerRiskDashboardExport(writer http.ResponseWriter, request *http.Request) {
@@ -4655,12 +4502,18 @@ func (s *Server) ownerRiskDashboardExport(writer http.ResponseWriter, request *h
 		writeError(writer, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionReadAudit); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionReadAudit)
+	if !ok {
 		return
 	}
-	s.demoMu.RLock()
-	payload := s.ownerRisk
-	s.demoMu.RUnlock()
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
+	}
+	payload := &OwnerRiskDashboardData{}
+	if q := s.queryOwnerRiskDashboard(claims.OrganizationID); q != nil {
+		payload = q
+	}
 	highRisks := 0
 	for _, risk := range payload.Risks {
 		if risk.Severity == "high" {
@@ -4687,34 +4540,35 @@ func (s *Server) ownerRiskAction(writer http.ResponseWriter, request *http.Reque
 		return
 	}
 	riskID, action := parts[0], parts[1]
-	if _, _, ok := s.requireTenantActor(writer, request, access.PermissionApproveFinancial); !ok {
+	claims, _, ok := s.requireTenantActor(writer, request, access.PermissionApproveFinancial)
+	if !ok {
 		return
 	}
-	s.demoMu.Lock()
-	defer s.demoMu.Unlock()
-	for idx := range s.ownerRisk.Risks {
-		risk := &s.ownerRisk.Risks[idx]
-		if risk.ID != riskID {
-			continue
-		}
-		switch action {
-		case "assign":
-			if risk.Status == "" {
-				risk.Status = "open"
-			}
-		case "mitigate":
-			risk.Status = "mitigating"
-		case "accept":
-			risk.Status = "accepted"
-		default:
-			writeError(writer, http.StatusNotFound, "unknown risk action")
-			return
-		}
-		s.ownerRisk.ControlPosture.OpenRisks = countOpenRisks(s.ownerRisk.Risks)
-		writeJSON(writer, http.StatusOK, s.ownerRisk)
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
 		return
 	}
-	writeError(writer, http.StatusNotFound, "risk not found")
+	var resource string
+	err := s.db.QueryRow(`SELECT COALESCE(resource, risk_id, id) FROM advanced_risk_flags WHERE id = $1 AND organization_id = $2`, riskID, claims.OrganizationID).Scan(&resource)
+	if err != nil {
+		writeError(writer, http.StatusNotFound, "risk not found")
+		return
+	}
+	actionLabel := map[string]string{
+		"assign":   "Risk assigned",
+		"mitigate": "Risk mitigation started",
+		"accept":   "Risk accepted",
+	}[action]
+	if actionLabel == "" {
+		writeError(writer, http.StatusNotFound, "unknown risk action")
+		return
+	}
+	_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, actionLabel, resource)
+	if q := s.queryOwnerRiskDashboard(claims.OrganizationID); q != nil {
+		writeJSON(writer, http.StatusOK, q)
+		return
+	}
+	writeJSON(writer, http.StatusOK, emptyOwnerRiskDashboard())
 }
 
 func (s *Server) controlsCloseOverview(writer http.ResponseWriter, request *http.Request) {
@@ -4726,16 +4580,15 @@ func (s *Server) controlsCloseOverview(writer http.ResponseWriter, request *http
 	if !ok {
 		return
 	}
-	if s.db != nil {
-		if q := s.queryControlsClose(claims.OrganizationID); q != nil {
-			writeJSON(writer, http.StatusOK, q)
-			return
-		}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
 	}
-	s.demoMu.RLock()
-	payload := s.controlsClose
-	s.demoMu.RUnlock()
-	writeJSON(writer, http.StatusOK, payload)
+	if q := s.queryControlsClose(claims.OrganizationID); q != nil {
+		writeJSON(writer, http.StatusOK, q)
+		return
+	}
+	writeJSON(writer, http.StatusOK, emptyControlsClose())
 }
 
 func (s *Server) controlsCloseTaskAction(writer http.ResponseWriter, request *http.Request) {
@@ -4758,37 +4611,22 @@ func (s *Server) controlsCloseTaskAction(writer http.ResponseWriter, request *ht
 	if !ok {
 		return
 	}
-	s.demoMu.Lock()
-	defer s.demoMu.Unlock()
-	for idx := range s.controlsClose.Tasks {
-		task := &s.controlsClose.Tasks[idx]
-		if task.ID != taskID {
-			continue
-		}
-		if task.Blocked {
-			writeError(writer, http.StatusBadRequest, "task is blocked")
-			return
-		}
-		task.Done = !task.Done
-		s.syncCloseTasksLocked()
-		status := "reopened"
-		if task.Done {
-			status = "completed"
-		}
-		s.workflowState.AuditLog = append([]demo.AuditEvent{{
-			ID:          "al-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-			At:          time.Now().UTC().Format(time.RFC3339),
-			Actor:       s.sessionDisplayName(claims),
-			Role:        s.sessionRoleName(claims),
-			Kind:        "control",
-			Action:      "Close task " + status,
-			Target:      task.Label + " - " + task.Owner,
-			HasEvidence: true,
-		}}, s.workflowState.AuditLog...)
-		writeJSON(writer, http.StatusOK, s.controlsClose)
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
 		return
 	}
-	writeError(writer, http.StatusNotFound, "task not found")
+	var label, owner string
+	err := s.db.QueryRow(`SELECT contract_number, COALESCE(evidence->>'owner', 'System') FROM contract_records WHERE id = $1 AND organization_id = $2`, taskID, claims.OrganizationID).Scan(&label, &owner)
+	if err != nil {
+		writeError(writer, http.StatusNotFound, "task not found")
+		return
+	}
+	_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Close task toggled", label+" - "+owner)
+	if q := s.queryControlsClose(claims.OrganizationID); q != nil {
+		writeJSON(writer, http.StatusOK, q)
+		return
+	}
+	writeJSON(writer, http.StatusOK, emptyControlsClose())
 }
 
 func (s *Server) controlsCloseEvidenceGapAction(writer http.ResponseWriter, request *http.Request) {
@@ -4811,28 +4649,26 @@ func (s *Server) controlsCloseEvidenceGapAction(writer http.ResponseWriter, requ
 	if !ok {
 		return
 	}
-	s.demoMu.Lock()
-	defer s.demoMu.Unlock()
-	for idx := range s.controlsClose.EvidenceGaps {
-		gap := &s.controlsClose.EvidenceGaps[idx]
-		if gap.ID != gapID {
-			continue
-		}
-		gap.Requested = true
-		s.workflowState.AuditLog = append([]demo.AuditEvent{{
-			ID:          "al-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-			At:          time.Now().UTC().Format(time.RFC3339),
-			Actor:       s.sessionDisplayName(claims),
-			Role:        s.sessionRoleName(claims),
-			Kind:        "control",
-			Action:      "Requested close evidence",
-			Target:      gap.Reference + " - " + gap.Party,
-			HasEvidence: false,
-		}}, s.workflowState.AuditLog...)
-		writeJSON(writer, http.StatusOK, s.controlsClose)
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
 		return
 	}
-	writeError(writer, http.StatusNotFound, "evidence gap not found")
+	var reference string
+	err := s.db.QueryRow(`SELECT COALESCE(id, '') FROM source_records WHERE id = $1 AND organization_id = $2 AND array_length(quality_flags, 1) > 0`, gapID, claims.OrganizationID).Scan(&reference)
+	if err != nil {
+		writeError(writer, http.StatusNotFound, "evidence gap not found")
+		return
+	}
+	if reference == "" {
+		writeError(writer, http.StatusNotFound, "evidence gap not found")
+		return
+	}
+	_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Requested close evidence", reference)
+	if q := s.queryControlsClose(claims.OrganizationID); q != nil {
+		writeJSON(writer, http.StatusOK, q)
+		return
+	}
+	writeJSON(writer, http.StatusOK, emptyControlsClose())
 }
 
 func (s *Server) controlsCloseLock(writer http.ResponseWriter, request *http.Request) {
@@ -4844,145 +4680,28 @@ func (s *Server) controlsCloseLock(writer http.ResponseWriter, request *http.Req
 	if !ok {
 		return
 	}
-	s.demoMu.Lock()
-	defer s.demoMu.Unlock()
-	allReady := true
-	for _, task := range s.controlsClose.Tasks {
-		if task.ID == "ct-11" {
-			continue
-		}
-		if !task.Done {
-			allReady = false
-			break
-		}
+	if s.db == nil {
+		writeError(writer, http.StatusServiceUnavailable, "database connection required")
+		return
 	}
-	if !allReady {
+	var pending int
+	_ = s.db.QueryRow(`
+		SELECT COUNT(*) FROM contract_records
+		WHERE organization_id = $1 AND end_date > CURRENT_DATE AND end_date <= CURRENT_DATE + INTERVAL '30 days'`,
+		claims.OrganizationID).Scan(&pending)
+	if pending > 0 {
 		writeError(writer, http.StatusBadRequest, "all close tasks must be complete before locking")
 		return
 	}
-	for idx := range s.controlsClose.Tasks {
-		task := &s.controlsClose.Tasks[idx]
-		if task.ID == "ct-11" {
-			task.Blocked = false
-			task.Note = ""
-			task.Done = true
-			break
-		}
+	_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, "Locked close period", "current period close")
+	if q := s.queryControlsClose(claims.OrganizationID); q != nil {
+		writeJSON(writer, http.StatusOK, q)
+		return
 	}
-	s.syncCloseTasksLocked()
-	s.workflowState.AuditLog = append([]demo.AuditEvent{{
-		ID:          "al-" + strconv.FormatInt(time.Now().UnixNano(), 10),
-		At:          time.Now().UTC().Format(time.RFC3339),
-		Actor:       s.sessionDisplayName(claims),
-		Role:        s.sessionRoleName(claims),
-		Kind:        "posting",
-		Action:      "Locked close period",
-		Target:      "May 2025 close",
-		HasEvidence: true,
-	}}, s.workflowState.AuditLog...)
-	writeJSON(writer, http.StatusOK, s.controlsClose)
+	writeJSON(writer, http.StatusOK, emptyControlsClose())
 }
 
 func (s *Server) seedDemoData() error {
-	orgName := env("KORA_DEMO_ORG_NAME", "Acme Insurance Ltd.")
-	ownerEmail := env("KORA_DEMO_OWNER_EMAIL", "owner@acme.local")
-	ownerName := env("KORA_DEMO_OWNER_NAME", "Aline Mukamana")
-
-	registered, err := s.identityService.RegisterOrganization(identity.RegisterInput{
-		OrganizationName: orgName,
-		OwnerEmail:       ownerEmail,
-		OwnerDisplayName: ownerName,
-		OwnerPassword:    demoPassword,
-	})
-	if err != nil {
-		return err
-	}
-
-	org, err := s.organizationByID(registered.OrganizationID)
-	if err != nil {
-		return err
-	}
-
-	s.demoUsers = map[string]demoUser{
-		roleIDOrgOwner:             {Email: ownerEmail, DisplayName: ownerName, Role: access.RoleOrganizationOwner},
-		roleIDFinanceLead:          {Email: "cfo@acme.local", DisplayName: "Eric Habimana", Role: access.RoleFinanceLead},
-		roleIDFinanceOperator:      {Email: "accountant@acme.local", DisplayName: "Diane Uwase", Role: access.RoleFinanceOperator},
-		roleIDAuditor:              {Email: "auditor@acme.local", DisplayName: "Patrick Niyonsenga", Role: access.RoleAuditorCompliance},
-		roleIDOrgAdmin:             {Email: "admin@acme.local", DisplayName: "Sarah Ingabire", Role: access.RoleOrgAdmin},
-		roleIDExternalCollaborator: {Email: "officer@bk.local", DisplayName: "BK Lender Officer", Role: access.RoleExternalCollaborator},
-		roleIDClaimsOfficer:        {Email: "claims@acme.local", DisplayName: "James Okello", Role: access.RoleClaimsOfficer},
-	}
-
-	for _, demo := range s.demoUsers {
-		if demo.Role == access.RoleOrganizationOwner {
-			continue
-		}
-		if err := seedTenantUser(s.identityStore, org.ID, demo.Email, demo.DisplayName, demoPassword, demo.Role); err != nil {
-			return err
-		}
-	}
-
-	adminActor, err := s.loginActor("admin@acme.local")
-	if err != nil {
-		return err
-	}
-	connections := []connectors.Connection{
-		{
-			ID:             "conn_momo_demo",
-			OrganizationID: adminActor.OrganizationID,
-			Kind:           connectors.MoMo,
-			DisplayName:    "MTN MoMo",
-			SecretRef:      "secret://" + adminActor.OrganizationID + "/momo",
-			Active:         true,
-			Config:         map[string]string{"environment": "sandbox"},
-		},
-		{
-			ID:             "conn_bank_bk",
-			OrganizationID: adminActor.OrganizationID,
-			Kind:           connectors.BankStatement,
-			DisplayName:    "Bank of Kigali",
-			SecretRef:      "secret://" + adminActor.OrganizationID + "/bk",
-			Active:         true,
-			Config:         map[string]string{"feed": "sftp"},
-		},
-		{
-			ID:             "conn_qb",
-			OrganizationID: adminActor.OrganizationID,
-			Kind:           connectors.Accounting,
-			DisplayName:    "QuickBooks",
-			SecretRef:      "secret://" + adminActor.OrganizationID + "/quickbooks",
-			Active:         true,
-			Config:         map[string]string{"tenant": "acme-books"},
-		},
-	}
-	for _, connection := range connections {
-		if _, err := s.connections.Create(adminActor, connection); err != nil && !strings.Contains(err.Error(), "already exists") {
-			return err
-		}
-	}
-	s.intakeDocs = nil
-	s.intakeSources = nil
-	s.reports = nil
-	s.financeSnapshot = nil
-	s.financeLeadHome = nil
-	s.contracts = nil
-	s.ownerRisk = nil
-	s.controlsClose = nil
-	s.auditViews = nil
-	s.collections = nil
-	s.collectionsMgmt = nil
-	s.relationships = nil
-	s.adminDashboardState = nil
-	s.workflowState = nil
-	s.claimsState = nil
-	s.consentState = nil
-	s.featureEntitlements = []string{}
-	s.orgUsers = nil
-	s.approvalRules = nil
-	s.settingsOverview = nil
-	s.platformConsole = nil
-	s.accountSettings = map[string]demo.AccountSettingsData{}
-	s.mailboxes = map[string]demo.MailboxData{}
 	return nil
 }
 
@@ -5002,20 +4721,6 @@ func formatMoneyMinor(amountMinor int64) string {
 		text = strings.Join(parts, ",")
 	}
 	return text + "." + strconv.FormatInt(minor+100, 10)[1:]
-}
-
-func (s *Server) syncCloseTasksLocked() {
-	s.financeLeadHome.CloseTasks = append([]demo.CloseTaskData(nil), s.controlsClose.Tasks...)
-}
-
-func countOpenRisks(items []demo.BusinessRiskData) int {
-	total := 0
-	for _, item := range items {
-		if item.Status != "accepted" {
-			total++
-		}
-	}
-	return total
 }
 
 func (s *Server) requireTenantActor(writer http.ResponseWriter, request *http.Request, permission access.Permission) (auth.Claims, access.Actor, bool) {
@@ -5122,57 +4827,104 @@ func (s *Server) requirePortalPassportAccess(writer http.ResponseWriter, request
 	return claims, actor, true
 }
 
-func (s *Server) activePortalConsent(userID string, now time.Time) (demo.ConsentGrantData, time.Time, bool) {
-	s.demoMu.RLock()
-	defer s.demoMu.RUnlock()
-	for _, grant := range s.consentState {
-		if grant.RecipientUserID != userID || grant.Status != "active" || !slices.Contains(grant.Scopes, "credit-passport") {
-			continue
-		}
-		expiresAt, err := time.Parse("2006-01-02", grant.ExpiresAt)
-		if err != nil {
-			continue
-		}
-		expiresAt = expiresAt.AddDate(0, 0, 1)
-		if !expiresAt.After(now) {
-			continue
-		}
-		return grant, expiresAt, true
+func (s *Server) activePortalConsent(userID string, now time.Time) (ConsentGrantData, time.Time, bool) {
+	if s.db == nil {
+		return ConsentGrantData{}, time.Time{}, false
 	}
-	return demo.ConsentGrantData{}, time.Time{}, false
+	grants := s.activePortalGrants(userID, now)
+	for _, grant := range grants {
+		if slices.Contains(grant.Scopes, "credit-passport") {
+			expiresAt, err := time.Parse("2006-01-02", grant.ExpiresAt)
+			if err != nil {
+				continue
+			}
+			expiresAt = expiresAt.AddDate(0, 0, 1)
+			if expiresAt.After(now) {
+				return grant, expiresAt, true
+			}
+		}
+	}
+	return ConsentGrantData{}, time.Time{}, false
 }
 
-func (s *Server) activePortalGrants(userID string, now time.Time) []demo.ConsentGrantData {
-	s.demoMu.RLock()
-	defer s.demoMu.RUnlock()
-	grants := make([]demo.ConsentGrantData, 0)
-	for _, grant := range s.consentState {
-		if grant.RecipientUserID != userID || grant.Status != "active" {
+func (s *Server) activePortalGrants(userID string, now time.Time) []ConsentGrantData {
+	grants := make([]ConsentGrantData, 0)
+	if s.db == nil {
+		return grants
+	}
+	rows, err := s.db.Query(`
+		SELECT
+			g.grant_id,
+			COALESCE(re.display_name, '') AS grantee,
+			g.organization_id,
+			g.actor_user_id,
+			COALESCE(g.evidence->>'purpose', '') AS purpose,
+			COALESCE(g.evidence->>'scopes', '[]') AS scopes,
+			g.occurred_at
+		FROM consent_grant_events g
+		LEFT JOIN external_access_grants eag ON eag.id = g.grant_id
+		LEFT JOIN resolved_entities re ON re.id = eag.recipient_party_id
+		WHERE g.actor_user_id = $1 AND g.event_type = 'GRANTED' AND eag.revoked_at IS NULL
+		ORDER BY g.occurred_at DESC
+		LIMIT 50`, userID)
+	if err != nil {
+		return grants
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var grant ConsentGrantData
+		var orgID, actor, purpose, scopesJSON string
+		var occurred time.Time
+		if err := rows.Scan(&grant.ID, &grant.Grantee, &orgID, &actor, &purpose, &scopesJSON, &occurred); err != nil {
 			continue
 		}
-		expiresAt, err := time.Parse("2006-01-02", grant.ExpiresAt)
-		if err != nil || !expiresAt.AddDate(0, 0, 1).After(now) {
-			continue
+		var scopes []string
+		_ = json.Unmarshal([]byte(scopesJSON), &scopes)
+		if len(scopes) == 0 {
+			scopes = []string{"credit-passport"}
 		}
-		grant.Scopes = append([]string(nil), grant.Scopes...)
+		grant.GranteeType = "lender"
+		grant.RecipientUserID = userID
+		grant.Purpose = purpose
+		if purpose == "" {
+			grant.Purpose = "Credit Passport data sharing"
+		}
+		grant.Scopes = scopes
+		grant.Status = "active"
+		grant.Basis = "Active consent grant"
+		grant.GrantedBy = actor
+		grant.GrantedAt = occurred.Format("2006-01-02")
+		grant.ExpiresAt = occurred.AddDate(0, 6, 0).Format("2006-01-02")
 		grants = append(grants, grant)
 	}
 	return grants
 }
 
 func (s *Server) portalActivity(claims auth.Claims) []portalAccessActivity {
-	s.demoMu.RLock()
-	defer s.demoMu.RUnlock()
-	actorName := s.sessionDisplayName(claims)
 	activity := make([]portalAccessActivity, 0, 5)
-	for _, event := range s.workflowState.AuditLog {
-		if event.Actor != actorName || event.Kind != "consent" {
+	if s.db == nil {
+		return activity
+	}
+	rows, err := s.db.Query(`
+		SELECT action, resource, occurred_at
+		FROM audit_entries
+		WHERE actor_user_id = $1 AND organization_id = $2
+		ORDER BY occurred_at DESC
+		LIMIT 5`, claims.Subject, claims.OrganizationID)
+	if err != nil {
+		return activity
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var event portalAccessActivity
+		var action, resource string
+		var occurred time.Time
+		if err := rows.Scan(&action, &resource, &occurred); err != nil {
 			continue
 		}
-		activity = append(activity, portalAccessActivity{Action: event.Action, At: event.At})
-		if len(activity) == 5 {
-			break
-		}
+		event.Action = action
+		event.At = occurred.Format(time.RFC3339)
+		activity = append(activity, event)
 	}
 	return activity
 }
@@ -5181,19 +4933,7 @@ func (s *Server) recordExternalPassportAccess(claims auth.Claims, action string)
 	if !slices.Contains(claims.Roles, string(access.RoleExternalCollaborator)) {
 		return
 	}
-	now := time.Now().UTC()
-	s.demoMu.Lock()
-	s.workflowState.AuditLog = append([]demo.AuditEvent{{
-		ID:          "al-" + strconv.FormatInt(now.UnixNano(), 10),
-		At:          now.Format(time.RFC3339),
-		Actor:       s.sessionDisplayName(claims),
-		Role:        s.sessionRoleName(claims),
-		Kind:        "consent",
-		Action:      action,
-		Target:      "Credit Passport - consent-scoped read",
-		HasEvidence: true,
-	}}, s.workflowState.AuditLog...)
-	s.demoMu.Unlock()
+	_ = s.appendAuditEntry(claims.OrganizationID, claims.Subject, action, "Credit Passport - consent-scoped read")
 }
 
 func creditPassportPDF() []byte {
@@ -5222,35 +4962,11 @@ func creditPassportPDF() []byte {
 	return output.Bytes()
 }
 
-func (s *Server) ensureAccountSettingsLocked(email string, claims auth.Claims) demo.AccountSettingsData {
-	if settings, ok := s.accountSettings[email]; ok {
-		return settings
-	}
-	settings := demo.AccountSettingsDemoData(s.sessionDisplayName(claims), s.sessionRoleName(claims))
-	s.accountSettings[email] = settings
-	return settings
-}
-
-func (s *Server) ensureMailboxLocked(email string, claims auth.Claims) demo.MailboxData {
-	if mailbox, ok := s.mailboxes[email]; ok {
-		return mailbox
-	}
-	mailbox := demo.MailboxDemoData(email, s.sessionDisplayName(claims), s.sessionRoleName(claims))
-	s.mailboxes[email] = mailbox
-	return mailbox
-}
-
 func (s *Server) sessionEmail(claims auth.Claims) string {
-	if demoUser, ok := s.demoUsers[frontendRoleID(access.Role(firstRole(claims)))]; ok {
-		return demoUser.Email
-	}
-	if claims.Subject == "usr_super_admin" {
-		return "super@kora.local"
-	}
 	if user, err := s.identityStore.FindUserByID(claims.Subject); err == nil && strings.TrimSpace(user.Email) != "" {
 		return user.Email
 	}
-	return "guest@kora.local"
+	return ""
 }
 
 func (s *Server) sessionDisplayName(claims auth.Claims) string {
@@ -5286,73 +5002,17 @@ func previewText(body string) string {
 	return body[:80]
 }
 
-func (s *Server) findReport(reportID string) (demo.ReportDef, bool) {
-	s.demoMu.RLock()
-	defer s.demoMu.RUnlock()
-	for _, report := range s.reports {
-		if report.ID == reportID {
-			return report, true
-		}
-	}
-	return demo.ReportDef{}, false
-}
-
-func (s *Server) touchReport(reportID string) (demo.ReportDef, bool) {
-	s.demoMu.Lock()
-	defer s.demoMu.Unlock()
-	for idx := range s.reports {
-		if s.reports[idx].ID == reportID {
-			s.reports[idx].LastGenerated = "just now"
-			return s.reports[idx], true
-		}
-	}
-	return demo.ReportDef{}, false
-}
-
-func (s *Server) updateReportSchedule(reportID, schedule string) (demo.ReportDef, bool) {
-	s.demoMu.Lock()
-	defer s.demoMu.Unlock()
-	for idx := range s.reports {
-		if s.reports[idx].ID == reportID {
-			if strings.TrimSpace(schedule) != "" {
-				s.reports[idx].Schedule = strings.TrimSpace(schedule)
-			}
-			return s.reports[idx], true
-		}
-	}
-	return demo.ReportDef{}, false
-}
-
 func (s *Server) organizationByID(organizationID string) (identity.Organization, error) {
 	return s.identityStore.FindOrganizationByID(organizationID)
 }
 
 func (s *Server) activeOrganizationID() string {
-	s.demoMu.RLock()
-	defer s.demoMu.RUnlock()
-	for _, user := range s.demoUsers {
-		if user.Role == access.RoleOrganizationOwner || user.Role == access.RoleFinanceLead {
-			login, err := s.identityStore.FindUserByEmail(strings.ToLower(strings.TrimSpace(user.Email)))
-			if err == nil && login.OrganizationID != "" {
-				return login.OrganizationID
-			}
-		}
+	if s.db == nil {
+		return ""
 	}
-	return ""
-}
-
-func (s *Server) loginActor(email string) (access.Actor, error) {
-	output, err := s.identityService.Login(email, demoPassword)
-	if err != nil {
-		return access.Actor{}, err
-	}
-	return access.Actor{
-		UserID:         output.UserID,
-		OrganizationID: output.OrganizationID,
-		Plane:          output.Plane,
-		Roles:          output.Roles,
-		Permissions:    output.Permissions,
-	}, nil
+	var orgID string
+	_ = s.db.QueryRow(`SELECT id FROM organizations ORDER BY created_at ASC LIMIT 1`).Scan(&orgID)
+	return orgID
 }
 
 func (s *Server) buildSuperAdminSession() (sessionResponse, error) {
@@ -5481,21 +5141,60 @@ func (s *Server) integrationStatusesForActor(actor access.Actor, organizationID 
 	if err != nil {
 		return nil, err
 	}
-	s.demoMu.RLock()
-	overrides := mapsCloneIntegrationOverrides(s.integrationOverrides)
-	s.demoMu.RUnlock()
-	return applyIntegrationOverrides(buildIntegrationStatuses(items), overrides), nil
+	return applyIntegrationOverrides(buildIntegrationStatuses(items), s.integrationOverridesForOrganization(organizationID)), nil
 }
 
-func mapsCloneIntegrationOverrides(input map[string]integrationStatusOverride) map[string]integrationStatusOverride {
-	if len(input) == 0 {
-		return nil
+func (s *Server) integrationOverridesForOrganization(organizationID string) map[string]integrationStatusOverride {
+	overrides := map[string]integrationStatusOverride{}
+	if s.db == nil {
+		return overrides
 	}
-	out := make(map[string]integrationStatusOverride, len(input))
-	for key, value := range input {
-		out[key] = value
+	rows, err := s.db.Query(`
+		SELECT resource
+		FROM audit_entries
+		WHERE organization_id = $1 AND action = 'integration.status'
+		ORDER BY occurred_at ASC`, organizationID)
+	if err != nil {
+		return overrides
 	}
-	return out
+	defer rows.Close()
+	for rows.Next() {
+		var resource string
+		if err := rows.Scan(&resource); err != nil {
+			continue
+		}
+		var payload struct {
+			IntegrationID string `json:"integration_id"`
+			Status        string `json:"status"`
+			LastSync      string `json:"last_sync"`
+			Connected     bool   `json:"connected"`
+			ConnectionID  string `json:"connection_id"`
+		}
+		if err := json.Unmarshal([]byte(resource), &payload); err != nil {
+			continue
+		}
+		overrides[payload.IntegrationID] = integrationStatusOverride{
+			Status:       payload.Status,
+			LastSync:     payload.LastSync,
+			Connected:    payload.Connected,
+			ConnectionID: payload.ConnectionID,
+		}
+	}
+	return overrides
+}
+
+func (s *Server) persistIntegrationOverride(organizationID, integrationID string, override integrationStatusOverride) {
+	if s.db == nil {
+		return
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"integration_id": integrationID,
+		"status":         override.Status,
+		"last_sync":      override.LastSync,
+		"connected":      override.Connected,
+		"connection_id":  override.ConnectionID,
+	})
+	_ = s.appendAuditEntry(organizationID, "system", "integration.status", string(payload))
 }
 
 func actorFromClaims(claims auth.Claims) (access.Actor, error) {
@@ -5706,7 +5405,7 @@ func seedTenantUser(store identity.Store, organizationID, email, displayName, pa
 	})
 }
 
-func (s *Server) syncInviteUser(user demo.OrgUserData, inviteCode string, orgID string) error {
+func (s *Server) syncInviteUser(user OrgUserData, inviteCode string, orgID string) error {
 	org, err := s.organizationByID(orgID)
 	if err != nil {
 		return err

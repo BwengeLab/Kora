@@ -12,8 +12,6 @@ vendor/
 *.tmp
 
 # Environment
-.env
-.env.local
 *.env.*
 
 # Coverage
@@ -22,7 +20,6 @@ htmlcov/
 .coverage
 
 # Editors
-.vscode/
 .idea/
 *.swp
 *.swo
@@ -32,3 +29,5 @@ dist/
 build/
 target/
 ```
+config.bat
+node_modules

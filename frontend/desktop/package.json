@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tauri dev",
-    "build": "tauri build",
+    "dev": "node init && tauri dev",
+    "build": "node init && tauri build",
     "vite:dev": "vite",
     "vite:build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit"

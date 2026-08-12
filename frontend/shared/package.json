@@ -12,7 +12,6 @@
     "./auth": "./src/auth/index.ts",
     "./platform": "./src/platform/index.ts",
     "./state": "./src/state/index.ts",
-    "./seed": "./src/seed/index.ts",
     "./i18n": "./src/i18n/index.ts",
     "./lib": "./src/lib/index.ts"
   },
